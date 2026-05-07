@@ -1,10 +1,15 @@
 import { Module } from '@nestjs/common';
+import { APP_PIPE } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { ZodValidationPipe } from 'nestjs-zod';
 
+import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
+import { SystemModule } from './modules/system/system.module.js';
 import { PrismaModule } from './prisma.module.js';
 import { RedisModule } from './redis.module.js';
-import { SystemModule } from './modules/system/system.module.js';
+import { RepositoriesModule } from './repositories.module.js';
 
 const env = loadEnv();
 
@@ -31,9 +36,19 @@ const env = loadEnv();
         },
       },
     }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: env.RATE_LIMIT_GLOBAL_PER_MINUTE,
+      },
+    ]),
     PrismaModule,
     RedisModule,
+    RepositoriesModule,
+    AuthModule,
     SystemModule,
   ],
+  providers: [{ provide: APP_PIPE, useClass: ZodValidationPipe }, ThrottlerGuard],
 })
 export class AppModule {}
