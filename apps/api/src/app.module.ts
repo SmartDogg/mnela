@@ -7,6 +7,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
+import { DocumentsModule } from './modules/documents/documents.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { PrismaModule } from './prisma.module.js';
 import { RedisModule } from './redis.module.js';
@@ -49,6 +50,7 @@ const env = loadEnv();
     RepositoriesModule,
     AuditModule,
     AuthModule,
+    DocumentsModule,
     SystemModule,
   ],
   providers: [{ provide: APP_PIPE, useClass: ZodValidationPipe }, ThrottlerGuard],

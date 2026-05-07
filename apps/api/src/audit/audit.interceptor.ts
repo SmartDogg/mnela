@@ -77,13 +77,19 @@ function extractTargetId(meta: AuditMeta, req: Request, result: unknown): string
     const param = req.params?.[meta.targetIdParam];
     if (typeof param === 'string' && param.length > 0) return param;
   }
-  if (
-    result &&
-    typeof result === 'object' &&
-    'id' in result &&
-    typeof (result as { id: unknown }).id === 'string'
-  ) {
-    return (result as { id: string }).id;
+  if (result && typeof result === 'object') {
+    const r = result as Record<string, unknown>;
+    if (typeof r['id'] === 'string') return r['id'];
+    for (const key of ['document', 'entity', 'edge', 'project', 'decision', 'item', 'job']) {
+      const nested = r[key];
+      if (
+        nested &&
+        typeof nested === 'object' &&
+        typeof (nested as Record<string, unknown>)['id'] === 'string'
+      ) {
+        return (nested as Record<string, string>)['id'];
+      }
+    }
   }
   return 'unknown';
 }
