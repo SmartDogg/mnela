@@ -1,8 +1,8 @@
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
-import { type PrismaService } from '../../prisma.service.js';
-import { type RedisService } from '../../redis.service.js';
+import { PrismaService } from '../../prisma.service.js';
+import { RedisService } from '../../redis.service.js';
 
 @ApiTags('system')
 @Controller('system')

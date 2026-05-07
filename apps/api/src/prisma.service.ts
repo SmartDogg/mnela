@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { type Prisma, PrismaClient } from '@prisma/client';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 export type ActivePrisma = PrismaClient | Prisma.TransactionClient;
 

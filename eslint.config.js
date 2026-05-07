@@ -53,5 +53,18 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
+  {
+    // NestJS apps rely on runtime class metadata for DI and decorators;
+    // auto-fixing imports to `import type` breaks constructor injection.
+    files: [
+      'apps/api/**/*.ts',
+      'apps/mcp/**/*.ts',
+      'apps/worker/**/*.ts',
+      'apps/orchestrator/**/*.ts',
+    ],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': 'off',
+    },
+  },
   prettierConfig,
 );
