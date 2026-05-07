@@ -11,6 +11,7 @@ import { DailyModule } from './modules/daily/daily.module.js';
 import { DecisionsModule } from './modules/decisions/decisions.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
+import { InboxModule } from './modules/inbox/inbox.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
@@ -59,6 +60,7 @@ const env = loadEnv();
     DecisionsModule,
     DocumentsModule,
     GraphModule,
+    InboxModule,
     ProjectsModule,
     SearchModule,
     SystemModule,
