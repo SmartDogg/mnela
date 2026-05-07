@@ -95,10 +95,7 @@ export class GraphService {
 
   async mergeEntities(sourceId: string, targetId: string): Promise<Entity> {
     if (sourceId === targetId) throw new BadRequestException('Cannot merge entity into itself');
-    const [source, target] = await Promise.all([
-      this.findEntity(sourceId),
-      this.findEntity(targetId),
-    ]);
+    const [source] = await Promise.all([this.findEntity(sourceId), this.findEntity(targetId)]);
     if (source.mergedIntoId) {
       throw new BadRequestException(
         `Entity ${sourceId} is already merged into ${source.mergedIntoId}`,
