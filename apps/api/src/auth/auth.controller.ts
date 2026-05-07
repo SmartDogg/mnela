@@ -14,6 +14,7 @@ import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 
+import { Audit } from '../audit/audit.decorator.js';
 import { loadEnv } from '../env.js';
 import { AuthService } from './auth.service.js';
 import { CreateTokenDto, LoginDto } from './dto.js';
@@ -108,6 +109,7 @@ export class AuthController {
 
   @Post('tokens')
   @RequiredScope('admin')
+  @Audit({ action: 'auth.token.create', targetType: 'AuthToken', redact: ['token'] })
   @ApiCookieAuth('mnela_session')
   @ApiBearerAuth()
   @ApiOperation({
@@ -132,6 +134,7 @@ export class AuthController {
 
   @Delete('tokens/:id')
   @RequiredScope('admin')
+  @Audit({ action: 'auth.token.revoke', targetType: 'AuthToken', targetIdParam: 'id' })
   @ApiCookieAuth('mnela_session')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Revoke an API token' })

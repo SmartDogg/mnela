@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 
+import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
 import { SystemModule } from './modules/system/system.module.js';
@@ -46,6 +47,7 @@ const env = loadEnv();
     PrismaModule,
     RedisModule,
     RepositoriesModule,
+    AuditModule,
     AuthModule,
     SystemModule,
   ],
