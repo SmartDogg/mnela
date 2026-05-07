@@ -22,7 +22,6 @@
     "@mnela/db": "workspace:*",
     "@mnela/search": "workspace:*",
     "@mnela/shared-types": "workspace:*",
-    "@mnela/shared-types": "workspace:*",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.0",
@@ -47,6 +46,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",
+    "@swc/core": "^1.15.33",
     "@types/cookie-parser": "^1.4.7",
     "@types/express": "^5.0.0",
     "@types/multer": "^1.4.12",
@@ -57,6 +57,7 @@
     "testcontainers": "^10.16.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "unplugin-swc": "^1.5.9",
     "vitest": "^2.1.8"
   }
 }
