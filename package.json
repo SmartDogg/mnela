@@ -52,8 +52,9 @@
     "onlyBuiltDependencies": [
       "@prisma/client",
       "@prisma/engines",
-      "prisma",
-      "esbuild"
+      "argon2",
+      "esbuild",
+      "prisma"
     ]
   },
   "lint-staged": {
