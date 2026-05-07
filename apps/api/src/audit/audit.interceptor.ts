@@ -79,15 +79,13 @@ function extractTargetId(meta: AuditMeta, req: Request, result: unknown): string
   }
   if (result && typeof result === 'object') {
     const r = result as Record<string, unknown>;
-    if (typeof r['id'] === 'string') return r['id'];
+    const directId = r['id'];
+    if (typeof directId === 'string' && directId.length > 0) return directId;
     for (const key of ['document', 'entity', 'edge', 'project', 'decision', 'item', 'job']) {
       const nested = r[key];
-      if (
-        nested &&
-        typeof nested === 'object' &&
-        typeof (nested as Record<string, unknown>)['id'] === 'string'
-      ) {
-        return (nested as Record<string, string>)['id'];
+      if (nested && typeof nested === 'object') {
+        const nestedId = (nested as Record<string, unknown>)['id'];
+        if (typeof nestedId === 'string' && nestedId.length > 0) return nestedId;
       }
     }
   }
