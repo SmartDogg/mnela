@@ -1,0 +1,390 @@
+// Mnela database schema — see mnela-tz-prompt.md §4
+// Source of truth for all persistent state.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =====================================================================
+// Sources and raw documents
+// =====================================================================
+
+enum SourceType {
+  chatgpt_export
+  claude_export
+  obsidian_vault
+  manual_upload
+  api_ingest
+  telegram
+  voice_note
+  email
+  web_clip
+}
+
+enum DocumentStatus {
+  raw
+  parsed
+  enriching
+  enriched
+  failed
+  archived
+}
+
+model Document {
+  id          String         @id @default(cuid())
+
+  source      SourceType
+  sourceId    String?
+
+  title       String
+  rawText     String         @db.Text
+  cleanText   String?        @db.Text
+  contentHash String         @unique
+  tokenCount  Int?
+
+  language    String?
+  type        String?
+  metadata    Json?
+
+  status      DocumentStatus @default(raw)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  ingestedAt  DateTime       @default(now())
+  enrichedAt  DateTime?
+  archivedAt  DateTime?
+
+  chunks           DocumentChunk[]
+  attachments      Attachment[]
+  documentEntities DocumentEntity[]
+  documentProjects DocumentProject[]
+  edgesAsEvidence  Edge[]            @relation("EdgeEvidence")
+  decisions        Decision[]
+
+  vaultPath String?
+
+  @@index([source, sourceId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model DocumentChunk {
+  id         String  @id @default(cuid())
+  documentId String
+  chunkIndex Int
+  text       String  @db.Text
+  tokenCount Int
+  metadata   Json?
+
+  // Reserved for future vector search:
+  // embedding Unsupported("vector(1024)")?
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, chunkIndex])
+}
+
+model Attachment {
+  id          String  @id @default(cuid())
+  documentId  String?
+  filename    String
+  mimeType    String
+  size        Int
+  path        String
+  contentHash String
+  metadata    Json?
+  ocrText     String? @db.Text
+  description String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([contentHash])
+}
+
+// =====================================================================
+// Knowledge graph
+// =====================================================================
+
+enum EntityType {
+  project
+  person
+  organization
+  technology
+  concept
+  product
+  service
+  bug
+  feature
+  custom
+}
+
+model Entity {
+  id             String     @id @default(cuid())
+  name           String
+  normalizedName String
+  type           EntityType
+  description    String?    @db.Text
+  aliases        String[]
+  metadata       Json?
+
+  // Soft merge: duplicate entities can be folded into a canonical one.
+  mergedIntoId String?
+  mergedInto   Entity?  @relation("EntityMerge", fields: [mergedIntoId], references: [id])
+  mergedFrom   Entity[] @relation("EntityMerge")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documentEntities DocumentEntity[]
+  edgesFrom        Edge[]           @relation("EdgeFrom")
+  edgesTo          Edge[]           @relation("EdgeTo")
+
+  @@unique([normalizedName, type])
+  @@index([type])
+}
+
+enum LinkStatus {
+  auto_confirmed
+  needs_review
+  manual
+  rejected
+}
+
+model Edge {
+  id           String     @id @default(cuid())
+  fromId       String
+  toId         String
+  relationType String
+  confidence   Float      @default(1.0)
+  status       LinkStatus @default(auto_confirmed)
+
+  evidenceDocumentId String?
+  evidenceChunkId    String?
+
+  validFrom       DateTime  @default(now())
+  validUntil      DateTime?
+  invalidatedById String?
+
+  createdAt  DateTime  @default(now())
+  reviewedAt DateTime?
+  reviewedBy String?
+
+  from        Entity    @relation("EdgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to          Entity    @relation("EdgeTo", fields: [toId], references: [id], onDelete: Cascade)
+  evidenceDoc Document? @relation("EdgeEvidence", fields: [evidenceDocumentId], references: [id], onDelete: SetNull)
+
+  @@unique([fromId, toId, relationType])
+  @@index([status])
+}
+
+model DocumentEntity {
+  documentId String
+  entityId   String
+  mentions   Int     @default(1)
+  context    String? @db.Text
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  entity   Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, entityId])
+}
+
+// =====================================================================
+// Projects, decisions, daily notes
+// =====================================================================
+
+model Project {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String? @db.Text
+  status      String  @default("active")
+  contextMd   String? @db.Text
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents DocumentProject[]
+  decisions Decision[]
+}
+
+model DocumentProject {
+  documentId String
+  projectId  String
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([documentId, projectId])
+}
+
+model Decision {
+  id             String  @id @default(cuid())
+  projectId      String?
+  title          String
+  decision       String  @db.Text
+  context        String? @db.Text
+  consequences   String? @db.Text
+  status         String  @default("active")
+  supersededById String?
+
+  sourceDocumentId String?
+
+  decidedAt DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceDoc Document? @relation(fields: [sourceDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, decidedAt])
+}
+
+model DailyNote {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  contentMd String   @db.Text
+  mood      String?
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =====================================================================
+// Inbox (review queue)
+// =====================================================================
+
+enum InboxItemType {
+  link_suggestion
+  entity_merge_suggestion
+  duplicate_detection
+  enrichment_failed
+  conflicting_decision
+}
+
+model InboxItem {
+  id          String        @id @default(cuid())
+  type        InboxItemType
+  title       String
+  description String        @db.Text
+  payload     Json
+
+  documentId String?
+  edgeId     String?
+  entityId   String?
+
+  status     String    @default("pending")
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, createdAt])
+}
+
+// =====================================================================
+// Job queue
+// =====================================================================
+
+enum JobType {
+  ingest_file
+  parse_document
+  enrich_document
+  refresh_project_context
+  rebuild_index
+  export_vault
+}
+
+enum JobStatus {
+  queued
+  running
+  paused
+  completed
+  failed
+  cancelled
+}
+
+model Job {
+  id       String    @id @default(cuid())
+  type     JobType
+  status   JobStatus @default(queued)
+  priority Int       @default(50)
+
+  payload Json
+  result  Json?
+  error   String? @db.Text
+
+  documentId String?
+
+  attempts    Int @default(0)
+  maxAttempts Int @default(3)
+
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  costEstimate Int?
+
+  @@index([status, priority, createdAt])
+  @@index([documentId])
+}
+
+// =====================================================================
+// Audit log
+// =====================================================================
+
+model AuditLog {
+  id         String  @id @default(cuid())
+  action     String
+  actor      String
+  targetType String
+  targetId   String
+  before     Json?
+  after      Json?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+}
+
+// =====================================================================
+// System tables
+// =====================================================================
+
+model SystemConfig {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model AuthToken {
+  id        String  @id @default(cuid())
+  name      String
+  tokenHash String  @unique
+  scope     String
+
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+}
+
+model AdminUser {
+  id           String @id @default(cuid())
+  username     String @unique
+  passwordHash String
+
+  createdAt   DateTime  @default(now())
+  lastLoginAt DateTime?
+}
