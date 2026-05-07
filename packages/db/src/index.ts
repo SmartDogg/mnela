@@ -1,4 +1,6 @@
 export { PrismaClient, Prisma } from '@prisma/client';
+
+export * from './repositories/index.js';
 export type {
   Document,
   DocumentChunk,
