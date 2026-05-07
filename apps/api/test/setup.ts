@@ -10,28 +10,7 @@ const DB_PACKAGE = path.join(REPO_ROOT, 'packages/db');
 let postgres: StartedTestContainer | undefined;
 let redis: StartedTestContainer | undefined;
 
-beforeAll(async () => {
-  postgres = await new GenericContainer('pgvector/pgvector:pg16')
-    .withEnvironment({
-      POSTGRES_USER: 'mnela',
-      POSTGRES_PASSWORD: 'test',
-      POSTGRES_DB: 'mnela',
-    })
-    .withExposedPorts(5432)
-    .withWaitStrategy(Wait.forLogMessage('database system is ready to accept connections', 2))
-    .start();
-
-  const dbHost = postgres.getHost();
-  const dbPort = postgres.getMappedPort(5432);
-  const dbUrl = `postgresql://mnela:test@${dbHost}:${dbPort}/mnela?schema=public`;
-  process.env['DATABASE_URL'] = dbUrl;
-
-  redis = await new GenericContainer('redis:7-alpine')
-    .withExposedPorts(6379)
-    .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
-    .start();
-
-  process.env['REDIS_URL'] = `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`;
+function setCommonEnv(): void {
   process.env['NODE_ENV'] = 'test';
   process.env['ADMIN_INITIAL_USERNAME'] = 'admin';
   process.env['ADMIN_INITIAL_PASSWORD'] = 'test_admin_pwd_!1';
@@ -41,10 +20,42 @@ beforeAll(async () => {
   process.env['HTTP_PORT'] = '3999';
   process.env['MNELA_LOG_LEVEL'] = 'warn';
   process.env['MNELA_DATA_DIR'] = path.join(REPO_ROOT, 'apps/api/.test-data');
+}
+
+beforeAll(async () => {
+  // CI provides postgres+redis as GitHub-Actions services and exports
+  // DATABASE_URL/REDIS_URL — skip testcontainers in that case.
+  const useExisting =
+    process.env['CI'] === 'true' && process.env['DATABASE_URL'] && process.env['REDIS_URL'];
+
+  if (!useExisting) {
+    postgres = await new GenericContainer('pgvector/pgvector:pg16')
+      .withEnvironment({
+        POSTGRES_USER: 'mnela',
+        POSTGRES_PASSWORD: 'test',
+        POSTGRES_DB: 'mnela',
+      })
+      .withExposedPorts(5432)
+      .withWaitStrategy(Wait.forLogMessage('database system is ready to accept connections', 2))
+      .start();
+
+    const dbHost = postgres.getHost();
+    const dbPort = postgres.getMappedPort(5432);
+    process.env['DATABASE_URL'] = `postgresql://mnela:test@${dbHost}:${dbPort}/mnela?schema=public`;
+
+    redis = await new GenericContainer('redis:7-alpine')
+      .withExposedPorts(6379)
+      .withWaitStrategy(Wait.forLogMessage('Ready to accept connections'))
+      .start();
+
+    process.env['REDIS_URL'] = `redis://${redis.getHost()}:${redis.getMappedPort(6379)}`;
+  }
+
+  setCommonEnv();
 
   execSync('pnpm exec prisma migrate deploy', {
     cwd: DB_PACKAGE,
-    env: { ...process.env, DATABASE_URL: dbUrl },
+    env: { ...process.env, DATABASE_URL: process.env['DATABASE_URL']! },
     stdio: 'pipe',
   });
 }, 240_000);

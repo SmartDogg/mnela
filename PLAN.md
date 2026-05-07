@@ -27,14 +27,16 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** REST API up, all CRUD endpoints from TZ §6 functional, FTS + trigram + hybrid search returns results, auth (session + bearer) works, AuditLog records mutations.
 
-- [ ] `apps/api` — NestJS scaffold with modules: Documents, Projects, Decisions, Daily, Entities, Edges, Auth, System
-- [ ] Prisma repositories in `packages/db`
-- [ ] FTS query helpers in `packages/search` (FTS, trigram, hybrid)
-- [ ] Auth module (Argon2 passwords, session cookies, bearer tokens, scope checks)
-- [ ] AuditLog interceptor on mutating endpoints
-- [ ] Rate limiting (login + api)
-- [ ] Vitest unit tests for repos, integration tests for API (testcontainers)
-- [ ] OpenAPI / Swagger generation
+- [x] `apps/api` — NestJS scaffold with modules: Documents, Projects, Decisions, Daily, Entities, Edges, Auth, System, Inbox, Jobs, Imports, Search
+- [x] Prisma repositories in `packages/db`
+- [x] FTS query helpers in `packages/search` (FTS, trigram, hybrid)
+- [x] Auth module (Argon2 passwords, session cookies, bearer tokens, scope checks)
+- [x] AuditLog interceptor on mutating endpoints (same-tx via AsyncLocalStorage)
+- [x] Rate limiting (login 10/min + global 100/min)
+- [x] Vitest unit tests for utilities, integration test for API (testcontainers postgres+redis)
+- [x] OpenAPI / Swagger generation (nestjs-zod + @nestjs/swagger, served at `/api/docs`)
+- [x] Stubbed for Phase 5: `/search/ask`, `/documents/:id/reenrich`, `/projects/:slug/refresh-context`, `/system/claude-{status,test}` return 503 with proper `application/problem+json`
+- [x] Stubbed for Phase 2: `/imports` persists upload to `MNELA_DATA_DIR/uploads/` and creates `Job(type=ingest_file)`; `/documents/upload` accepts `text/plain|markdown|json` only (other mimetypes → 415)
 
 ## Phase 2 — Ingestion (TZ §9)
 
