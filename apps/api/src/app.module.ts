@@ -7,7 +7,10 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
+import { DailyModule } from './modules/daily/daily.module.js';
+import { DecisionsModule } from './modules/decisions/decisions.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
+import { ProjectsModule } from './modules/projects/projects.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { PrismaModule } from './prisma.module.js';
@@ -51,7 +54,10 @@ const env = loadEnv();
     RepositoriesModule,
     AuditModule,
     AuthModule,
+    DailyModule,
+    DecisionsModule,
     DocumentsModule,
+    ProjectsModule,
     SearchModule,
     SystemModule,
   ],
