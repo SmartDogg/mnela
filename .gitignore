@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Coverage and test artifacts
+coverage/
+*.lcov
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Env files (only .env.example is committed)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# Prisma generated artifacts (client is in node_modules, but be safe)
+**/prisma/generated/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# OS
+desktop.ini
+
+# Local data
+data/
+attachments/
+vault/
+backups/
+dropbox/
+
+# Test data archives (kept in repo root for now during dev)
+data-*.zip
+
+# Docker
+.docker-volumes/
+
+# Misc
+.cache/
+*.tgz
