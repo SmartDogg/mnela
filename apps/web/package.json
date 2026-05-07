@@ -1,0 +1,11 @@
+{
+  "name": "@mnela/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo '[web] scaffolding pending — see PLAN.md Phase 3' && exit 0",
+    "typecheck": "echo '[web] scaffolding pending — see PLAN.md Phase 3' && exit 0",
+    "lint": "echo '[web] scaffolding pending — see PLAN.md Phase 3' && exit 0",
+    "clean": "rimraf .next .turbo dist"
+  }
+}
