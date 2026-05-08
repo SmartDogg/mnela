@@ -76,13 +76,11 @@ function upsertDocument(
   patch: Partial<LiveImportDocument> & { id: string },
 ): LiveImportDocument[] {
   const base = old ?? [];
-  const idx = base.findIndex((d) => d.id === patch.id);
-  if (idx === -1) {
+  const existing = base.find((d) => d.id === patch.id);
+  if (!existing) {
     return [...base, { title: '', status: 'raw', ...patch }];
   }
-  const next = base.slice();
-  next[idx] = { ...base[idx]!, ...patch };
-  return next;
+  return base.map((d) => (d.id === patch.id ? { ...d, ...patch } : d));
 }
 
 type JobMutationEvent =
