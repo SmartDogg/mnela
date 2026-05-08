@@ -4,7 +4,8 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "composite": false,
-    "sourceMap": true
+    "sourceMap": true,
+    "useDefineForClassFields": false
   },
   "include": ["src/**/*"]
 }

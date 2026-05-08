@@ -1,16 +1,54 @@
-﻿{
+{
   "name": "@mnela/orchestrator",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "main": "./dist/main.js",
+  "exports": {
+    ".": "./dist/main.js",
+    "./module": {
+      "types": "./dist/orchestrator.module.d.ts",
+      "default": "./dist/orchestrator.module.js"
+    },
+    "./mcp/stdio-host": "./dist/mcp/stdio-host.js"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "node dist/main.js",
+    "start:mcp-stdio": "node dist/mcp/stdio-host.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rimraf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@mnela/claude-runner": "workspace:*",
+    "@mnela/db": "workspace:*",
+    "@mnela/mcp-tools": "workspace:*",
+    "@mnela/queue": "workspace:*",
+    "@mnela/search": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@prisma/client": "^6.1.0",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.1",
+    "nestjs-pino": "^4.4.0",
+    "pino": "^9.5.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^6.0.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }

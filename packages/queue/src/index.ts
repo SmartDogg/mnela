@@ -26,3 +26,11 @@ export {
   publishEvent,
   subscribeEvents,
 } from './events.js';
+export {
+  type ClaudeStatusState,
+  type ClaudeUnavailableReason,
+  CLAUDE_STATUS_KEY,
+  DEFAULT_CLAUDE_STATUS,
+  readClaudeStatus,
+  writeClaudeStatus,
+} from './claude-status.js';
