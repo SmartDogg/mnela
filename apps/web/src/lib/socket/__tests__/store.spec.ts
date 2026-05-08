@@ -103,7 +103,7 @@ describe('filterEvents', () => {
       ts: 3,
       event: {
         type: 'document.created',
-        payload: { documentId: 'd1', status: 'raw', title: 'Doc' },
+        payload: { jobId: 'c', documentId: 'd1', status: 'raw', title: 'Doc' },
       },
     },
     {

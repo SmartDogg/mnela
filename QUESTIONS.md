@@ -18,6 +18,12 @@ Questions for the user that came up during implementation. Each gets answered, t
 
 ## Resolved
 
+### 2026-05-08 — Phase 4 wire format
+
+| #   | Question                                                                    | Resolution                                                                                                                                                                                                                                                                                                                                        |
+| --- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 15  | Should `document.created` / `document.parsed` event payloads carry `jobId`? | Yes. Extended `DocumentCreatedEvent`, `DocumentParsedEvent`, and `DocumentEnrichedEvent` payloads to include `jobId` in `packages/queue/src/events.ts`. Worker passes `dbJobId` through. Web socket cache sync now does in-place `setQueryData<LiveImportDocument[]>(['imports', jobId, 'documents'], …)` upsert instead of predicate-invalidate. |
+
 ### 2026-05-07 — Initial scope clarifications
 
 | #   | Question                      | Resolution                                                                                                        |

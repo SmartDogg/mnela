@@ -154,7 +154,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     doc: ParsedDocument,
     job: IngestFileJob,
   ): Promise<{ documentId: string; duplicate: boolean }> {
-    void job;
+    const { dbJobId } = job;
     // Dedup key:
     //   - With a stable sourceId (ChatGPT/Claude conversation uuid) the hash
     //     is sha256(rawText :: source :: sourceId) so the same conversation
@@ -203,7 +203,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       }
       await publishEvent(this.redis.client, {
         type: 'document.parsed',
-        payload: { documentId: created.id, chunkCount: chunks.length },
+        payload: { jobId: dbJobId, documentId: created.id, chunkCount: chunks.length },
       });
     }
 
@@ -213,7 +213,12 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
     await publishEvent(this.redis.client, {
       type: 'document.created',
-      payload: { documentId: created.id, status: created.status, title: created.title },
+      payload: {
+        jobId: dbJobId,
+        documentId: created.id,
+        status: created.status,
+        title: created.title,
+      },
     });
 
     return { documentId: created.id, duplicate: false };

@@ -8,6 +8,7 @@ import type {
   JobFailedEvent,
   JobProgressEvent,
   JobStartedEvent,
+  LiveImportDocument,
   MnelaEvent,
 } from './types';
 
@@ -27,13 +28,18 @@ export function syncCacheForEvent(qc: QueryClient, event: MnelaEvent): void {
       qc.setQueryData<JobSummary | undefined>(['imports', jobId], (old) => mergeJob(old, event));
       return;
     }
-    case 'document.created':
+    case 'document.created': {
+      const { jobId, documentId, status, title } = event.payload;
+      qc.setQueryData<LiveImportDocument[]>(['imports', jobId, 'documents'], (old) =>
+        upsertDocument(old, { id: documentId, status, title }),
+      );
+      return;
+    }
     case 'document.parsed': {
-      // The wire payload does not carry the originating jobId, so we can't
-      // target a single ['imports', jobId, 'documents'] cache. Broadcast an
-      // invalidation under that prefix; TanStack Query will refetch only the
-      // queries currently mounted.
-      qc.invalidateQueries({ queryKey: ['imports'], predicate: hasDocumentsLeaf });
+      const { jobId, documentId, chunkCount } = event.payload;
+      qc.setQueryData<LiveImportDocument[]>(['imports', jobId, 'documents'], (old) =>
+        upsertDocument(old, { id: documentId, chunkCount, status: 'parsed' }),
+      );
       return;
     }
     case 'document.enriched': {
@@ -65,8 +71,18 @@ export function syncCacheForEvent(qc: QueryClient, event: MnelaEvent): void {
   }
 }
 
-function hasDocumentsLeaf({ queryKey }: { queryKey: readonly unknown[] }): boolean {
-  return queryKey[0] === 'imports' && queryKey[queryKey.length - 1] === 'documents';
+function upsertDocument(
+  old: LiveImportDocument[] | undefined,
+  patch: Partial<LiveImportDocument> & { id: string },
+): LiveImportDocument[] {
+  const base = old ?? [];
+  const idx = base.findIndex((d) => d.id === patch.id);
+  if (idx === -1) {
+    return [...base, { title: '', status: 'raw', ...patch }];
+  }
+  const next = base.slice();
+  next[idx] = { ...base[idx]!, ...patch };
+  return next;
 }
 
 type JobMutationEvent =

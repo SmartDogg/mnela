@@ -36,15 +36,15 @@ export type JobEvent =
 
 export interface DocumentCreatedEvent {
   type: 'document.created';
-  payload: { documentId: string; status: string; title: string };
+  payload: { jobId: string; documentId: string; status: string; title: string };
 }
 export interface DocumentParsedEvent {
   type: 'document.parsed';
-  payload: { documentId: string; chunkCount: number };
+  payload: { jobId: string; documentId: string; chunkCount: number };
 }
 export interface DocumentEnrichedEvent {
   type: 'document.enriched';
-  payload: { documentId: string; addedEntities: number; addedEdges: number };
+  payload: { jobId: string; documentId: string; addedEntities: number; addedEdges: number };
 }
 export type DocumentEvent = DocumentCreatedEvent | DocumentParsedEvent | DocumentEnrichedEvent;
 
