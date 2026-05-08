@@ -274,6 +274,131 @@ describe('Phase 2 — Socket.io /live gateway', () => {
   }, 60_000);
 });
 
+describe('Phase 4 — graph.* live events from ingestion', () => {
+  it('emits a synthetic graph.node_added of type=document for a markdown upload', async () => {
+    const tokenRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/tokens')
+      .set('Cookie', cookie)
+      .send({ name: 'graph-live-test', scope: 'mcp' })
+      .expect(201);
+    const token = tokenRes.body.token as string;
+
+    const nodeEvents: { entity: { id: string; name: string; type: string } }[] = [];
+    const edgeEvents: { edge: { id: string; relationType: string } }[] = [];
+
+    const socket: Socket = ioClient(`${baseUrl}/live`, {
+      auth: { token },
+      transports: ['websocket'],
+    });
+    socket.on('graph.node_added', (p: { entity: { id: string; name: string; type: string } }) =>
+      nodeEvents.push(p),
+    );
+    socket.on('graph.edge_added', (p: { edge: { id: string; relationType: string } }) =>
+      edgeEvents.push(p),
+    );
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', () => resolve());
+      socket.once('connect_error', reject);
+      setTimeout(() => reject(new Error('socket connect timeout')), 5000);
+    });
+
+    const upload = await request(app.getHttpServer())
+      .post('/api/v1/documents/upload')
+      .set('Cookie', cookie)
+      .attach('file', Buffer.from('# graph-live\nphase 4 marker'), {
+        filename: `graph-${Date.now()}.md`,
+        contentType: 'text/markdown',
+      })
+      .expect(201);
+    await waitForJob(prisma, upload.body.job.id as string);
+    await sleep(500);
+    socket.disconnect();
+
+    const docNodes = nodeEvents.filter((e) => e.entity.type === 'document');
+    expect(docNodes.length).toBeGreaterThanOrEqual(1);
+    // Markdown has no project metadata, so no project node and no synthetic edge
+    expect(edgeEvents).toHaveLength(0);
+  }, 60_000);
+
+  it('upserts a Project entity and emits node + synthetic edge for Claude-flavoured metadata', async () => {
+    // Simulate what the Claude parser produces by writing a Document directly with
+    // metadata.projectName/projectUuid, then poke the worker logic by hand-emitting
+    // through the same code path. We do this by reusing the existing helper:
+    // the IngestionConsumer is a singleton in the test worker context, so we just
+    // reach into the DI container.
+    const { IngestionConsumer } =
+      await import('../../../worker/src/ingestion/ingestion.consumer.js');
+    const consumer = worker.get(IngestionConsumer);
+
+    const tokenRes = await request(app.getHttpServer())
+      .post('/api/v1/auth/tokens')
+      .set('Cookie', cookie)
+      .send({ name: 'graph-project-test', scope: 'mcp' })
+      .expect(201);
+    const token = tokenRes.body.token as string;
+
+    const seen: { type: string; payload: unknown }[] = [];
+    const socket: Socket = ioClient(`${baseUrl}/live`, {
+      auth: { token },
+      transports: ['websocket'],
+    });
+    socket.on('graph.node_added', (p: unknown) =>
+      seen.push({ type: 'graph.node_added', payload: p }),
+    );
+    socket.on('graph.edge_added', (p: unknown) =>
+      seen.push({ type: 'graph.edge_added', payload: p }),
+    );
+    await new Promise<void>((resolve, reject) => {
+      socket.once('connect', () => resolve());
+      socket.once('connect_error', reject);
+      setTimeout(() => reject(new Error('socket connect timeout')), 5000);
+    });
+
+    const documentId = 'doc-' + Date.now().toString(36);
+    const projectName = 'Phase 4 Live Project ' + Date.now().toString(36);
+    // Bypass the parse step — call the emitter directly.
+    await (
+      consumer as unknown as {
+        emitGraphEventsForDocument: (
+          id: string,
+          title: string,
+          metadata: Record<string, unknown>,
+        ) => Promise<void>;
+      }
+    ).emitGraphEventsForDocument(documentId, 'Phase 4 chat', {
+      projectName,
+      projectUuid: 'uuid-' + Date.now().toString(36),
+    });
+    await sleep(500);
+    socket.disconnect();
+
+    const docNode = seen.find(
+      (e) =>
+        e.type === 'graph.node_added' &&
+        (e.payload as { entity: { id: string; type: string } }).entity.id === documentId,
+    );
+    expect(docNode).toBeTruthy();
+
+    const projectNode = seen.find(
+      (e) =>
+        e.type === 'graph.node_added' &&
+        (e.payload as { entity: { type: string; name: string } }).entity.type === 'project' &&
+        (e.payload as { entity: { name: string } }).entity.name === projectName,
+    );
+    expect(projectNode).toBeTruthy();
+
+    const synEdge = seen.find(
+      (e) =>
+        e.type === 'graph.edge_added' &&
+        (e.payload as { edge: { id: string } }).edge.id.startsWith(`syn-${documentId}-`),
+    );
+    expect(synEdge).toBeTruthy();
+    expect((synEdge!.payload as { edge: { relationType: string } }).edge.relationType).toBe(
+      'belongs_to',
+    );
+  }, 60_000);
+});
+
 describe('Phase 2 — real Claude.ai export', () => {
   it('imports the real ZIP, parses N documents, dedupes on re-upload', async () => {
     const fileExists = await fs.stat(REAL_ZIP).catch(() => null);

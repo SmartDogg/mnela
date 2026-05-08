@@ -5,7 +5,9 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import {
   AttachmentRepository,
   DocumentRepository,
+  EntityRepository,
   JobRepository,
+  normalizeEntityName,
   type CreateDocumentInput,
 } from '@mnela/db';
 import {
@@ -39,6 +41,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly documents: DocumentRepository,
     private readonly attachments: AttachmentRepository,
     private readonly jobs: JobRepository,
+    private readonly entities: EntityRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -221,7 +224,69 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    await this.emitGraphEventsForDocument(created.id, created.title, doc.metadata ?? {});
+
     return { documentId: created.id, duplicate: false };
+  }
+
+  /**
+   * Phase 4 pseudo-graph events. The Document itself is emitted as a
+   * **live-only synthetic node** (no Entity row — `Edge.fromId/toId` schema
+   * forbids it; QUESTIONS.md #14). For parsers that capture project linkage
+   * (currently only `claude_export` via `metadata.projectName/projectUuid`),
+   * the project is upserted as a real `Entity(type=project)` row and an
+   * `id="syn-..."` edge ties the document to it. Phase 5 enrichment will
+   * replace the synthetic document nodes with real Entity extraction.
+   */
+  private async emitGraphEventsForDocument(
+    documentId: string,
+    title: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await publishEvent(this.redis.client, {
+        type: 'graph.node_added',
+        payload: { entity: { id: documentId, name: title, type: 'document' } },
+      });
+
+      const projectName =
+        typeof metadata['projectName'] === 'string' ? metadata['projectName'] : undefined;
+      const projectUuid =
+        typeof metadata['projectUuid'] === 'string' ? metadata['projectUuid'] : undefined;
+      if (!projectName) return;
+
+      const normalized = normalizeEntityName(projectName);
+      let projectEntity = await this.entities.findByNormalized(normalized, 'project');
+      if (!projectEntity) {
+        projectEntity = await this.entities.create({
+          name: projectName,
+          normalizedName: normalized,
+          type: 'project',
+          ...(projectUuid ? { metadata: { sourceUuid: projectUuid } } : {}),
+        });
+        await publishEvent(this.redis.client, {
+          type: 'graph.node_added',
+          payload: { entity: { id: projectEntity.id, name: projectEntity.name, type: 'project' } },
+        });
+      }
+
+      await publishEvent(this.redis.client, {
+        type: 'graph.edge_added',
+        payload: {
+          edge: {
+            id: `syn-${documentId}-${projectEntity.id}`,
+            fromId: documentId,
+            toId: projectEntity.id,
+            relationType: 'belongs_to',
+          },
+        },
+      });
+    } catch (err) {
+      // Pseudo-graph emission must never abort ingestion.
+      this.logger.warn(
+        `graph events for ${documentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   private async persistAttachments(documentId: string, atts: ParsedAttachment[]): Promise<void> {
