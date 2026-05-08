@@ -6,6 +6,7 @@ import { ThemeProvider } from 'next-themes';
 import { useState, type ReactNode } from 'react';
 
 import { ApiError } from '@/lib/api/client';
+import { SocketProvider } from '@/lib/socket';
 
 function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -39,7 +40,7 @@ export function Providers({ children }: { children: ReactNode }): JSX.Element {
       disableTransitionOnChange
     >
       <QueryClientProvider client={queryClient}>
-        {children}
+        <SocketProvider>{children}</SocketProvider>
         {process.env.NODE_ENV === 'development' && <ReactQueryDevtools initialIsOpen={false} />}
       </QueryClientProvider>
     </ThemeProvider>
