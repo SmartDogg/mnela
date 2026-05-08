@@ -1,46 +1,80 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
+import { toast } from 'sonner';
 
 import { PageHeader } from '@/components/page-header';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api } from '@/lib/api/client';
+import { ApiError, api } from '@/lib/api/client';
 import type { InboxSummary, Paginated } from '@/lib/api/types';
-import { relativeTime } from '@/lib/utils';
+import { useLiveEvents } from '@/lib/socket/useLiveEvents';
+
+import { InboxCard } from './inbox-card';
 
 export default function InboxPage(): JSX.Element {
-  const t = useTranslations('nav');
+  const t = useTranslations('inbox');
+  const queryClient = useQueryClient();
+
   const query = useQuery({
     queryKey: ['inbox'],
-    queryFn: () => api.get<Paginated<InboxSummary>>('/inbox', { query: { page: 1, limit: 50 } }),
+    queryFn: () =>
+      api.get<Paginated<InboxSummary>>('/inbox', {
+        query: { page: 1, limit: 50, status: 'pending' },
+      }),
   });
+
+  const live = useLiveEvents({ types: ['inbox.item_added'] });
+  // Per ADR-0023: inbox.item_added → invalidateQueries.
+  useEffect(() => {
+    if (!live.lastEvent) return;
+    queryClient.invalidateQueries({ queryKey: ['inbox'] });
+  }, [live.lastEvent, queryClient]);
+
+  const accept = useMutation({
+    mutationFn: (id: string) => api.post<InboxSummary>(`/inbox/${encodeURIComponent(id)}/accept`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      toast.success(t('accepted'));
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('actionFailed')),
+  });
+
+  const reject = useMutation({
+    mutationFn: (id: string) => api.post<InboxSummary>(`/inbox/${encodeURIComponent(id)}/reject`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      toast.success(t('rejected'));
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('actionFailed')),
+  });
+
+  const items = query.data?.data ?? [];
 
   return (
     <div>
-      <PageHeader
-        title={t('inbox')}
-        subtitle="Items waiting for review (entity merges, edge suggestions)."
-      />
-      <div className="px-8 py-6 space-y-3">
+      <PageHeader title={t('title')} subtitle={t('subtitle')} />
+      <div className="space-y-2 px-8 py-6">
         {query.isLoading &&
-          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 w-full" />)}
-        {query.data?.data.length === 0 && (
-          <p className="text-sm text-muted-foreground">Empty. Inbox surfaces in Phase 7.</p>
+          Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
+        {!query.isLoading && items.length === 0 && (
+          <div className="rounded-md border border-dashed border-border/60 px-6 py-10 text-center">
+            <p className="text-sm text-muted-foreground">{t('empty')}</p>
+          </div>
         )}
-        {query.data?.data.map((item) => (
-          <Card key={item.id}>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">{item.type}</CardTitle>
-              <Badge variant="outline">{item.status}</Badge>
-            </CardHeader>
-            <CardContent className="text-xs text-muted-foreground">
-              {relativeTime(item.createdAt)}
-            </CardContent>
-          </Card>
-        ))}
+        {items.map((item) => {
+          const pending = accept.isPending || reject.isPending;
+          return (
+            <InboxCard
+              key={item.id}
+              item={item}
+              onAccept={() => accept.mutate(item.id)}
+              onReject={() => reject.mutate(item.id)}
+              isPending={pending}
+            />
+          );
+        })}
       </div>
     </div>
   );

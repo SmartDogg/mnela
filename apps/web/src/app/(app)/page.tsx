@@ -122,8 +122,8 @@ function DashboardView({
                 {claude?.available ? t('claudeMode.available') : t('claudeMode.disabled')}
               </span>
             </div>
-            {claude?.message && (
-              <p className="mt-2 text-xs text-muted-foreground">{claude.message}</p>
+            {claude?.reason && (
+              <p className="mt-2 text-xs text-muted-foreground">{claude.reason}</p>
             )}
           </CardContent>
         </Card>

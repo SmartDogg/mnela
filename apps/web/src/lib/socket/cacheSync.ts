@@ -60,12 +60,17 @@ export function syncCacheForEvent(qc: QueryClient, event: MnelaEvent): void {
       return;
     }
     case 'system.claude_status_changed': {
-      const next: ClaudeStatus = {
-        available: event.payload.available,
-        reason: event.payload.reason ?? '',
-        message: '',
-      };
-      qc.setQueryData<ClaudeStatus>(['system', 'claude-status'], next);
+      qc.setQueryData<ClaudeStatus | undefined>(['system', 'claude-status'], (old) => {
+        const reason = event.payload.reason as ClaudeStatus['reason'];
+        const next: ClaudeStatus = {
+          available: event.payload.available,
+          checkedAt: new Date().toISOString(),
+          ...(old?.version ? { version: old.version } : {}),
+        };
+        if (reason) next.reason = reason;
+        return next;
+      });
+      qc.invalidateQueries({ queryKey: ['claude-status'] });
       return;
     }
   }

@@ -426,5 +426,56 @@
     "notFound": "Not found",
     "serviceUnavailable": "This feature lands in a later phase",
     "networkError": "Network error — check the API is running"
+  },
+  "inbox": {
+    "title": "Inbox",
+    "subtitle": "Items waiting for review (entity merges, edge suggestions).",
+    "empty": "Nothing to review. Suggestions arrive when Claude enriches your documents.",
+    "accept": "Accept",
+    "reject": "Reject",
+    "accepted": "Suggestion accepted",
+    "rejected": "Suggestion rejected",
+    "actionFailed": "Action failed",
+    "viewEvidence": "View source document",
+    "noEvidence": "No source document attached",
+    "phase7Note": "Full diff view and bulk actions land in Phase 7.",
+    "confidence": {
+      "high": "high",
+      "mid": "mid",
+      "low": "low"
+    },
+    "types": {
+      "linkSuggestion": "link",
+      "entityMergeSuggestion": "merge",
+      "duplicateDetection": "duplicate",
+      "enrichmentFailed": "enrichment failed",
+      "conflictingDecision": "conflict"
+    }
+  },
+  "system": {
+    "claude": {
+      "title": "Claude Code",
+      "subtitle": "Server-side Claude orchestrator.",
+      "status": "Status",
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "version": "Version",
+      "lastTest": "Last test",
+      "latency": "Latency",
+      "test": "Run claude:test",
+      "testRunning": "Testing…",
+      "testSucceeded": "Claude is responsive.",
+      "testFailed": "Test failed",
+      "reasons": {
+        "noBinary": "claude binary missing in PATH",
+        "notLoggedIn": "Not logged in — run 'claude login' on the server",
+        "rateLimit": "Rate limit reached",
+        "orchestratorNotRunning": "Orchestrator service is not running"
+      },
+      "rateLimit": {
+        "resumesAt": "Resumes at {time}",
+        "windowChartPhase11": "Usage chart lands in Phase 11."
+      }
+    }
   }
 }

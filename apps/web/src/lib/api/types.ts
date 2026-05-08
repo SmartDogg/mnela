@@ -234,18 +234,50 @@ export interface SystemConfigEntry {
   updatedAt: string;
 }
 
-export interface ClaudeStatus {
-  available: boolean;
-  reason: string;
-  message: string;
-}
+export type InboxItemType =
+  | 'link_suggestion'
+  | 'entity_merge_suggestion'
+  | 'duplicate_detection'
+  | 'enrichment_failed'
+  | 'conflicting_decision';
 
 export interface InboxSummary {
   id: string;
-  type: 'entity_suggestion' | 'edge_suggestion' | 'low_confidence';
+  type: InboxItemType;
   status: 'pending' | 'accepted' | 'rejected';
+  title: string;
+  description: string;
   createdAt: string;
   payload: Record<string, unknown>;
+  documentId?: string | null;
+  edgeId?: string | null;
+  entityId?: string | null;
+}
+
+export interface LinkSuggestionPayload {
+  edgeId?: string;
+  fromEntityId?: string;
+  toEntityId?: string;
+  fromName: string;
+  toName: string;
+  relationType: string;
+  confidence: number;
+  evidenceDocumentId?: string | null;
+}
+
+export interface ClaudeStatus {
+  available: boolean;
+  reason?: 'no-binary' | 'not-logged-in' | 'rate-limit' | 'orchestrator-not-running';
+  checkedAt: string;
+  resetAt?: string;
+  version?: string;
+}
+
+export interface ClaudeTestResult {
+  ok: boolean;
+  version?: string;
+  error?: string;
+  latencyMs: number;
 }
 
 export interface ProblemDetails {

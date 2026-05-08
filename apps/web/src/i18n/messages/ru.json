@@ -426,5 +426,56 @@
     "notFound": "Не найдено",
     "serviceUnavailable": "Эта функция появится в одной из следующих фаз",
     "networkError": "Сетевая ошибка — проверьте, что API запущен"
+  },
+  "inbox": {
+    "title": "Inbox",
+    "subtitle": "Подсказки на ревью (слияние сущностей, новые связи).",
+    "empty": "Пусто. Подсказки появляются, когда Claude обогащает документы.",
+    "accept": "Принять",
+    "reject": "Отклонить",
+    "accepted": "Подсказка принята",
+    "rejected": "Подсказка отклонена",
+    "actionFailed": "Не удалось выполнить действие",
+    "viewEvidence": "Открыть документ-источник",
+    "noEvidence": "Документ-источник не указан",
+    "phase7Note": "Полный diff и массовые действия — Phase 7.",
+    "confidence": {
+      "high": "высокая",
+      "mid": "средняя",
+      "low": "низкая"
+    },
+    "types": {
+      "linkSuggestion": "связь",
+      "entityMergeSuggestion": "слияние",
+      "duplicateDetection": "дубль",
+      "enrichmentFailed": "ошибка обогащения",
+      "conflictingDecision": "конфликт"
+    }
+  },
+  "system": {
+    "claude": {
+      "title": "Claude Code",
+      "subtitle": "Серверный оркестратор Claude.",
+      "status": "Статус",
+      "available": "Доступен",
+      "unavailable": "Недоступен",
+      "version": "Версия",
+      "lastTest": "Последний тест",
+      "latency": "Задержка",
+      "test": "Запустить claude:test",
+      "testRunning": "Проверяем…",
+      "testSucceeded": "Claude отвечает.",
+      "testFailed": "Тест не прошёл",
+      "reasons": {
+        "noBinary": "бинарь claude не найден в PATH",
+        "notLoggedIn": "Не выполнен вход — запустите 'claude login' на сервере",
+        "rateLimit": "Достигнут лимит запросов",
+        "orchestratorNotRunning": "Оркестратор не запущен"
+      },
+      "rateLimit": {
+        "resumesAt": "Возобновится в {time}",
+        "windowChartPhase11": "График потребления — Phase 11."
+      }
+    }
   }
 }
