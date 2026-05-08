@@ -59,6 +59,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@mnela/claude-runner':
+        specifier: workspace:*
+        version: link:../../packages/claude-runner
       '@mnela/core':
         specifier: workspace:*
         version: link:../../packages/core

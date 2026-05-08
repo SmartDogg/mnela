@@ -1,18 +1,10 @@
-import {
-  Body,
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Patch,
-  Post,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { Public } from '../../auth/public.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
+import { ClaudeService } from './claude.service.js';
 import { SetConfigDto } from './dto.js';
 import { SystemService } from './system.service.js';
 
@@ -21,7 +13,10 @@ import { SystemService } from './system.service.js';
 @ApiBearerAuth()
 @Controller('system')
 export class SystemController {
-  constructor(private readonly system: SystemService) {}
+  constructor(
+    private readonly system: SystemService,
+    private readonly claude: ClaudeService,
+  ) {}
 
   @Get('stats')
   @RequiredScope('read_only')
@@ -47,23 +42,17 @@ export class SystemController {
 
   @Get('claude-status')
   @Public()
-  @ApiOperation({ summary: 'Server-side Claude Code status (Phase 5; currently unavailable)' })
+  @ApiOperation({ summary: 'Server-side Claude Code availability (Redis-backed, ADR-0029)' })
   claudeStatus() {
-    return {
-      available: false,
-      reason: 'phase-5-pending',
-      message: 'Claude Code orchestrator is not configured in Phase 1',
-    };
+    return this.claude.getStatus();
   }
 
   @Post('claude-test')
   @RequiredScope('admin')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Probe Claude Code (Phase 5; currently unavailable)' })
-  claudeTest(): never {
-    throw new ServiceUnavailableException({
-      title: 'AI Smart Mode disabled',
-      message: 'Claude Code orchestrator is not configured (Phase 5)',
-    });
+  @Audit({ action: 'system.claude_test', targetType: 'System' })
+  @ApiOperation({ summary: 'Probe Claude Code binary and refresh status' })
+  claudeTest() {
+    return this.claude.runTest();
   }
 }
