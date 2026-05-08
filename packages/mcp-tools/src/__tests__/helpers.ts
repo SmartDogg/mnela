@@ -1,4 +1,6 @@
+import type { Principal, TokenScope } from '@mnela/db';
 import type {
+  AuditLog,
   Document,
   DocumentChunk,
   DocumentEntity,
@@ -6,6 +8,7 @@ import type {
   Entity,
   EntityType,
   InboxItem,
+  Prisma,
 } from '@prisma/client';
 import { vi } from 'vitest';
 
@@ -28,6 +31,8 @@ export interface MockBag {
     | { kind: 'inbox.item_added'; item: { itemId: string; itemType: string; title: string } }
   )[];
   similar: { documentId: string; title: string; snippet?: string; score: number }[];
+  auditRows: AuditLog[];
+  auditTxCalls: number;
 }
 
 let counter = 0;
@@ -51,7 +56,14 @@ function makeEntity(input: { name: string; normalizedName: string; type: EntityT
   };
 }
 
-export function buildMockCtx(seed: { entities?: Entity[]; documents?: Document[] } = {}): MockBag {
+export function buildMockCtx(
+  seed: {
+    entities?: Entity[];
+    documents?: Document[];
+    principalScope?: TokenScope;
+    principalName?: string;
+  } = {},
+): MockBag {
   const docs = new Map<string, Document>();
   const chunks = new Map<string, DocumentChunk[]>();
   const entities = new Map<string, Entity>();
@@ -60,6 +72,8 @@ export function buildMockCtx(seed: { entities?: Entity[]; documents?: Document[]
   const inboxItems: InboxItem[] = [];
   const events: MockBag['events'] = [];
   const similar: MockBag['similar'] = [];
+  const auditRows: AuditLog[] = [];
+  let auditTxCalls = 0;
 
   for (const d of seed.documents ?? []) docs.set(d.id, d);
   for (const e of seed.entities ?? []) {
@@ -150,9 +164,49 @@ export function buildMockCtx(seed: { entities?: Entity[]; documents?: Document[]
         events.push({ kind: 'inbox.item_added', item });
       }),
     },
+    audit: {
+      create: vi.fn(async (input): Promise<AuditLog> => {
+        const row: AuditLog = {
+          id: nextId('audit'),
+          action: input.action,
+          actor: input.actor,
+          targetType: input.targetType,
+          targetId: input.targetId,
+          before: (input.before ?? null) as Prisma.JsonValue,
+          after: (input.after ?? null) as Prisma.JsonValue,
+          metadata: (input.metadata ?? null) as Prisma.JsonValue,
+          createdAt: new Date(),
+        };
+        auditRows.push(row);
+        return row;
+      }),
+    },
+    auditTx: async <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> => {
+      auditTxCalls += 1;
+      return fn({} as Prisma.TransactionClient);
+    },
+    principal: makePrincipal(seed.principalScope ?? 'admin', seed.principalName ?? 'test-token'),
   };
 
-  return { ctx, docs, chunks, entities, entitiesByNorm, edges, inboxItems, events, similar };
+  return {
+    ctx,
+    docs,
+    chunks,
+    entities,
+    entitiesByNorm,
+    edges,
+    inboxItems,
+    events,
+    similar,
+    auditRows,
+    get auditTxCalls(): number {
+      return auditTxCalls;
+    },
+  };
+}
+
+function makePrincipal(scope: TokenScope, name: string): Principal {
+  return { kind: 'token', id: `tok_${name}`, name, scope };
 }
 
 export function makeDocument(overrides: Partial<Document> = {}): Document {

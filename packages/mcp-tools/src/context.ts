@@ -1,10 +1,13 @@
 import type {
+  AuditLogRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  Principal,
 } from '@mnela/db';
+import type { Prisma } from '@prisma/client';
 
 export interface SimilarSearcher {
   findSimilar(
@@ -31,6 +34,8 @@ export interface EventSink {
   inboxItemAdded(item: { itemId: string; itemType: string; title: string }): void | Promise<void>;
 }
 
+export type AuditTxRunner = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
+
 export interface McpToolContext {
   documents: Pick<DocumentRepository, 'findById' | 'getChunks'>;
   entities: Pick<EntityRepository, 'findById' | 'findByNormalized' | 'create'>;
@@ -39,4 +44,7 @@ export interface McpToolContext {
   inbox: Pick<InboxRepository, 'create'>;
   search: SimilarSearcher;
   events: EventSink;
+  audit: Pick<AuditLogRepository, 'create'>;
+  auditTx: AuditTxRunner;
+  principal: Principal;
 }

@@ -1,11 +1,14 @@
-export type { McpToolContext, SimilarSearcher, EventSink } from './context.js';
+export type { McpToolContext, SimilarSearcher, EventSink, AuditTxRunner } from './context.js';
 export {
   type ToolDefinition,
   type ToolScope,
+  type ToolAuditMeta,
   PHASE_5_TOOLS,
   findTool,
   invokeTool,
+  runTool,
 } from './registry.js';
+export { McpScopeError, McpInputError, McpUnknownToolError } from './errors.js';
 export {
   ENTITY_TYPES,
   EntityTypeSchema,
