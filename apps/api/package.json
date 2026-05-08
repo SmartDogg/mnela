@@ -50,6 +50,8 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@mnela/ingestion": "workspace:*",
+    "@mnela/worker": "workspace:*",
     "@nestjs/testing": "^11.0.0",
     "@swc/core": "^1.15.33",
     "@types/cookie-parser": "^1.4.7",
@@ -58,6 +60,7 @@
     "@types/node": "^22.10.0",
     "@types/supertest": "^6.0.2",
     "rimraf": "^6.0.1",
+    "socket.io-client": "^4.8.1",
     "supertest": "^7.0.0",
     "testcontainers": "^10.16.0",
     "tsx": "^4.19.2",
