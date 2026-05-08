@@ -103,10 +103,10 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Local Claude Code can `claude mcp add … mnela` and call all read+write tools; admin scope gated.
 
-- [ ] `apps/mcp` — NestJS host wrapping `@modelcontextprotocol/sdk` (HTTP transport)
-- [ ] All tools from TZ §5 (read, write, admin)
-- [ ] Bearer-token auth with scope (admin / mcp / read_only)
-- [ ] Audit logging
+- [x] `apps/mcp` — NestJS host wrapping `@modelcontextprotocol/sdk` (HTTP transport)
+- [x] All tools from TZ §5 (read, write, admin)
+- [x] Bearer-token auth with scope (admin / mcp / read_only)
+- [x] Audit logging
 - [x] `docs/MCP_INTEGRATION.md` with examples for Claude Code, Cursor, Cline
 
 ## Phase 7 — Inbox + quality (TZ §7.2)
