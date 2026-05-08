@@ -1,10 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Activity } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 
 import { PageHeader } from '@/components/page-header';
 import { JobStatusBadge } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Table,
@@ -20,6 +23,7 @@ import { relativeTime } from '@/lib/utils';
 
 export default function JobsPage(): JSX.Element {
   const t = useTranslations('nav');
+  const tj = useTranslations('admin.jobs');
   const query = useQuery({
     queryKey: ['jobs'],
     queryFn: () => api.get<Paginated<JobSummary>>('/jobs', { query: { page: 1, limit: 50 } }),
@@ -28,7 +32,18 @@ export default function JobsPage(): JSX.Element {
 
   return (
     <div>
-      <PageHeader title={t('jobs')} subtitle="Background jobs (ingestion, enrichment, indexing)." />
+      <PageHeader
+        title={t('jobs')}
+        subtitle="Background jobs (ingestion, enrichment, indexing)."
+        actions={
+          <Button variant="outline" size="sm" asChild>
+            <Link href="/admin/jobs">
+              <Activity />
+              {tj('viewDashboard')}
+            </Link>
+          </Button>
+        }
+      />
       <div className="px-8 py-6">
         <div className="rounded-lg border">
           <Table>

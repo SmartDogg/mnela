@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swa
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
-import { ListJobsQuery } from './dto.js';
+import { ListJobsQuery, SinceQuery, ThroughputQuery } from './dto.js';
 import { JobsService } from './jobs.service.js';
 
 @ApiTags('jobs')
@@ -18,6 +18,27 @@ export class JobsController {
   @ApiOperation({ summary: 'Aggregate job counts by status' })
   stats() {
     return this.jobs.stats();
+  }
+
+  @Get('stats/throughput')
+  @RequiredScope('read_only')
+  @ApiOperation({ summary: 'Completed-jobs throughput bucketed by minute or hour' })
+  throughput(@Query() query: ThroughputQuery) {
+    return this.jobs.throughput(query.bucket, query.since);
+  }
+
+  @Get('stats/durations')
+  @RequiredScope('read_only')
+  @ApiOperation({ summary: 'Avg / p50 / p95 duration of completed jobs over a window' })
+  durations(@Query() query: SinceQuery) {
+    return this.jobs.durations(query.since);
+  }
+
+  @Get('stats/error-rate')
+  @RequiredScope('read_only')
+  @ApiOperation({ summary: 'Failed / (completed + failed) ratio over a window' })
+  errorRate(@Query() query: SinceQuery) {
+    return this.jobs.errorRate(query.since);
   }
 
   @Get()

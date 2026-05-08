@@ -132,6 +132,28 @@ export interface JobStats {
   cancelled: number;
 }
 
+export interface JobThroughputBucket {
+  ts: string;
+  count: number;
+}
+
+export interface JobThroughputStats {
+  buckets: JobThroughputBucket[];
+}
+
+export interface JobDurationStats {
+  avgMs: number;
+  p50Ms: number;
+  p95Ms: number;
+  total: number;
+}
+
+export interface JobErrorRateStats {
+  totalCompleted: number;
+  totalFailed: number;
+  rate: number;
+}
+
 export interface SearchHit {
   documentId: string;
   title: string;
