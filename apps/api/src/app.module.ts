@@ -14,10 +14,12 @@ import { GraphModule } from './modules/graph/graph.module.js';
 import { ImportsModule } from './modules/imports/imports.module.js';
 import { InboxModule } from './modules/inbox/inbox.module.js';
 import { JobsModule } from './modules/jobs/jobs.module.js';
+import { LiveModule } from './live/live.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { PrismaModule } from './prisma.module.js';
+import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis.module.js';
 import { RepositoriesModule } from './repositories.module.js';
 
@@ -54,6 +56,7 @@ const env = loadEnv();
       },
     ]),
     PrismaModule,
+    QueueModule,
     RedisModule,
     RepositoriesModule,
     AuditModule,
@@ -65,6 +68,7 @@ const env = loadEnv();
     ImportsModule,
     InboxModule,
     JobsModule,
+    LiveModule,
     ProjectsModule,
     SearchModule,
     SystemModule,
