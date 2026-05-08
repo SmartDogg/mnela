@@ -1,7 +1,9 @@
-import { Module } from '@nestjs/common';
+import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { PrismaModule, RepositoriesModule } from '@mnela/db';
 import { LoggerModule } from 'nestjs-pino';
 
+import { AuthMiddleware } from './auth/auth.middleware.js';
+import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
 import { HealthModule } from './health/health.module.js';
 
@@ -32,7 +34,14 @@ const env = loadEnv();
     }),
     PrismaModule,
     RepositoriesModule,
+    AuthModule,
     HealthModule,
   ],
 })
-export class McpModule {}
+export class McpModule implements NestModule {
+  // Bearer auth applies only to the JSON-RPC surface; /health stays open so
+  // container probes don't need credentials. ADR-0033: per-call DB verify.
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(AuthMiddleware).forRoutes('mcp');
+  }
+}
