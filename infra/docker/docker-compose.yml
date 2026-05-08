@@ -42,6 +42,33 @@ services:
       retries: 10
       start_period: 10s
 
+  # api/web/worker/orchestrator/caddy services land in Phase 10
+  mcp:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.mcp
+    container_name: mnela-mcp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-mnela}:${POSTGRES_PASSWORD:-mnela_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-mnela}
+      REDIS_URL: redis://redis:6379
+      MCP_HTTP_PORT: '3010'
+      MNELA_LOG_LEVEL: ${MNELA_LOG_LEVEL:-info}
+      NODE_ENV: production
+    expose:
+      - '3010'
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3010/health >/dev/null || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 volumes:
   postgres-data:
     name: mnela-postgres-data
