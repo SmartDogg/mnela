@@ -71,14 +71,14 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Importing a ZIP shows growing live graph; pause/resume/cancel work; graph view supports filters, hover-evidence, layout switcher.
 
-- [ ] Cytoscape.js wrapper in `packages/ui`
-- [ ] `apps/api` graph endpoint with center/depth/types params
-- [ ] `/graph` page with filters and interactions
-- [ ] Socket.io client with namespace `/live`
-- [ ] Live updates on `/imports/:id` with growing graph + log tail
-- [ ] Animations: fadeIn nodes, pulse edges
-- [ ] Pause/Resume/Cancel controls
-- [ ] Job stats dashboard
+- [x] Cytoscape.js wrapper in `packages/ui` (`<MnelaGraph>` with imperative ref, lazy cose-bilkent, in-house mini-map)
+- [x] `apps/api` graph endpoint with center/depth/types/relations/projectSlug/confidence/from/to + truncated stats
+- [x] `/graph` page with filters and interactions (filter sidebar, search, layout switcher, entity panel, mini-map)
+- [x] Socket.io client with namespace `/live` (singleton manager, refcounted subs, exp backoff, 5s degrade timer)
+- [x] Live updates on `/imports/:id` with growing graph + log tail
+- [x] Animations: fadeIn nodes, pulse edges
+- [x] Pause/Resume/Cancel controls (Resume === POST /imports/:id/start)
+- [x] Job stats dashboard (throughput, durations p50/p95, error rate, recent failed table)
 
 ## Phase 5 — Claude Code Orchestrator (TZ §3.4, §12)
 
