@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 import {
   ConflictException,
@@ -9,22 +11,18 @@ import {
 import {
   type DocumentListFilters,
   DocumentRepository,
+  JobRepository,
   ProjectRepository,
   type UpdateDocumentInput,
 } from '@mnela/db';
 import { Prisma } from '@prisma/client';
-import type { Document } from '@prisma/client';
+import type { Document, Job } from '@prisma/client';
 
+import { loadEnv } from '../../env.js';
 import { PrismaService } from '../../prisma.service.js';
+import { QueueService } from '../../queue/queue.service.js';
 
-const ALLOWED_TEXT_MIME_TYPES = new Set([
-  'text/plain',
-  'text/markdown',
-  'application/json',
-  'text/x-markdown',
-]);
-
-const PHASE1_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+const PHASE2_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB; ZIP imports go through /imports.
 
 export interface UploadFileInput {
   buffer: Buffer;
@@ -33,9 +31,10 @@ export interface UploadFileInput {
   size: number;
 }
 
-export interface UploadResult {
-  document: Document;
-  duplicate: boolean;
+export interface UploadAccepted {
+  job: Job;
+  duplicate: false;
+  accepted: true;
 }
 
 interface RelatedRow {
@@ -46,50 +45,71 @@ interface RelatedRow {
 
 @Injectable()
 export class DocumentsService {
+  private readonly uploadsDir: string;
+
   constructor(
     private readonly documents: DocumentRepository,
     private readonly projects: ProjectRepository,
     private readonly prisma: PrismaService,
-  ) {}
+    private readonly jobs: JobRepository,
+    private readonly queue: QueueService,
+  ) {
+    void this.projects;
+    const env = loadEnv();
+    this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
+  }
 
-  async upload(file: UploadFileInput): Promise<UploadResult> {
+  /**
+   * Phase-2 contract: every upload is asynchronous. The route persists the file
+   * and creates a Job; the worker parses, deduplicates by content_hash, and
+   * writes the Document(s). Caller polls /jobs/:id (or subscribes to
+   * Socket.io /live) for completion.
+   */
+  async upload(file: UploadFileInput): Promise<UploadAccepted> {
     if (!file.buffer || file.size === 0) {
       throw new UnsupportedMediaTypeException('Empty file');
     }
-    if (file.size > PHASE1_MAX_UPLOAD_BYTES) {
+    if (file.size > PHASE2_MAX_UPLOAD_BYTES) {
       throw new UnsupportedMediaTypeException(
-        `File too large: ${file.size} bytes (max ${PHASE1_MAX_UPLOAD_BYTES})`,
-      );
-    }
-    if (!ALLOWED_TEXT_MIME_TYPES.has(file.mimetype)) {
-      throw new UnsupportedMediaTypeException(
-        `Phase-1 upload only supports text/plain, text/markdown, and application/json (got ${file.mimetype}). Binary parsers land in Phase 2.`,
+        `File too large: ${file.size} bytes (max ${PHASE2_MAX_UPLOAD_BYTES})`,
       );
     }
 
-    const rawText = file.buffer.toString('utf-8');
+    const importBatchId = crypto.randomUUID();
     const contentHash = sha256Hex(file.buffer);
-    const existing = await this.documents.findByContentHash(contentHash);
-    if (existing) {
-      return { document: existing, duplicate: true };
-    }
+    await fs.mkdir(this.uploadsDir, { recursive: true });
+    const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const uploadPath = path.join(this.uploadsDir, `${importBatchId}-${safeName}`);
+    await fs.writeFile(uploadPath, file.buffer);
 
-    const document = await this.documents.create({
-      source: 'manual_upload',
-      title: stripExtension(file.originalname),
-      rawText,
-      contentHash,
-      tokenCount: estimateTokenCount(rawText),
-      type: inferType(file.mimetype),
-      status: 'parsed',
-      metadata: {
-        originalFilename: file.originalname,
-        uploadedMime: file.mimetype,
-        uploadedSize: file.size,
-      } as Prisma.InputJsonValue,
+    const job = await this.jobs.create({
+      type: 'ingest_file',
+      payload: {
+        importBatchId,
+        uploadPath,
+        filename: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        contentHash,
+        receivedAt: new Date().toISOString(),
+        origin: 'upload',
+        status: 'received',
+      } as unknown as Prisma.InputJsonValue,
+      priority: 50,
     });
 
-    return { document, duplicate: false };
+    await this.queue.enqueueIngestFile({
+      dbJobId: job.id,
+      filePath: uploadPath,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      contentHash,
+      origin: 'upload',
+      importBatchId,
+    });
+
+    return { job, duplicate: false, accepted: true };
   }
 
   async list(filters: DocumentListFilters, page?: number, limit?: number) {
@@ -160,21 +180,4 @@ export class DocumentsService {
 
 function sha256Hex(input: Buffer): string {
   return crypto.createHash('sha256').update(input).digest('hex');
-}
-
-function stripExtension(name: string): string {
-  const idx = name.lastIndexOf('.');
-  return idx > 0 ? name.slice(0, idx) : name;
-}
-
-function inferType(mimetype: string): string {
-  if (mimetype.includes('markdown')) return 'note';
-  if (mimetype === 'application/json') return 'data';
-  return 'note';
-}
-
-function estimateTokenCount(text: string): number {
-  // Rough heuristic until packages/ingestion lands in Phase 2 with gpt-tokenizer.
-  // 1 token ≈ 4 chars for English/Russian mix.
-  return Math.ceil(text.length / 4);
 }

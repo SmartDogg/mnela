@@ -56,11 +56,11 @@ export class DocumentsController {
 
   @Post('upload')
   @RequiredScope('mcp')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 10 * 1024 * 1024 } }))
-  @Audit({ action: 'document.upload', targetType: 'Document' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @Audit({ action: 'document.upload', targetType: 'Job' })
   @ApiOperation({
     summary:
-      'Upload a text/markdown/json file. Phase-1 only accepts text mime types; binary parsers land in Phase 2.',
+      'Upload any supported file. Returns a Job; the worker parses asynchronously. Subscribe to /live for progress or poll /jobs/:id.',
   })
   upload(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) {

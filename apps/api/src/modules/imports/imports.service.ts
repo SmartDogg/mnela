@@ -7,6 +7,7 @@ import { JobRepository } from '@mnela/db';
 import type { Job, Prisma } from '@prisma/client';
 
 import { loadEnv } from '../../env.js';
+import { QueueService } from '../../queue/queue.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
 
 export interface ImportFileInput {
@@ -24,6 +25,7 @@ interface ImportPayload {
   size: number;
   contentHash: string;
   receivedAt: string;
+  origin: 'upload' | 'dropbox' | 'api_ingest';
   status: 'received' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 }
 
@@ -36,6 +38,7 @@ export class ImportsService {
   constructor(
     private readonly jobs: JobRepository,
     private readonly jobsService: JobsService,
+    private readonly queue: QueueService,
   ) {
     const env = loadEnv();
     this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
@@ -65,14 +68,28 @@ export class ImportsService {
       size: file.size,
       contentHash,
       receivedAt: new Date().toISOString(),
+      origin: 'upload',
       status: 'received',
     };
 
-    return this.jobs.create({
+    const job = await this.jobs.create({
       type: 'ingest_file',
       payload: payload as unknown as Prisma.InputJsonValue,
       priority: 50,
     });
+
+    await this.queue.enqueueIngestFile({
+      dbJobId: job.id,
+      filePath: uploadPath,
+      originalName: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      contentHash,
+      origin: 'upload',
+      importBatchId,
+    });
+
+    return job;
   }
 
   async list(page?: number, limit?: number) {
@@ -105,6 +122,7 @@ export class ImportsService {
 
   async cancel(id: string) {
     await this.findOne(id);
+    await this.queue.cancel(id);
     return this.jobsService.cancel(id);
   }
 }
