@@ -1,0 +1,333 @@
+{
+  "common": {
+    "appName": "Mnela",
+    "tagline": "Your second brain — as an MCP server",
+    "loading": "Loading…",
+    "save": "Save",
+    "cancel": "Cancel",
+    "create": "Create",
+    "delete": "Delete",
+    "edit": "Edit",
+    "next": "Next",
+    "back": "Back",
+    "finish": "Finish",
+    "search": "Search",
+    "settings": "Settings",
+    "logout": "Log out",
+    "yes": "Yes",
+    "no": "No",
+    "empty": "Nothing here yet.",
+    "error": "Something went wrong",
+    "tryAgain": "Try again",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "search": "Search",
+    "ask": "Ask Brain",
+    "documents": "Documents",
+    "projects": "Projects",
+    "decisions": "Decisions",
+    "daily": "Daily",
+    "graph": "Graph",
+    "inbox": "Inbox",
+    "imports": "Imports",
+    "jobs": "Jobs",
+    "admin": "Admin",
+    "system": "System",
+    "tokens": "Tokens",
+    "claude": "Claude Code",
+    "backup": "Backup",
+    "knowledge": "Knowledge",
+    "operations": "Operations"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Welcome back. Sign in to your second brain.",
+    "username": "Username",
+    "password": "Password",
+    "submit": "Sign in",
+    "submitting": "Signing in…",
+    "error": "Invalid credentials"
+  },
+  "setup": {
+    "title": "Welcome to Mnela",
+    "subtitle": "Six steps to bootstrap your second brain.",
+    "steps": {
+      "admin": "Create admin",
+      "config": "Brain configuration",
+      "claude": "Claude Code",
+      "modules": "Optional modules",
+      "import": "First import",
+      "token": "API token"
+    },
+    "admin": {
+      "title": "Create your admin account",
+      "description": "This is the only login that can change configuration.",
+      "username": "Username",
+      "password": "Password",
+      "passwordHint": "12+ characters. Use a passphrase you can remember."
+    },
+    "config": {
+      "title": "Configure your brain",
+      "brainName": "Brain name",
+      "brainNameHint": "Shown in the title bar.",
+      "timezone": "Timezone",
+      "language": "Interface language"
+    },
+    "claude": {
+      "title": "Claude Code",
+      "description": "Mnela uses your Claude Max subscription via the Claude Code CLI on the server. Pick what fits.",
+      "haveMax": "I have Claude Max — set it up now",
+      "haveMaxDescription": "We'll show you how to run claude login on the server.",
+      "later": "Set up later",
+      "laterDescription": "Use Mnela in Dumb Mode (FTS-only). You can enable Claude later.",
+      "never": "I don't have a subscription",
+      "neverDescription": "Mnela will work as a smart Obsidian replacement, no AI enrichment.",
+      "instructions": "Run this on your server, then return here:"
+    },
+    "modules": {
+      "title": "Optional modules",
+      "description": "Modules run as additional containers and need extra resources. You can toggle these later.",
+      "voice": "Voice transcription (whisper)",
+      "voiceDescription": "Run whisper.cpp container for audio uploads."
+    },
+    "import": {
+      "title": "Import your existing knowledge",
+      "description": "Drop a ChatGPT export ZIP, Claude.ai export, Obsidian vault, or any supported file. Or skip and import later.",
+      "skip": "Skip for now"
+    },
+    "token": {
+      "title": "Your first API token",
+      "description": "Save this token now — we won't show it again. Use it to connect Claude Code on your laptop.",
+      "name": "Token name",
+      "scope": "Scope",
+      "snippet": "Add this MCP server to Claude Code:"
+    },
+    "complete": "Setup complete"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "What's happening in your second brain.",
+    "stats": {
+      "documents": "Documents",
+      "entities": "Entities",
+      "edges": "Edges",
+      "projects": "Projects",
+      "decisions": "Decisions",
+      "dbSize": "Database size"
+    },
+    "recent": "Recent activity",
+    "quickActions": "Quick actions",
+    "actions": {
+      "import": "Import data",
+      "newDocument": "New document",
+      "search": "Search"
+    },
+    "claudeMode": {
+      "label": "Claude mode",
+      "available": "Smart mode active",
+      "disabled": "Dumb mode (FTS only)"
+    }
+  },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Everything ingested into your brain.",
+    "filters": {
+      "status": "Status",
+      "source": "Source",
+      "type": "Type",
+      "project": "Project",
+      "search": "Filter"
+    },
+    "columns": {
+      "title": "Title",
+      "type": "Type",
+      "source": "Source",
+      "status": "Status",
+      "updated": "Updated",
+      "language": "Lang"
+    },
+    "empty": "No documents yet. Import some.",
+    "actions": {
+      "open": "Open",
+      "archive": "Archive",
+      "unarchive": "Restore",
+      "delete": "Delete",
+      "reenrich": "Re-enrich (Phase 5)"
+    }
+  },
+  "documentDetail": {
+    "metadata": "Metadata",
+    "chunks": "Chunks",
+    "related": "Related",
+    "raw": "Raw text",
+    "rendered": "Rendered",
+    "status": "Status",
+    "source": "Source",
+    "language": "Language",
+    "size": "Size",
+    "hash": "Content hash",
+    "fetchedAt": "Fetched at",
+    "edit": "Edit",
+    "save": "Save",
+    "saving": "Saving…",
+    "saved": "Saved"
+  },
+  "projects": {
+    "title": "Projects",
+    "subtitle": "Group documents, decisions, and entities under shared context.",
+    "create": "New project",
+    "name": "Name",
+    "slug": "Slug",
+    "description": "Description",
+    "context": "Context",
+    "documents": "Documents",
+    "decisions": "Decisions",
+    "entities": "Entities",
+    "questions": "Open questions",
+    "refresh": "Refresh context (Phase 5)"
+  },
+  "decisions": {
+    "title": "Decisions",
+    "subtitle": "ADR-style log of choices and trade-offs.",
+    "create": "New decision",
+    "columns": {
+      "title": "Title",
+      "status": "Status",
+      "project": "Project",
+      "decided": "Decided",
+      "updated": "Updated"
+    },
+    "fields": {
+      "title": "Title",
+      "context": "Context",
+      "decision": "Decision",
+      "consequences": "Consequences",
+      "status": "Status",
+      "project": "Project",
+      "decidedAt": "Decided at"
+    },
+    "status": {
+      "open": "Open",
+      "in_progress": "In progress",
+      "decided": "Decided",
+      "reverted": "Reverted"
+    }
+  },
+  "daily": {
+    "title": "Daily",
+    "subtitle": "One note per day.",
+    "today": "Today",
+    "missing": "No note for this day yet.",
+    "create": "Create note",
+    "content": "Content",
+    "mood": "Mood",
+    "saving": "Saving…"
+  },
+  "imports": {
+    "title": "Imports",
+    "subtitle": "Bulk uploads of exports and folders.",
+    "new": "New import",
+    "columns": {
+      "id": "ID",
+      "filename": "File",
+      "status": "Status",
+      "progress": "Progress",
+      "created": "Created"
+    },
+    "newPage": {
+      "title": "New import",
+      "description": "Drop ZIP exports or supported files. We'll parse them in the background.",
+      "drop": "Drop files here, or click to browse",
+      "files": "Files",
+      "fileCount": "{count, plural, one {# file} other {# files}}",
+      "totalSize": "Total: {size}",
+      "submit": "Start import",
+      "submitting": "Uploading…"
+    },
+    "detail": {
+      "status": "Status",
+      "progress": "Progress",
+      "files": "Files",
+      "logs": "Logs",
+      "graph": "Graph (Phase 4)",
+      "graphPlaceholder": "Live graph lands in Phase 4. Status updates poll every 2 seconds.",
+      "pause": "Pause",
+      "resume": "Resume",
+      "cancel": "Cancel",
+      "retry": "Retry"
+    }
+  },
+  "search": {
+    "title": "Search",
+    "subtitle": "Full-text, fuzzy, hybrid.",
+    "placeholder": "Search your brain…",
+    "modes": {
+      "fts": "Full-text",
+      "fuzzy": "Fuzzy",
+      "hybrid": "Hybrid"
+    },
+    "filters": {
+      "status": "Status",
+      "source": "Source",
+      "project": "Project",
+      "type": "Type"
+    },
+    "noResults": "No results.",
+    "duration": "{ms}ms",
+    "hits": "{count, plural, one {# result} other {# results}}",
+    "cmdkHint": "Press ⌘K / Ctrl+K to search from anywhere"
+  },
+  "cmdk": {
+    "placeholder": "Search documents, projects, decisions…",
+    "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open"
+  },
+  "admin": {
+    "system": {
+      "title": "System",
+      "subtitle": "Stats, configuration, mode.",
+      "configKey": "Key",
+      "configValue": "Value",
+      "configUpdate": "Update"
+    },
+    "tokens": {
+      "title": "API tokens",
+      "subtitle": "MCP and CLI access.",
+      "create": "New token",
+      "name": "Name",
+      "scope": "Scope",
+      "expires": "Expires",
+      "lastUsed": "Last used",
+      "revoke": "Revoke",
+      "plaintextWarning": "This is the only time the plaintext token is shown.",
+      "scopes": {
+        "admin": "Admin (full)",
+        "mcp": "MCP (read + write)",
+        "read_only": "Read-only"
+      }
+    },
+    "claude": {
+      "title": "Claude Code",
+      "subtitle": "Server-side Claude orchestrator.",
+      "status": "Status",
+      "available": "Available",
+      "unavailable": "Unavailable",
+      "test": "Test",
+      "phase5": "Available in Phase 5"
+    },
+    "backup": {
+      "title": "Backup",
+      "subtitle": "Snapshot the database and vault.",
+      "phase10": "Available in Phase 10"
+    }
+  },
+  "errors": {
+    "generic": "Something went wrong",
+    "unauthorized": "Please sign in to continue.",
+    "notFound": "Not found",
+    "serviceUnavailable": "This feature lands in a later phase",
+    "networkError": "Network error — check the API is running"
+  }
+}

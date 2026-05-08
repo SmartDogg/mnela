@@ -1,0 +1,333 @@
+{
+  "common": {
+    "appName": "Mnela",
+    "tagline": "Ваш второй мозг — как MCP сервер",
+    "loading": "Загрузка…",
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "create": "Создать",
+    "delete": "Удалить",
+    "edit": "Изменить",
+    "next": "Далее",
+    "back": "Назад",
+    "finish": "Готово",
+    "search": "Поиск",
+    "settings": "Настройки",
+    "logout": "Выйти",
+    "yes": "Да",
+    "no": "Нет",
+    "empty": "Пока пусто.",
+    "error": "Что-то пошло не так",
+    "tryAgain": "Повторить",
+    "copy": "Скопировать",
+    "copied": "Скопировано"
+  },
+  "nav": {
+    "dashboard": "Дашборд",
+    "search": "Поиск",
+    "ask": "Спросить мозг",
+    "documents": "Документы",
+    "projects": "Проекты",
+    "decisions": "Решения",
+    "daily": "Дневник",
+    "graph": "Граф",
+    "inbox": "Inbox",
+    "imports": "Импорты",
+    "jobs": "Задачи",
+    "admin": "Админ",
+    "system": "Система",
+    "tokens": "Токены",
+    "claude": "Claude Code",
+    "backup": "Бэкап",
+    "knowledge": "Знания",
+    "operations": "Операции"
+  },
+  "login": {
+    "title": "Вход",
+    "subtitle": "С возвращением. Войдите в свой второй мозг.",
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "submit": "Войти",
+    "submitting": "Входим…",
+    "error": "Неверные учётные данные"
+  },
+  "setup": {
+    "title": "Добро пожаловать в Mnela",
+    "subtitle": "Шесть шагов для запуска вашего второго мозга.",
+    "steps": {
+      "admin": "Создать админа",
+      "config": "Настройки мозга",
+      "claude": "Claude Code",
+      "modules": "Опциональные модули",
+      "import": "Первый импорт",
+      "token": "API токен"
+    },
+    "admin": {
+      "title": "Создайте учётную запись администратора",
+      "description": "Только этот логин может менять конфигурацию.",
+      "username": "Имя пользователя",
+      "password": "Пароль",
+      "passwordHint": "12+ символов. Используйте парольную фразу, которую запомните."
+    },
+    "config": {
+      "title": "Настройте свой мозг",
+      "brainName": "Название мозга",
+      "brainNameHint": "Отображается в заголовке.",
+      "timezone": "Часовой пояс",
+      "language": "Язык интерфейса"
+    },
+    "claude": {
+      "title": "Claude Code",
+      "description": "Mnela использует вашу подписку Claude Max через Claude Code CLI на сервере. Выберите подходящий вариант.",
+      "haveMax": "У меня есть Claude Max — настроить сейчас",
+      "haveMaxDescription": "Покажем как запустить claude login на сервере.",
+      "later": "Настрою позже",
+      "laterDescription": "Используйте Mnela в Dumb Mode (только FTS). Можно включить Claude позже.",
+      "never": "У меня нет подписки",
+      "neverDescription": "Mnela будет работать как умный Obsidian, без AI-обогащения.",
+      "instructions": "Запустите это на сервере и вернитесь сюда:"
+    },
+    "modules": {
+      "title": "Опциональные модули",
+      "description": "Модули запускаются в дополнительных контейнерах и требуют ресурсов. Можно переключить позже.",
+      "voice": "Транскрипция голоса (whisper)",
+      "voiceDescription": "Запустить контейнер whisper.cpp для аудио."
+    },
+    "import": {
+      "title": "Импортируйте существующие знания",
+      "description": "Перетащите ZIP-экспорт ChatGPT, Claude.ai, vault Obsidian или любой поддерживаемый файл. Можно пропустить и импортировать позже.",
+      "skip": "Пропустить"
+    },
+    "token": {
+      "title": "Ваш первый API-токен",
+      "description": "Сохраните его сейчас — больше не покажем. Используйте для подключения Claude Code на ноутбуке.",
+      "name": "Имя токена",
+      "scope": "Область",
+      "snippet": "Подключить этот MCP-сервер к Claude Code:"
+    },
+    "complete": "Настройка завершена"
+  },
+  "dashboard": {
+    "title": "Дашборд",
+    "subtitle": "Что происходит во втором мозге.",
+    "stats": {
+      "documents": "Документы",
+      "entities": "Сущности",
+      "edges": "Связи",
+      "projects": "Проекты",
+      "decisions": "Решения",
+      "dbSize": "Размер БД"
+    },
+    "recent": "Недавняя активность",
+    "quickActions": "Быстрые действия",
+    "actions": {
+      "import": "Импорт",
+      "newDocument": "Новый документ",
+      "search": "Поиск"
+    },
+    "claudeMode": {
+      "label": "Режим Claude",
+      "available": "Smart режим активен",
+      "disabled": "Dumb режим (только FTS)"
+    }
+  },
+  "documents": {
+    "title": "Документы",
+    "subtitle": "Всё, что попало в мозг.",
+    "filters": {
+      "status": "Статус",
+      "source": "Источник",
+      "type": "Тип",
+      "project": "Проект",
+      "search": "Фильтр"
+    },
+    "columns": {
+      "title": "Название",
+      "type": "Тип",
+      "source": "Источник",
+      "status": "Статус",
+      "updated": "Обновлено",
+      "language": "Язык"
+    },
+    "empty": "Пока нет документов. Импортируйте.",
+    "actions": {
+      "open": "Открыть",
+      "archive": "Архив",
+      "unarchive": "Восстановить",
+      "delete": "Удалить",
+      "reenrich": "Перезапустить enrichment (фаза 5)"
+    }
+  },
+  "documentDetail": {
+    "metadata": "Метаданные",
+    "chunks": "Чанки",
+    "related": "Похожие",
+    "raw": "Исходный текст",
+    "rendered": "Рендер",
+    "status": "Статус",
+    "source": "Источник",
+    "language": "Язык",
+    "size": "Размер",
+    "hash": "Хеш контента",
+    "fetchedAt": "Получено",
+    "edit": "Изменить",
+    "save": "Сохранить",
+    "saving": "Сохранение…",
+    "saved": "Сохранено"
+  },
+  "projects": {
+    "title": "Проекты",
+    "subtitle": "Группируйте документы, решения и сущности по контексту.",
+    "create": "Новый проект",
+    "name": "Имя",
+    "slug": "Slug",
+    "description": "Описание",
+    "context": "Контекст",
+    "documents": "Документы",
+    "decisions": "Решения",
+    "entities": "Сущности",
+    "questions": "Открытые вопросы",
+    "refresh": "Обновить контекст (фаза 5)"
+  },
+  "decisions": {
+    "title": "Решения",
+    "subtitle": "ADR-журнал решений и компромиссов.",
+    "create": "Новое решение",
+    "columns": {
+      "title": "Название",
+      "status": "Статус",
+      "project": "Проект",
+      "decided": "Принято",
+      "updated": "Обновлено"
+    },
+    "fields": {
+      "title": "Название",
+      "context": "Контекст",
+      "decision": "Решение",
+      "consequences": "Последствия",
+      "status": "Статус",
+      "project": "Проект",
+      "decidedAt": "Дата решения"
+    },
+    "status": {
+      "open": "Открыто",
+      "in_progress": "В работе",
+      "decided": "Решено",
+      "reverted": "Отменено"
+    }
+  },
+  "daily": {
+    "title": "Дневник",
+    "subtitle": "Одна заметка в день.",
+    "today": "Сегодня",
+    "missing": "Записей за день пока нет.",
+    "create": "Создать заметку",
+    "content": "Содержимое",
+    "mood": "Настроение",
+    "saving": "Сохранение…"
+  },
+  "imports": {
+    "title": "Импорты",
+    "subtitle": "Массовая загрузка экспортов и папок.",
+    "new": "Новый импорт",
+    "columns": {
+      "id": "ID",
+      "filename": "Файл",
+      "status": "Статус",
+      "progress": "Прогресс",
+      "created": "Создан"
+    },
+    "newPage": {
+      "title": "Новый импорт",
+      "description": "Перетащите ZIP-экспорты или поддерживаемые файлы. Парсинг идёт в фоне.",
+      "drop": "Перетащите файлы или нажмите чтобы выбрать",
+      "files": "Файлы",
+      "fileCount": "{count, plural, one {# файл} few {# файла} many {# файлов} other {# файла}}",
+      "totalSize": "Всего: {size}",
+      "submit": "Начать импорт",
+      "submitting": "Загрузка…"
+    },
+    "detail": {
+      "status": "Статус",
+      "progress": "Прогресс",
+      "files": "Файлы",
+      "logs": "Логи",
+      "graph": "Граф (фаза 4)",
+      "graphPlaceholder": "Живой граф появится в Фазе 4. Статус опрашивается каждые 2 секунды.",
+      "pause": "Пауза",
+      "resume": "Продолжить",
+      "cancel": "Отменить",
+      "retry": "Повторить"
+    }
+  },
+  "search": {
+    "title": "Поиск",
+    "subtitle": "Полнотекст, fuzzy, гибрид.",
+    "placeholder": "Поиск по мозгу…",
+    "modes": {
+      "fts": "Полнотекст",
+      "fuzzy": "Fuzzy",
+      "hybrid": "Гибрид"
+    },
+    "filters": {
+      "status": "Статус",
+      "source": "Источник",
+      "project": "Проект",
+      "type": "Тип"
+    },
+    "noResults": "Ничего не найдено.",
+    "duration": "{ms}мс",
+    "hits": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}",
+    "cmdkHint": "Нажмите ⌘K / Ctrl+K чтобы открыть поиск из любого места"
+  },
+  "cmdk": {
+    "placeholder": "Поиск документов, проектов, решений…",
+    "hint": "Подсказка: ⌘K — открыть, ↑/↓ — навигация, ↵ — открыть"
+  },
+  "admin": {
+    "system": {
+      "title": "Система",
+      "subtitle": "Статистика, конфигурация, режим.",
+      "configKey": "Ключ",
+      "configValue": "Значение",
+      "configUpdate": "Обновить"
+    },
+    "tokens": {
+      "title": "API токены",
+      "subtitle": "Доступ для MCP и CLI.",
+      "create": "Новый токен",
+      "name": "Имя",
+      "scope": "Область",
+      "expires": "Истекает",
+      "lastUsed": "Последнее использование",
+      "revoke": "Отозвать",
+      "plaintextWarning": "Plain-токен показывается только сейчас.",
+      "scopes": {
+        "admin": "Admin (полный)",
+        "mcp": "MCP (read + write)",
+        "read_only": "Только чтение"
+      }
+    },
+    "claude": {
+      "title": "Claude Code",
+      "subtitle": "Серверный оркестратор Claude.",
+      "status": "Статус",
+      "available": "Доступен",
+      "unavailable": "Недоступен",
+      "test": "Тест",
+      "phase5": "Появится в Фазе 5"
+    },
+    "backup": {
+      "title": "Бэкап",
+      "subtitle": "Снимок БД и vault.",
+      "phase10": "Появится в Фазе 10"
+    }
+  },
+  "errors": {
+    "generic": "Что-то пошло не так",
+    "unauthorized": "Войдите чтобы продолжить.",
+    "notFound": "Не найдено",
+    "serviceUnavailable": "Эта функция появится в одной из следующих фаз",
+    "networkError": "Сетевая ошибка — проверьте, что API запущен"
+  }
+}
