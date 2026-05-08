@@ -4,6 +4,7 @@ export * from './repositories/index.js';
 export { PrismaService, type ActivePrisma } from './prisma.service.js';
 export { PrismaModule } from './prisma.module.js';
 export { RepositoriesModule } from './repositories.module.js';
+export { type TokenScope, type Principal, SCOPE_HIERARCHY, scopeAllows } from './auth.js';
 export type {
   Document,
   DocumentChunk,

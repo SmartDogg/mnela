@@ -1,21 +1,6 @@
-export type TokenScope = 'admin' | 'mcp' | 'read_only';
+export { type TokenScope, type Principal, SCOPE_HIERARCHY, scopeAllows } from '@mnela/db';
 
-export const SCOPE_HIERARCHY: Record<TokenScope, number> = {
-  read_only: 0,
-  mcp: 1,
-  admin: 2,
-};
-
-export function scopeAllows(have: TokenScope, required: TokenScope): boolean {
-  return SCOPE_HIERARCHY[have] >= SCOPE_HIERARCHY[required];
-}
-
-export interface Principal {
-  kind: 'admin' | 'token';
-  id: string;
-  scope: TokenScope;
-  name?: string;
-}
+import type { Principal } from '@mnela/db';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -25,5 +10,3 @@ declare global {
     }
   }
 }
-
-export {};

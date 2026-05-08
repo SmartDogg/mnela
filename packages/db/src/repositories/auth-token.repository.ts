@@ -1,8 +1,9 @@
 import type { AuthToken } from '@prisma/client';
 
+import type { TokenScope } from '../auth.js';
 import type { PrismaProvider } from './types.js';
 
-export type TokenScope = 'admin' | 'mcp' | 'read_only';
+export type { TokenScope };
 
 export interface CreateAuthTokenInput {
   name: string;
