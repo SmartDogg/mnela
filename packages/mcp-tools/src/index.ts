@@ -61,6 +61,12 @@ export {
   UpdateProjectContextOutputSchema,
   ArchiveDocumentInputSchema,
   ArchiveDocumentOutputSchema,
+  TriggerEnrichmentInputSchema,
+  TriggerEnrichmentOutputSchema,
+  RebuildIndexInputSchema,
+  RebuildIndexOutputSchema,
+  ExportVaultInputSchema,
+  ExportVaultOutputSchema,
   type GetDocumentInput,
   type GetDocumentOutput,
   type FindSimilarInput,
@@ -95,6 +101,12 @@ export {
   type UpdateProjectContextOutput,
   type ArchiveDocumentInput,
   type ArchiveDocumentOutput,
+  type TriggerEnrichmentInput,
+  type TriggerEnrichmentOutput,
+  type RebuildIndexInput,
+  type RebuildIndexOutput,
+  type ExportVaultInput,
+  type ExportVaultOutput,
   type ProjectOut,
   type DecisionOut,
   type EntityOutFull,
@@ -121,3 +133,6 @@ export {
   updateProjectContext,
 } from './tools/update-project-context.js';
 export { ARCHIVE_DOCUMENT_TOOL, archiveDocument } from './tools/archive-document.js';
+export { TRIGGER_ENRICHMENT_TOOL, triggerEnrichment } from './tools/trigger-enrichment.js';
+export { REBUILD_INDEX_TOOL, rebuildIndex } from './tools/rebuild-index.js';
+export { EXPORT_VAULT_TOOL, exportVault } from './tools/export-vault.js';

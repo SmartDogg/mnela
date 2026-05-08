@@ -11,12 +11,13 @@ import { findTool, invokeTool, PHASE_5_TOOLS, runTool } from '../registry.js';
 import { buildMockCtx } from './helpers.js';
 
 describe('registry', () => {
-  it('exposes phase 5 + 6 read+write tools (admin tools land in the next commit)', () => {
+  it('exposes the full phase 5 + 6 tool set (read + write + admin)', () => {
     const names = PHASE_5_TOOLS.map((t) => t.name).sort();
     expect(names).toEqual([
       'mnela_add_entities',
       'mnela_add_links',
       'mnela_archive_document',
+      'mnela_export_vault',
       'mnela_find_similar',
       'mnela_get_chunks',
       'mnela_get_daily_note',
@@ -25,11 +26,13 @@ describe('registry', () => {
       'mnela_get_entity',
       'mnela_get_project_context',
       'mnela_list_projects',
+      'mnela_rebuild_index',
       'mnela_recent_activity',
       'mnela_save_decision',
       'mnela_save_note',
       'mnela_search',
       'mnela_traverse_graph',
+      'mnela_trigger_enrichment',
       'mnela_update_project_context',
     ]);
   });

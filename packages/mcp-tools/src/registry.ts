@@ -6,6 +6,7 @@ import { McpInputError, McpScopeError, McpUnknownToolError } from './errors.js';
 import { ADD_ENTITIES_TOOL, addEntities } from './tools/add-entities.js';
 import { ADD_LINKS_TOOL, addLinks } from './tools/add-links.js';
 import { ARCHIVE_DOCUMENT_TOOL, archiveDocument } from './tools/archive-document.js';
+import { EXPORT_VAULT_TOOL, exportVault } from './tools/export-vault.js';
 import { FIND_SIMILAR_TOOL, findSimilar } from './tools/find-similar.js';
 import { GET_CHUNKS_TOOL, getChunks } from './tools/get-chunks.js';
 import { GET_DAILY_NOTE_TOOL, getDailyNote } from './tools/get-daily-note.js';
@@ -14,11 +15,13 @@ import { GET_DOCUMENT_TOOL, getDocument } from './tools/get-document.js';
 import { GET_ENTITY_TOOL, getEntity } from './tools/get-entity.js';
 import { GET_PROJECT_CONTEXT_TOOL, getProjectContext } from './tools/get-project-context.js';
 import { LIST_PROJECTS_TOOL, listProjects } from './tools/list-projects.js';
+import { REBUILD_INDEX_TOOL, rebuildIndex } from './tools/rebuild-index.js';
 import { RECENT_ACTIVITY_TOOL, recentActivity } from './tools/recent-activity.js';
 import { SAVE_DECISION_TOOL, saveDecision } from './tools/save-decision.js';
 import { SAVE_NOTE_TOOL, saveNote } from './tools/save-note.js';
 import { SEARCH_TOOL, search } from './tools/search.js';
 import { TRAVERSE_GRAPH_TOOL, traverseGraph } from './tools/traverse-graph.js';
+import { TRIGGER_ENRICHMENT_TOOL, triggerEnrichment } from './tools/trigger-enrichment.js';
 import {
   UPDATE_PROJECT_CONTEXT_TOOL,
   updateProjectContext,
@@ -77,6 +80,9 @@ export const PHASE_5_TOOLS: readonly ToolDefinition<unknown, unknown>[] = [
   defineTool(SAVE_DECISION_TOOL, saveDecision) as ToolDefinition<unknown, unknown>,
   defineTool(UPDATE_PROJECT_CONTEXT_TOOL, updateProjectContext) as ToolDefinition<unknown, unknown>,
   defineTool(ARCHIVE_DOCUMENT_TOOL, archiveDocument) as ToolDefinition<unknown, unknown>,
+  defineTool(TRIGGER_ENRICHMENT_TOOL, triggerEnrichment) as ToolDefinition<unknown, unknown>,
+  defineTool(REBUILD_INDEX_TOOL, rebuildIndex) as ToolDefinition<unknown, unknown>,
+  defineTool(EXPORT_VAULT_TOOL, exportVault) as ToolDefinition<unknown, unknown>,
 ];
 
 export function findTool(name: string): ToolDefinition<unknown, unknown> | undefined {
