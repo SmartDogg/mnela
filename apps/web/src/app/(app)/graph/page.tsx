@@ -1,31 +1,171 @@
 'use client';
 
+import type { Entity as GraphEntity, MnelaGraphLayout } from '@mnela/ui';
+import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DEFAULT_FILTERS,
+  type GraphFilters,
+  filtersFromSearchParams,
+  filtersToSearchParams,
+} from './_components/filterState';
+import { EntityPanel } from './_components/EntityPanel';
+import { FilterSidebar } from './_components/FilterSidebar';
+import { GraphView, type GraphViewHandle } from './_components/GraphView';
+import { LayoutSwitcher } from './_components/LayoutSwitcher';
+import { SearchBar } from './_components/SearchBar';
+import { TruncatedBanner } from './_components/TruncatedBanner';
+import { useGraphQuery } from './_components/use-graph-query';
 
 export default function GraphPage(): JSX.Element {
-  const t = useTranslations('nav');
+  const t = useTranslations('graph');
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const [filters, setFilters] = useState<GraphFilters>(() =>
+    filtersFromSearchParams(searchParams.toString()),
+  );
+  const [layout, setLayout] = useState<MnelaGraphLayout>('cose');
+  const [selectedEntity, setSelectedEntity] = useState<GraphEntity | null>(null);
+  const graphRef = useRef<GraphViewHandle | null>(null);
+
+  // Sync filter changes back to the URL without remounting the page. We
+  // strip the stored layout/selection because they're transient UI state.
+  const lastSerialized = useRef<string>('');
+  useEffect(() => {
+    const params = filtersToSearchParams(filters);
+    const next = params.toString();
+    if (next === lastSerialized.current) return;
+    lastSerialized.current = next;
+    const url = next ? `?${next}` : '';
+    router.replace(`/graph${url}`, { scroll: false });
+  }, [filters, router]);
+
+  const graphQuery = useGraphQuery(filters);
+
+  const nodes = graphQuery.data?.nodes ?? [];
+  const edges = graphQuery.data?.edges ?? [];
+  const stats = graphQuery.data?.stats;
+
+  const handleNodeClick = useCallback((entity: GraphEntity) => {
+    setSelectedEntity(entity);
+  }, []);
+
+  const handleSetCenter = useCallback((entityId: string) => {
+    setFilters((prev) => ({ ...prev, center: entityId }));
+    setSelectedEntity(null);
+  }, []);
+
+  const handleMatchInGraph = useCallback(
+    (q: string) => {
+      if (!q) return;
+      const lower = q.toLowerCase();
+      const match = nodes.find((n) => n.name.toLowerCase().includes(lower));
+      if (match) graphRef.current?.centerOn(match.id);
+    },
+    [nodes],
+  );
+
+  const reset = useCallback(() => {
+    setFilters({ ...DEFAULT_FILTERS, center: filters.center });
+  }, [filters.center]);
+
+  const showEmpty = !filters.center && !graphQuery.isLoading;
+  const truncated = stats?.truncated === true;
+
+  const headerSubtitle = useMemo(() => {
+    if (!stats) return t('subtitle');
+    return t('stats', {
+      nodes: stats.returnedNodes,
+      edges: stats.returnedEdges,
+    });
+  }, [stats, t]);
+
   return (
-    <div>
-      <PageHeader
-        title={t('graph')}
-        subtitle="Cytoscape view across entities and edges (Phase 4)."
-      />
-      <div className="px-8 py-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Phase 4</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border border-dashed bg-muted/20 p-12 text-center text-sm text-muted-foreground">
-              Live, force-directed graph with hover-evidence, layout switcher, and filters lands in
-              Phase 4. The data model is already in place.
-            </div>
-          </CardContent>
-        </Card>
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col">
+      {/* Top bar: search + stats + layout */}
+      <div className="flex items-center justify-between gap-3 border-b px-4 py-2">
+        <div className="flex flex-1 items-center gap-3">
+          <h1 className="text-sm font-semibold tracking-tight">{t('title')}</h1>
+          <SearchBar
+            onMatchInGraph={handleMatchInGraph}
+            onPickCenter={handleSetCenter}
+            placeholder={filters.center ? t('search.replaceCenter') : t('search.pickCenter')}
+          />
+        </div>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {graphQuery.isFetching && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
+          <span className="font-mono tabular-nums">{headerSubtitle}</span>
+          <LayoutSwitcher value={layout} onChange={setLayout} />
+        </div>
+      </div>
+
+      <div className="flex flex-1 overflow-hidden">
+        <FilterSidebar filters={filters} onChange={setFilters} onReset={reset} />
+
+        <div className="relative flex flex-1 flex-col">
+          {truncated && stats && (
+            <TruncatedBanner returnedNodes={stats.returnedNodes} totalNodes={stats.totalNodes} />
+          )}
+          <div className="relative flex-1">
+            {showEmpty && <EmptyState />}
+            {!showEmpty && graphQuery.error !== null && graphQuery.error !== undefined && (
+              <ErrorState message={errorMessage(graphQuery.error)} />
+            )}
+            {!showEmpty && (
+              <GraphView
+                ref={graphRef}
+                nodes={nodes}
+                edges={edges}
+                layout={layout}
+                onNodeClick={handleNodeClick}
+              />
+            )}
+          </div>
+        </div>
+
+        {selectedEntity && (
+          <EntityPanel
+            entityId={selectedEntity.id}
+            initialName={selectedEntity.name}
+            initialType={selectedEntity.type}
+            onClose={() => setSelectedEntity(null)}
+            onSetCenter={handleSetCenter}
+          />
+        )}
       </div>
     </div>
   );
+}
+
+function EmptyState(): JSX.Element {
+  const t = useTranslations('graph');
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#0a0a0a]">
+      <div className="max-w-sm space-y-2 text-center">
+        <h2 className="text-sm font-medium text-foreground">{t('empty.title')}</h2>
+        <p className="text-xs text-muted-foreground">{t('empty.subtitle')}</p>
+      </div>
+    </div>
+  );
+}
+
+function ErrorState({ message }: { message: string }): JSX.Element {
+  const t = useTranslations('graph');
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-[#0a0a0a]">
+      <div className="max-w-sm space-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-center">
+        <h2 className="text-sm font-medium text-destructive">{t('error.title')}</h2>
+        <p className="text-xs text-muted-foreground">{message}</p>
+      </div>
+    </div>
+  );
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
