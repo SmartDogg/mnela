@@ -40,7 +40,8 @@
     "claude": "Claude Code",
     "backup": "Backup",
     "knowledge": "Knowledge",
-    "operations": "Operations"
+    "operations": "Operations",
+    "jobsDashboard": "Job stats"
   },
   "login": {
     "title": "Sign in",
@@ -252,12 +253,24 @@
       "progress": "Progress",
       "files": "Files",
       "logs": "Logs",
-      "graph": "Graph (Phase 4)",
-      "graphPlaceholder": "Live graph lands in Phase 4. Status updates poll every 2 seconds.",
+      "graph": "Graph",
+      "graphLive": "Live graph",
+      "graphEmpty": "Waiting for graph events…",
       "pause": "Pause",
       "resume": "Resume",
       "cancel": "Cancel",
-      "retry": "Retry"
+      "retry": "Retry",
+      "skipped": "Skipped",
+      "failed": "Failed",
+      "rate": "Rate",
+      "eta": "ETA",
+      "noFiles": "No files yet.",
+      "noEvents": "No events yet.",
+      "pauseLog": "Pause",
+      "resumeLog": "Resume",
+      "autoScroll": "Autoscroll",
+      "fallbackBanner": "Live updates unavailable — falling back to polling.",
+      "actionFailed": "Action failed"
     }
   },
   "search": {
@@ -283,6 +296,60 @@
   "cmdk": {
     "placeholder": "Search documents, projects, decisions…",
     "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open"
+  },
+  "graph": {
+    "title": "Graph",
+    "subtitle": "Force-directed view across entities and edges.",
+    "stats": "{nodes} nodes · {edges} edges",
+    "truncated": "Showing {returned} of {total} nodes — narrow filters to see all.",
+    "search": {
+      "placeholder": "Search entities…",
+      "pickCenter": "Pick a center entity…",
+      "replaceCenter": "Search or change center…",
+      "loading": "Searching…",
+      "empty": "No matches."
+    },
+    "empty": {
+      "title": "No center selected",
+      "subtitle": "Search above to pick an entity. The graph will load its neighborhood."
+    },
+    "error": {
+      "title": "Failed to load graph"
+    },
+    "filters": {
+      "title": "Filters",
+      "reset": "Reset",
+      "depth": "Depth",
+      "entityTypes": "Entity types",
+      "relations": "Relation types",
+      "relationsHint": "Comma-separated. Empty = all relations.",
+      "project": "Project",
+      "allProjects": "All projects",
+      "dateRange": "Date range",
+      "from": "From",
+      "to": "To",
+      "confidence": "Min confidence",
+      "status": "Status",
+      "confirmedOnly": "Confirmed",
+      "includeReview": "Include review"
+    },
+    "layouts": {
+      "cose": "Force (cose)",
+      "coseBilkent": "Force+ (cose-bilkent)",
+      "circular": "Circular",
+      "grid": "Grid"
+    },
+    "entityPanel": {
+      "close": "Close",
+      "description": "Description",
+      "aliases": "Aliases",
+      "actions": "Actions",
+      "setCenter": "Center on this entity",
+      "projects": "Projects",
+      "emptyProjects": "No project links.",
+      "documents": "Recent documents",
+      "emptyDocuments": "No linked documents."
+    }
   },
   "admin": {
     "system": {
@@ -321,6 +388,36 @@
       "title": "Backup",
       "subtitle": "Snapshot the database and vault.",
       "phase10": "Available in Phase 10"
+    },
+    "jobs": {
+      "title": "Job stats",
+      "subtitle": "Throughput, durations, and error rates for background workers.",
+      "throughput": "Throughput",
+      "throughputSubtitle": "Completed jobs per minute",
+      "duration": "Duration",
+      "durationSubtitle": "Completed-job latency",
+      "avg": "avg",
+      "p50": "p50",
+      "p95": "p95",
+      "errorRate": "Error rate",
+      "errorRateSubtitle": "Failed / (failed + completed)",
+      "totalCompleted": "Completed",
+      "totalFailed": "Failed",
+      "lastFailed": "Recent failures",
+      "lastFailedSubtitle": "Last 20 failed jobs — retry sends them back to the queue.",
+      "noFailures": "No failed jobs.",
+      "retry": "Retry",
+      "retrySuccess": "Job re-queued",
+      "retryFailed": "Retry failed",
+      "window": {
+        "15m": "15 min",
+        "1h": "1 hour",
+        "6h": "6 hours",
+        "24h": "24 hours",
+        "7d": "7 days"
+      },
+      "viewDashboard": "View dashboard",
+      "noBuckets": "No completions in this window."
     }
   },
   "errors": {

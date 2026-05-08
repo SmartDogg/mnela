@@ -40,7 +40,8 @@
     "claude": "Claude Code",
     "backup": "Бэкап",
     "knowledge": "Знания",
-    "operations": "Операции"
+    "operations": "Операции",
+    "jobsDashboard": "Статистика задач"
   },
   "login": {
     "title": "Вход",
@@ -252,12 +253,24 @@
       "progress": "Прогресс",
       "files": "Файлы",
       "logs": "Логи",
-      "graph": "Граф (фаза 4)",
-      "graphPlaceholder": "Живой граф появится в Фазе 4. Статус опрашивается каждые 2 секунды.",
+      "graph": "Граф",
+      "graphLive": "Живой граф",
+      "graphEmpty": "Ожидание событий графа…",
       "pause": "Пауза",
       "resume": "Продолжить",
       "cancel": "Отменить",
-      "retry": "Повторить"
+      "retry": "Повторить",
+      "skipped": "Пропущено",
+      "failed": "Ошибки",
+      "rate": "Скорость",
+      "eta": "ETA",
+      "noFiles": "Файлов пока нет.",
+      "noEvents": "Событий пока нет.",
+      "pauseLog": "Пауза",
+      "resumeLog": "Продолжить",
+      "autoScroll": "Автопрокрутка",
+      "fallbackBanner": "Живые обновления недоступны — откат на опрос.",
+      "actionFailed": "Не удалось выполнить действие"
     }
   },
   "search": {
@@ -283,6 +296,60 @@
   "cmdk": {
     "placeholder": "Поиск документов, проектов, решений…",
     "hint": "Подсказка: ⌘K — открыть, ↑/↓ — навигация, ↵ — открыть"
+  },
+  "graph": {
+    "title": "Граф",
+    "subtitle": "Силовой граф сущностей и связей.",
+    "stats": "{nodes} узлов · {edges} рёбер",
+    "truncated": "Показано {returned} из {total} узлов — уточните фильтры.",
+    "search": {
+      "placeholder": "Поиск сущностей…",
+      "pickCenter": "Выберите центральную сущность…",
+      "replaceCenter": "Поиск или смена центра…",
+      "loading": "Поиск…",
+      "empty": "Ничего не найдено."
+    },
+    "empty": {
+      "title": "Центр не выбран",
+      "subtitle": "Найдите сущность выше — граф загрузит её окрестность."
+    },
+    "error": {
+      "title": "Не удалось загрузить граф"
+    },
+    "filters": {
+      "title": "Фильтры",
+      "reset": "Сбросить",
+      "depth": "Глубина",
+      "entityTypes": "Типы сущностей",
+      "relations": "Типы связей",
+      "relationsHint": "Через запятую. Пусто = все связи.",
+      "project": "Проект",
+      "allProjects": "Все проекты",
+      "dateRange": "Период",
+      "from": "С",
+      "to": "По",
+      "confidence": "Мин. уверенность",
+      "status": "Статус",
+      "confirmedOnly": "Подтверждённые",
+      "includeReview": "С неподтв."
+    },
+    "layouts": {
+      "cose": "Силовой (cose)",
+      "coseBilkent": "Силовой+ (cose-bilkent)",
+      "circular": "Круговой",
+      "grid": "Сетка"
+    },
+    "entityPanel": {
+      "close": "Закрыть",
+      "description": "Описание",
+      "aliases": "Псевдонимы",
+      "actions": "Действия",
+      "setCenter": "Сделать центром",
+      "projects": "Проекты",
+      "emptyProjects": "Нет связей с проектами.",
+      "documents": "Недавние документы",
+      "emptyDocuments": "Нет связанных документов."
+    }
   },
   "admin": {
     "system": {
@@ -321,6 +388,36 @@
       "title": "Бэкап",
       "subtitle": "Снимок БД и vault.",
       "phase10": "Появится в Фазе 10"
+    },
+    "jobs": {
+      "title": "Статистика задач",
+      "subtitle": "Throughput, длительность и доля ошибок фоновых задач.",
+      "throughput": "Throughput",
+      "throughputSubtitle": "Завершённых задач в минуту",
+      "duration": "Длительность",
+      "durationSubtitle": "Латентность завершённых задач",
+      "avg": "среднее",
+      "p50": "p50",
+      "p95": "p95",
+      "errorRate": "Доля ошибок",
+      "errorRateSubtitle": "Failed / (failed + completed)",
+      "totalCompleted": "Успех",
+      "totalFailed": "Ошибок",
+      "lastFailed": "Последние ошибки",
+      "lastFailedSubtitle": "Последние 20 упавших задач — Retry отправит их обратно в очередь.",
+      "noFailures": "Нет упавших задач.",
+      "retry": "Повторить",
+      "retrySuccess": "Задача отправлена в очередь",
+      "retryFailed": "Не удалось повторить",
+      "window": {
+        "15m": "15 мин",
+        "1h": "1 час",
+        "6h": "6 часов",
+        "24h": "24 часа",
+        "7d": "7 дней"
+      },
+      "viewDashboard": "Открыть дашборд",
+      "noBuckets": "Нет завершений в этом окне."
     }
   },
   "errors": {
