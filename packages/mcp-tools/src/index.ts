@@ -53,6 +53,14 @@ export {
   GetDailyNoteOutputSchema,
   RecentActivityInputSchema,
   RecentActivityOutputSchema,
+  SaveNoteInputSchema,
+  SaveNoteOutputSchema,
+  SaveDecisionInputSchema,
+  SaveDecisionOutputSchema,
+  UpdateProjectContextInputSchema,
+  UpdateProjectContextOutputSchema,
+  ArchiveDocumentInputSchema,
+  ArchiveDocumentOutputSchema,
   type GetDocumentInput,
   type GetDocumentOutput,
   type FindSimilarInput,
@@ -79,6 +87,14 @@ export {
   type GetDailyNoteOutput,
   type RecentActivityInput,
   type RecentActivityOutput,
+  type SaveNoteInput,
+  type SaveNoteOutput,
+  type SaveDecisionInput,
+  type SaveDecisionOutput,
+  type UpdateProjectContextInput,
+  type UpdateProjectContextOutput,
+  type ArchiveDocumentInput,
+  type ArchiveDocumentOutput,
   type ProjectOut,
   type DecisionOut,
   type EntityOutFull,
@@ -98,3 +114,10 @@ export { GET_ENTITY_TOOL, getEntity } from './tools/get-entity.js';
 export { TRAVERSE_GRAPH_TOOL, traverseGraph } from './tools/traverse-graph.js';
 export { GET_DAILY_NOTE_TOOL, getDailyNote } from './tools/get-daily-note.js';
 export { RECENT_ACTIVITY_TOOL, recentActivity } from './tools/recent-activity.js';
+export { SAVE_NOTE_TOOL, saveNote } from './tools/save-note.js';
+export { SAVE_DECISION_TOOL, saveDecision } from './tools/save-decision.js';
+export {
+  UPDATE_PROJECT_CONTEXT_TOOL,
+  updateProjectContext,
+} from './tools/update-project-context.js';
+export { ARCHIVE_DOCUMENT_TOOL, archiveDocument } from './tools/archive-document.js';

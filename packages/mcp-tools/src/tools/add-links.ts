@@ -18,6 +18,14 @@ export const ADD_LINKS_TOOL = {
   scope: 'mcp' as const,
   inputSchema: AddLinksInputSchema,
   outputSchema: AddLinksOutputSchema,
+  // Batch operation; targetId is synthetic (a single audit row per call). Per-edge
+  // detail lives in the AuditLog `metadata` field — wired in a later pass.
+  audit: {
+    action: 'mcp.add_links',
+    targetType: 'EdgeBatch',
+    targetIdFrom: 'input' as const,
+    targetIdPath: '__synthetic',
+  },
 };
 
 export async function addLinks(input: AddLinksInput, ctx: McpToolContext): Promise<AddLinksOutput> {

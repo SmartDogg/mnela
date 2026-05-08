@@ -17,6 +17,12 @@ export const ADD_ENTITIES_TOOL = {
   scope: 'mcp' as const,
   inputSchema: AddEntitiesInputSchema,
   outputSchema: AddEntitiesOutputSchema,
+  audit: {
+    action: 'mcp.add_entities',
+    targetType: 'Document',
+    targetIdFrom: 'input' as const,
+    targetIdPath: 'documentId',
+  },
 };
 
 export async function addEntities(
