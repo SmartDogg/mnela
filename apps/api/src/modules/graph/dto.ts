@@ -16,11 +16,32 @@ const EntityTypeEnum = z.enum([
 
 const LinkStatusEnum = z.enum(['auto_confirmed', 'needs_review', 'manual', 'rejected']);
 
+// Hard caps for the /graph snapshot. Above these the response is truncated and
+// `stats.truncated === true`. Truncation is BFS-traversal-order deterministic
+// (first 500 nodes seen, then edges among them, then capped to 2000).
+export const GRAPH_MAX_NODES = 500;
+export const GRAPH_MAX_EDGES = 2000;
+
+const StringArrayQueryParam = z
+  .union([z.string(), z.array(z.string())])
+  .transform((v) => (Array.isArray(v) ? v : [v]))
+  .pipe(z.array(z.string().min(1)).min(1));
+
 export const GraphQuerySchema = z.object({
   center: z.string().min(1),
   depth: z.coerce.number().int().min(1).max(4).optional(),
   types: z.union([EntityTypeEnum, z.array(EntityTypeEnum)]).optional(),
-  maxNodes: z.coerce.number().int().positive().max(500).optional(),
+  maxNodes: z.coerce.number().int().positive().max(GRAPH_MAX_NODES).optional(),
+  // Narrow to entities and edges directly connected to the Project entity
+  // (Entity with type='project' and normalizedName === projectSlug). See
+  // QUESTIONS.md row 14: project linkage in /graph is via persisted
+  // Entity(type=project) rows — Document-side linkage is out of scope for the
+  // REST snapshot.
+  projectSlug: z.string().min(1).optional(),
+  relations: StringArrayQueryParam.optional(),
+  confidence: z.coerce.number().min(0).max(1).optional(),
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
 });
 
 export class GraphQuery extends createZodDto(GraphQuerySchema) {}

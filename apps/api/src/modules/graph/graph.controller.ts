@@ -43,7 +43,16 @@ export class GraphController {
         ? (query.types as EntityType[])
         : [query.types as EntityType]
       : undefined;
-    return this.graph.neighborhood(query.center, query.depth ?? 1, types, query.maxNodes ?? 200);
+    return this.graph.neighborhood(query.center, {
+      depth: query.depth ?? 1,
+      types,
+      maxNodes: query.maxNodes,
+      projectSlug: query.projectSlug,
+      relations: query.relations,
+      confidence: query.confidence,
+      from: query.from ? new Date(query.from) : undefined,
+      to: query.to ? new Date(query.to) : undefined,
+    });
   }
 
   @Get('entities')

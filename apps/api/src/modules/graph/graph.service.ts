@@ -8,6 +8,7 @@ import {
 import type { Edge, Entity, EntityType } from '@prisma/client';
 
 import { PrismaService } from '../../prisma.service.js';
+import { GRAPH_MAX_EDGES, GRAPH_MAX_NODES } from './dto.js';
 
 export interface CytoscapeNode {
   data: {
@@ -29,10 +30,30 @@ export interface CytoscapeEdge {
   };
 }
 
+export interface GraphStats {
+  totalNodes: number;
+  totalEdges: number;
+  returnedNodes: number;
+  returnedEdges: number;
+  truncated: boolean;
+}
+
 export interface CytoscapeGraph {
   center: string;
   nodes: CytoscapeNode[];
   edges: CytoscapeEdge[];
+  stats: GraphStats;
+}
+
+export interface NeighborhoodOptions {
+  depth?: number;
+  types?: EntityType[];
+  maxNodes?: number;
+  projectSlug?: string;
+  relations?: string[];
+  confidence?: number;
+  from?: Date;
+  to?: Date;
 }
 
 @Injectable()
@@ -43,30 +64,110 @@ export class GraphService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async neighborhood(
-    centerId: string,
-    depth = 1,
-    types: EntityType[] | undefined,
-    maxNodes = 200,
-  ): Promise<CytoscapeGraph> {
+  async neighborhood(centerId: string, options: NeighborhoodOptions = {}): Promise<CytoscapeGraph> {
     const center = await this.entities.findById(centerId);
     if (!center) throw new NotFoundException(`Entity ${centerId} not found`);
 
-    const { nodeIds, edges } = await this.edges.neighborhood(centerId, depth, maxNodes);
+    // BFS budget: when caller omits `maxNodes`, fetch one above the hard cap so
+    // truncation is detectable. When caller specifies it, honor that as a
+    // narrower BFS budget. GRAPH_MAX_NODES is the response-level hard cap.
+    const fetchMax =
+      options.maxNodes === undefined
+        ? GRAPH_MAX_NODES + 1
+        : Math.min(options.maxNodes, GRAPH_MAX_NODES);
+
+    const { nodeIds, edges } = await this.edges.neighborhood(
+      centerId,
+      options.depth ?? 1,
+      fetchMax,
+    );
+
     const allEntities = await this.prisma.active().entity.findMany({
       where: {
         id: { in: Array.from(nodeIds) },
-        ...(types && types.length > 0 ? { type: { in: types } } : {}),
+        ...(options.types && options.types.length > 0 ? { type: { in: options.types } } : {}),
       },
     });
 
-    const validIds = new Set(allEntities.map((e) => e.id));
-    const filteredEdges = edges.filter((e) => validIds.has(e.fromId) && validIds.has(e.toId));
+    let nodes = allEntities;
+    let validIds = new Set(nodes.map((e) => e.id));
+    let filteredEdges = edges.filter((e) => validIds.has(e.fromId) && validIds.has(e.toId));
+
+    if (options.projectSlug !== undefined) {
+      const project = await this.prisma.active().entity.findFirst({
+        where: { type: 'project', normalizedName: options.projectSlug, mergedIntoId: null },
+      });
+      if (!project) {
+        return emptyGraph(centerId);
+      }
+      // Keep only nodes touching the project (the project itself + entities
+      // reachable via an edge to/from it within the already-traversed
+      // neighborhood). Edges are reduced to those incident on the project.
+      const projectId = project.id;
+      const touchingIds = new Set<string>([projectId]);
+      for (const e of filteredEdges) {
+        if (e.fromId === projectId) touchingIds.add(e.toId);
+        if (e.toId === projectId) touchingIds.add(e.fromId);
+      }
+      nodes = nodes.filter((n) => touchingIds.has(n.id));
+      validIds = new Set(nodes.map((n) => n.id));
+      filteredEdges = filteredEdges.filter(
+        (e) =>
+          (e.fromId === projectId || e.toId === projectId) &&
+          validIds.has(e.fromId) &&
+          validIds.has(e.toId),
+      );
+    }
+
+    if (options.relations && options.relations.length > 0) {
+      const allow = new Set(options.relations);
+      filteredEdges = filteredEdges.filter((e) => allow.has(e.relationType));
+    }
+
+    if (options.confidence !== undefined) {
+      const min = options.confidence;
+      filteredEdges = filteredEdges.filter((e) => e.confidence >= min);
+    }
+
+    if (options.from !== undefined) {
+      const fromTime = options.from.getTime();
+      filteredEdges = filteredEdges.filter((e) => e.validFrom.getTime() >= fromTime);
+    }
+
+    if (options.to !== undefined) {
+      const toTime = options.to.getTime();
+      filteredEdges = filteredEdges.filter((e) => e.validFrom.getTime() <= toTime);
+    }
+
+    const totalNodes = nodes.length;
+    const totalEdges = filteredEdges.length;
+
+    let truncated = false;
+    let returnedNodes = nodes;
+    if (returnedNodes.length > GRAPH_MAX_NODES) {
+      returnedNodes = returnedNodes.slice(0, GRAPH_MAX_NODES);
+      truncated = true;
+    }
+    const returnedNodeIds = new Set(returnedNodes.map((n) => n.id));
+    let returnedEdges = filteredEdges.filter(
+      (e) => returnedNodeIds.has(e.fromId) && returnedNodeIds.has(e.toId),
+    );
+    if (returnedEdges.length > GRAPH_MAX_EDGES) {
+      returnedEdges = returnedEdges.slice(0, GRAPH_MAX_EDGES);
+      truncated = true;
+    }
 
     return {
       center: centerId,
-      nodes: allEntities.map(toCytoscapeNode),
-      edges: filteredEdges.map(toCytoscapeEdge),
+      nodes: returnedNodes.map(toCytoscapeNode),
+      edges: returnedEdges.map(toCytoscapeEdge),
+      stats: {
+        totalNodes,
+        totalEdges,
+        returnedNodes: returnedNodes.length,
+        returnedEdges: returnedEdges.length,
+        truncated,
+      },
     };
   }
 
@@ -135,6 +236,21 @@ export class GraphService {
     await this.edges.delete(id);
     return { id, deleted: true };
   }
+}
+
+function emptyGraph(centerId: string): CytoscapeGraph {
+  return {
+    center: centerId,
+    nodes: [],
+    edges: [],
+    stats: {
+      totalNodes: 0,
+      totalEdges: 0,
+      returnedNodes: 0,
+      returnedEdges: 0,
+      truncated: false,
+    },
+  };
 }
 
 function toCytoscapeNode(e: Entity): CytoscapeNode {
