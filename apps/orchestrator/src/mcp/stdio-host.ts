@@ -12,11 +12,13 @@
 import 'reflect-metadata';
 
 import {
+  AuditLogRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  type Principal,
 } from '@mnela/db';
 import { type McpToolContext, PHASE_5_TOOLS, type ToolDefinition } from '@mnela/mcp-tools';
 import { publishEvent } from '@mnela/queue';
@@ -43,7 +45,15 @@ async function main(): Promise<void> {
   const edges = new EdgeRepository(() => prisma);
   const documentEntities = new DocumentEntityRepository(() => prisma);
   const inbox = new InboxRepository(() => prisma);
+  const audit = new AuditLogRepository(() => prisma);
   const search = new HybridSearchAdapter(() => prisma);
+
+  const principal: Principal = {
+    kind: 'token',
+    id: 'system:orchestrator',
+    name: 'orchestrator',
+    scope: 'mcp',
+  };
 
   const ctx: McpToolContext = {
     documents,
@@ -51,6 +61,9 @@ async function main(): Promise<void> {
     edges,
     documentEntities,
     inbox,
+    audit,
+    auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
+    principal,
     search: {
       findSimilar: async (text, limit) => {
         const trimmed = text.length > 600 ? text.slice(0, 600) : text;

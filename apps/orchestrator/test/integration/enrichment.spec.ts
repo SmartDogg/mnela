@@ -7,11 +7,13 @@
  * summary for the pipeline to parse.
  */
 import {
+  AuditLogRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  type Principal,
 } from '@mnela/db';
 import { addEntities, addLinks, type McpToolContext } from '@mnela/mcp-tools';
 import { writeClaudeStatus } from '@mnela/queue';
@@ -63,12 +65,22 @@ function buildCtx(): McpToolContext {
   const edges = new EdgeRepository(() => prisma);
   const documentEntities = new DocumentEntityRepository(() => prisma);
   const inbox = new InboxRepository(() => prisma);
+  const audit = new AuditLogRepository(() => prisma);
+  const principal: Principal = {
+    kind: 'token',
+    id: 'system:test',
+    name: 'test-orchestrator',
+    scope: 'mcp',
+  };
   return {
     documents,
     entities,
     edges,
     documentEntities,
     inbox,
+    audit,
+    auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
+    principal,
     search: { findSimilar: async () => [] },
     events: {
       graphNodeAdded: () => undefined,
