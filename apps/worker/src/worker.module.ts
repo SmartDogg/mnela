@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 
+import { DropboxWatcher } from './dropbox/dropbox.watcher.js';
 import { loadEnv } from './env.js';
 import { IngestionConsumer } from './ingestion/ingestion.consumer.js';
 import { StubConsumersService } from './ingestion/stub-consumers.service.js';
@@ -24,7 +25,7 @@ const env = loadEnv();
     }),
     RepositoriesModule,
   ],
-  providers: [PrismaService, RedisService, IngestionConsumer, StubConsumersService],
+  providers: [PrismaService, RedisService, IngestionConsumer, StubConsumersService, DropboxWatcher],
   exports: [PrismaService, RedisService],
 })
 export class WorkerModule {}
