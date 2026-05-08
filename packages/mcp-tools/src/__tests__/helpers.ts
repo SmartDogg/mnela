@@ -1,6 +1,10 @@
 import type { Principal, TokenScope } from '@mnela/db';
+import type { EnrichmentJob, IndexingJob } from '@mnela/queue';
+import type { SearchFilters, SearchResult } from '@mnela/search';
 import type {
   AuditLog,
+  Decision,
+  DailyNote,
   Document,
   DocumentChunk,
   DocumentEntity,
@@ -8,11 +12,19 @@ import type {
   Entity,
   EntityType,
   InboxItem,
+  Job,
   Prisma,
+  Project,
 } from '@prisma/client';
 import { vi } from 'vitest';
 
-import type { McpToolContext } from '../context.js';
+import type { McpToolContext, QueueAddOptions } from '../context.js';
+
+export interface QueuedJobRecord<T> {
+  name: string;
+  data: T;
+  opts?: QueueAddOptions;
+}
 
 export interface MockBag {
   ctx: McpToolContext;
@@ -22,6 +34,13 @@ export interface MockBag {
   entitiesByNorm: Map<string, Entity>;
   edges: Edge[];
   inboxItems: InboxItem[];
+  projects: Map<string, Project>;
+  decisions: Decision[];
+  dailyNotes: DailyNote[];
+  jobsCreated: Job[];
+  enrichmentJobsAdded: QueuedJobRecord<EnrichmentJob>[];
+  indexingJobsAdded: QueuedJobRecord<IndexingJob>[];
+  searchResults: SearchResult;
   events: (
     | { kind: 'graph.node_added'; entity: { id: string; name: string; type: string } }
     | {
@@ -60,8 +79,13 @@ export function buildMockCtx(
   seed: {
     entities?: Entity[];
     documents?: Document[];
+    projects?: Project[];
+    decisions?: Decision[];
+    dailyNotes?: DailyNote[];
+    edges?: Edge[];
     principalScope?: TokenScope;
     principalName?: string;
+    searchResults?: SearchResult;
   } = {},
 ): MockBag {
   const docs = new Map<string, Document>();
@@ -70,21 +94,93 @@ export function buildMockCtx(
   const entitiesByNorm = new Map<string, Entity>();
   const edges: Edge[] = [];
   const inboxItems: InboxItem[] = [];
+  const projects = new Map<string, Project>();
+  const decisions: Decision[] = [];
+  const dailyNotes: DailyNote[] = [];
+  const jobsCreated: Job[] = [];
+  const enrichmentJobsAdded: QueuedJobRecord<EnrichmentJob>[] = [];
+  const indexingJobsAdded: QueuedJobRecord<IndexingJob>[] = [];
   const events: MockBag['events'] = [];
   const similar: MockBag['similar'] = [];
   const auditRows: AuditLog[] = [];
   let auditTxCalls = 0;
+
+  let searchResults: SearchResult = seed.searchResults ?? {
+    mode: 'fts',
+    hits: [],
+    total: 0,
+    page: 1,
+    limit: 20,
+  };
 
   for (const d of seed.documents ?? []) docs.set(d.id, d);
   for (const e of seed.entities ?? []) {
     entities.set(e.id, e);
     entitiesByNorm.set(`${e.normalizedName}|${e.type}`, e);
   }
+  for (const p of seed.projects ?? []) projects.set(p.slug, p);
+  for (const d of seed.decisions ?? []) decisions.push(d);
+  for (const n of seed.dailyNotes ?? []) dailyNotes.push(n);
+  for (const e of seed.edges ?? []) edges.push(e);
 
   const ctx: McpToolContext = {
     documents: {
       findById: vi.fn(async (id: string) => docs.get(id) ?? null),
       getChunks: vi.fn(async (id: string) => chunks.get(id) ?? []),
+      list: vi.fn(async (_filters, opts) => {
+        const items = Array.from(docs.values());
+        const limit = opts?.limit ?? 20;
+        return { items: items.slice(0, limit), total: items.length, page: 1, limit };
+      }),
+      create: vi.fn(async (input): Promise<Document> => {
+        const doc: Document = {
+          id: nextId('doc'),
+          source: input.source,
+          sourceId: input.sourceId ?? null,
+          title: input.title,
+          rawText: input.rawText,
+          cleanText: input.cleanText ?? null,
+          contentHash: input.contentHash,
+          tokenCount: input.tokenCount ?? null,
+          language: input.language ?? null,
+          type: input.type ?? null,
+          metadata: (input.metadata ?? null) as Prisma.JsonValue,
+          status: input.status ?? 'parsed',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          ingestedAt: new Date(),
+          enrichedAt: null,
+          archivedAt: null,
+          vaultPath: input.vaultPath ?? null,
+        };
+        docs.set(doc.id, doc);
+        return doc;
+      }),
+      update: vi.fn(async (id, patch): Promise<Document> => {
+        const existing = docs.get(id);
+        if (!existing) throw new Error(`mock document not found: ${id}`);
+        const updated: Document = {
+          ...existing,
+          updatedAt: new Date(),
+          ...(patch.type !== undefined ? { type: patch.type } : {}),
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.metadata !== undefined ? { metadata: patch.metadata as Prisma.JsonValue } : {}),
+          ...(patch.archived === true
+            ? { archivedAt: new Date(), status: 'archived' as const }
+            : patch.archived === false
+              ? { archivedAt: null }
+              : {}),
+        };
+        docs.set(id, updated);
+        return updated;
+      }),
+      setProjects: vi.fn(async (_documentId: string, _projectIds: string[]) => {
+        // no-op; tests assert via spy if needed.
+      }),
+      findByContentHash: vi.fn(async (hash: string) => {
+        for (const doc of docs.values()) if (doc.contentHash === hash) return doc;
+        return null;
+      }),
     },
     entities: {
       findById: vi.fn(async (id: string) => entities.get(id) ?? null),
@@ -96,6 +192,19 @@ export function buildMockCtx(
         entities.set(e.id, e);
         entitiesByNorm.set(`${e.normalizedName}|${e.type}`, e);
         return e;
+      }),
+      findByNameWithJoins: vi.fn(async (name: string, type) => {
+        const norm = name.normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim();
+        for (const e of entities.values()) {
+          if (e.normalizedName !== norm) continue;
+          if (type && e.type !== type) continue;
+          const matched = e;
+          const matchedEdges = edges.filter(
+            (edge) => edge.fromId === matched.id || edge.toId === matched.id,
+          );
+          return { entity: matched, documents: [], edges: matchedEdges };
+        }
+        return null;
       }),
     },
     edges: {
@@ -119,6 +228,28 @@ export function buildMockCtx(
         edges.push(e);
         return e;
       }),
+      neighborhood: vi.fn(async (centerEntityId: string, depth = 1, maxNodes = 200) => {
+        const visited = new Set<string>([centerEntityId]);
+        const collected: Edge[] = [];
+        let frontier = [centerEntityId];
+        for (let hop = 0; hop < depth && frontier.length > 0; hop++) {
+          const nextFrontier: string[] = [];
+          for (const edge of edges) {
+            if (collected.includes(edge)) continue;
+            if (!frontier.includes(edge.fromId) && !frontier.includes(edge.toId)) continue;
+            if (edge.status !== 'auto_confirmed' && edge.status !== 'manual') continue;
+            collected.push(edge);
+            for (const id of [edge.fromId, edge.toId]) {
+              if (!visited.has(id) && visited.size < maxNodes) {
+                visited.add(id);
+                nextFrontier.push(id);
+              }
+            }
+          }
+          frontier = nextFrontier;
+        }
+        return { nodeIds: visited, edges: collected };
+      }),
     },
     documentEntities: {
       upsert: vi.fn(
@@ -137,7 +268,7 @@ export function buildMockCtx(
           type: input.type,
           title: input.title,
           description: input.description,
-          payload: input.payload,
+          payload: input.payload as Prisma.JsonValue,
           documentId: input.documentId ?? null,
           edgeId: input.edgeId ?? null,
           entityId: input.entityId ?? null,
@@ -150,8 +281,100 @@ export function buildMockCtx(
         return item;
       }),
     },
+    projects: {
+      list: vi.fn(async (opts) => {
+        const items = Array.from(projects.values());
+        const limit = opts?.limit ?? 20;
+        return { items: items.slice(0, limit), total: items.length, page: 1, limit };
+      }),
+      findBySlug: vi.fn(async (slug: string) => projects.get(slug) ?? null),
+      findByIds: vi.fn(async (ids: string[]) => {
+        if (ids.length === 0) return [];
+        return Array.from(projects.values()).filter((p) => ids.includes(p.id));
+      }),
+      update: vi.fn(async (slug, patch) => {
+        const existing = projects.get(slug);
+        if (!existing) throw new Error(`mock project not found: ${slug}`);
+        const updated: Project = {
+          ...existing,
+          updatedAt: new Date(),
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.description !== undefined ? { description: patch.description } : {}),
+          ...(patch.status !== undefined ? { status: patch.status } : {}),
+          ...(patch.contextMd !== undefined ? { contextMd: patch.contextMd } : {}),
+          ...(patch.metadata !== undefined ? { metadata: patch.metadata as Prisma.JsonValue } : {}),
+        };
+        projects.set(slug, updated);
+        return updated;
+      }),
+    },
+    decisions: {
+      list: vi.fn(async (filters, opts) => {
+        let items = decisions.slice();
+        if (filters?.projectSlug) {
+          const project = projects.get(filters.projectSlug);
+          items = project ? items.filter((d) => d.projectId === project.id) : [];
+        }
+        if (filters?.projectId) items = items.filter((d) => d.projectId === filters.projectId);
+        if (filters?.status) items = items.filter((d) => d.status === filters.status);
+        const limit = opts?.limit ?? 20;
+        return { items: items.slice(0, limit), total: items.length, page: 1, limit };
+      }),
+      create: vi.fn(async (input): Promise<Decision> => {
+        const d: Decision = {
+          id: nextId('dec'),
+          projectId: input.projectId ?? null,
+          title: input.title,
+          decision: input.decision,
+          context: input.context ?? null,
+          consequences: input.consequences ?? null,
+          status: input.status ?? 'active',
+          supersededById: input.supersededById ?? null,
+          sourceDocumentId: input.sourceDocumentId ?? null,
+          decidedAt: new Date(),
+          createdAt: new Date(),
+        };
+        decisions.push(d);
+        return d;
+      }),
+    },
+    daily: {
+      findByDate: vi.fn(async (date: Date) => {
+        const target = date.toISOString().slice(0, 10);
+        return dailyNotes.find((n) => n.date.toISOString().slice(0, 10) === target) ?? null;
+      }),
+      list: vi.fn(async (from?: Date, to?: Date) => {
+        let items = dailyNotes.slice();
+        if (from) items = items.filter((n) => n.date >= from);
+        if (to) items = items.filter((n) => n.date <= to);
+        return items;
+      }),
+    },
+    jobs: {
+      create: vi.fn(async (input): Promise<Job> => {
+        const job: Job = {
+          id: nextId('job'),
+          type: input.type,
+          status: 'queued',
+          priority: input.priority ?? 50,
+          payload: input.payload as Prisma.JsonValue,
+          result: null,
+          error: null,
+          documentId: input.documentId ?? null,
+          attempts: 0,
+          maxAttempts: input.maxAttempts ?? 3,
+          createdAt: new Date(),
+          startedAt: null,
+          completedAt: null,
+          costEstimate: null,
+        };
+        jobsCreated.push(job);
+        return job;
+      }),
+    },
     search: {
       findSimilar: vi.fn(async (_text: string, limit: number) => similar.slice(0, limit)),
+      search: vi.fn(async (_opts: { query: string; filters?: SearchFilters }) => searchResults),
     },
     events: {
       graphNodeAdded: vi.fn((entity) => {
@@ -186,6 +409,20 @@ export function buildMockCtx(
       return fn({} as Prisma.TransactionClient);
     },
     principal: makePrincipal(seed.principalScope ?? 'admin', seed.principalName ?? 'test-token'),
+    enrichmentQueue: {
+      add: vi.fn(async (name: string, data: EnrichmentJob, opts?: QueueAddOptions) => {
+        const record: QueuedJobRecord<EnrichmentJob> = opts ? { name, data, opts } : { name, data };
+        enrichmentJobsAdded.push(record);
+        return { id: nextId('queue') };
+      }),
+    },
+    indexingQueue: {
+      add: vi.fn(async (name: string, data: IndexingJob, opts?: QueueAddOptions) => {
+        const record: QueuedJobRecord<IndexingJob> = opts ? { name, data, opts } : { name, data };
+        indexingJobsAdded.push(record);
+        return { id: nextId('queue') };
+      }),
+    },
   };
 
   return {
@@ -196,6 +433,18 @@ export function buildMockCtx(
     entitiesByNorm,
     edges,
     inboxItems,
+    projects,
+    decisions,
+    dailyNotes,
+    jobsCreated,
+    enrichmentJobsAdded,
+    indexingJobsAdded,
+    get searchResults(): SearchResult {
+      return searchResults;
+    },
+    set searchResults(value: SearchResult) {
+      searchResults = value;
+    },
     events,
     similar,
     auditRows,
@@ -229,6 +478,34 @@ export function makeDocument(overrides: Partial<Document> = {}): Document {
     enrichedAt: null,
     archivedAt: null,
     vaultPath: null,
+    ...overrides,
+  };
+}
+
+export function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    id: nextId('proj'),
+    slug: overrides.slug ?? 'demo',
+    name: overrides.name ?? 'Demo',
+    description: null,
+    status: 'active',
+    contextMd: null,
+    metadata: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+export function makeDailyNote(overrides: Partial<DailyNote> = {}): DailyNote {
+  return {
+    id: nextId('daily'),
+    date: new Date('2026-05-08T00:00:00.000Z'),
+    contentMd: 'note',
+    mood: null,
+    metadata: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
     ...overrides,
   };
 }

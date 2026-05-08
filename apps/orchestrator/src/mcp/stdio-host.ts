@@ -13,12 +13,16 @@ import 'reflect-metadata';
 
 import {
   AuditLogRepository,
+  DailyNoteRepository,
+  DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  JobRepository,
   type Principal,
+  ProjectRepository,
 } from '@mnela/db';
 import { type McpToolContext, PHASE_5_TOOLS, type ToolDefinition } from '@mnela/mcp-tools';
 import { publishEvent } from '@mnela/queue';
@@ -46,6 +50,10 @@ async function main(): Promise<void> {
   const documentEntities = new DocumentEntityRepository(() => prisma);
   const inbox = new InboxRepository(() => prisma);
   const audit = new AuditLogRepository(() => prisma);
+  const projects = new ProjectRepository(() => prisma);
+  const decisions = new DecisionRepository(() => prisma);
+  const daily = new DailyNoteRepository(() => prisma);
+  const jobs = new JobRepository(() => prisma);
   const search = new HybridSearchAdapter(() => prisma);
 
   const principal: Principal = {
@@ -62,6 +70,10 @@ async function main(): Promise<void> {
     documentEntities,
     inbox,
     audit,
+    projects,
+    decisions,
+    daily,
+    jobs,
     auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
     principal,
     search: {
@@ -78,6 +90,7 @@ async function main(): Promise<void> {
           return out;
         });
       },
+      search: (opts) => search.search(opts),
     },
     events: {
       graphNodeAdded: (entity) =>
@@ -89,6 +102,9 @@ async function main(): Promise<void> {
       inboxItemAdded: (item) =>
         publishEvent(redis, { type: 'inbox.item_added', payload: item }).then(() => undefined),
     },
+    // Phase 5 stdio host doesn't trigger queue jobs; admin tools live behind apps/mcp.
+    enrichmentQueue: { add: async () => ({ id: undefined }) },
+    indexingQueue: { add: async () => ({ id: undefined }) },
   };
 
   const server = new McpServer(

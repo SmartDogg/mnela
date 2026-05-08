@@ -8,12 +8,16 @@
  */
 import {
   AuditLogRepository,
+  DailyNoteRepository,
+  DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  JobRepository,
   type Principal,
+  ProjectRepository,
 } from '@mnela/db';
 import { addEntities, addLinks, type McpToolContext } from '@mnela/mcp-tools';
 import { writeClaudeStatus } from '@mnela/queue';
@@ -66,6 +70,10 @@ function buildCtx(): McpToolContext {
   const documentEntities = new DocumentEntityRepository(() => prisma);
   const inbox = new InboxRepository(() => prisma);
   const audit = new AuditLogRepository(() => prisma);
+  const projects = new ProjectRepository(() => prisma);
+  const decisions = new DecisionRepository(() => prisma);
+  const daily = new DailyNoteRepository(() => prisma);
+  const jobs = new JobRepository(() => prisma);
   const principal: Principal = {
     kind: 'token',
     id: 'system:test',
@@ -79,14 +87,29 @@ function buildCtx(): McpToolContext {
     documentEntities,
     inbox,
     audit,
+    projects,
+    decisions,
+    daily,
+    jobs,
     auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
     principal,
-    search: { findSimilar: async () => [] },
+    search: {
+      findSimilar: async () => [],
+      search: async (opts) => ({
+        mode: 'fts',
+        hits: [],
+        total: 0,
+        page: opts.page ?? 1,
+        limit: opts.limit ?? 20,
+      }),
+    },
     events: {
       graphNodeAdded: () => undefined,
       graphEdgeAdded: () => undefined,
       inboxItemAdded: () => undefined,
     },
+    enrichmentQueue: { add: async () => ({ id: undefined }) },
+    indexingQueue: { add: async () => ({ id: undefined }) },
   };
 }
 

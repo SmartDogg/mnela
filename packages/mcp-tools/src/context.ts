@@ -1,12 +1,18 @@
 import type {
   AuditLogRepository,
+  DailyNoteRepository,
+  DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
   EntityRepository,
   InboxRepository,
+  JobRepository,
   Principal,
+  ProjectRepository,
 } from '@mnela/db';
+import type { EnrichmentJob, IndexingJob } from '@mnela/queue';
+import type { SearchFilters, SearchResult } from '@mnela/search';
 import type { Prisma } from '@prisma/client';
 
 export interface SimilarSearcher {
@@ -23,6 +29,15 @@ export interface SimilarSearcher {
   >;
 }
 
+export interface FullSearcher {
+  search(opts: {
+    query: string;
+    filters?: SearchFilters;
+    page?: number;
+    limit?: number;
+  }): Promise<SearchResult>;
+}
+
 export interface EventSink {
   graphNodeAdded(node: { id: string; name: string; type: string }): void | Promise<void>;
   graphEdgeAdded(edge: {
@@ -36,15 +51,36 @@ export interface EventSink {
 
 export type AuditTxRunner = <T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>;
 
+export interface QueueAddOptions {
+  attempts?: number;
+  backoff?: { type: string; delay: number };
+}
+
+export interface QueueAdder<T> {
+  add(name: string, data: T, opts?: QueueAddOptions): Promise<{ id?: string }>;
+}
+
 export interface McpToolContext {
-  documents: Pick<DocumentRepository, 'findById' | 'getChunks'>;
-  entities: Pick<EntityRepository, 'findById' | 'findByNormalized' | 'create'>;
-  edges: Pick<EdgeRepository, 'create'>;
+  documents: Pick<
+    DocumentRepository,
+    'findById' | 'getChunks' | 'list' | 'create' | 'update' | 'setProjects' | 'findByContentHash'
+  >;
+  entities: Pick<
+    EntityRepository,
+    'findById' | 'findByNormalized' | 'create' | 'findByNameWithJoins'
+  >;
+  edges: Pick<EdgeRepository, 'create' | 'neighborhood'>;
   documentEntities: Pick<DocumentEntityRepository, 'upsert'>;
   inbox: Pick<InboxRepository, 'create'>;
-  search: SimilarSearcher;
+  projects: Pick<ProjectRepository, 'list' | 'findBySlug' | 'findByIds' | 'update'>;
+  decisions: Pick<DecisionRepository, 'list' | 'create'>;
+  daily: Pick<DailyNoteRepository, 'findByDate' | 'list'>;
+  jobs: Pick<JobRepository, 'create'>;
+  search: SimilarSearcher & FullSearcher;
   events: EventSink;
   audit: Pick<AuditLogRepository, 'create'>;
   auditTx: AuditTxRunner;
   principal: Principal;
+  enrichmentQueue: QueueAdder<EnrichmentJob>;
+  indexingQueue: QueueAdder<IndexingJob>;
 }
