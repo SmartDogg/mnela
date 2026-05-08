@@ -1,24 +1,26 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { QUEUE_NAMES } from '@mnela/queue';
+import { QUEUE_NAMES, createQueueConnection } from '@mnela/queue';
 import { Worker } from 'bullmq';
+import { type Redis } from 'ioredis';
 
-import { RedisService } from '../redis.service.js';
+import { loadEnv } from '../env.js';
 
 /**
- * Stub Workers for enrichment, indexing, and maintenance queues.
- * Phase-2 acceptance only requires that the queues exist and don't deadlock —
- * the real consumers land in Phase 5 (Claude orchestrator) and Phase 11
- * (maintenance crons).
+ * Stub Workers for enrichment, indexing, and maintenance queues. Phase-2
+ * acceptance only requires the queues exist and don't deadlock — the real
+ * consumers land in Phase 5 (Claude orchestrator) and Phase 11 (maintenance).
  */
 @Injectable()
 export class StubConsumersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StubConsumersService.name);
   private readonly workers: Worker[] = [];
-
-  constructor(private readonly redis: RedisService) {}
+  private readonly connections: Redis[] = [];
 
   async onModuleInit(): Promise<void> {
+    const env = loadEnv();
     for (const name of QUEUE_NAMES.slice(1)) {
+      const connection = createQueueConnection(env.REDIS_URL);
+      this.connections.push(connection);
       const worker = new Worker(
         name,
         async (job) => {
@@ -27,7 +29,7 @@ export class StubConsumersService implements OnModuleInit, OnModuleDestroy {
           );
           return { stubbed: true };
         },
-        { connection: this.redis.client, concurrency: 1 },
+        { connection, concurrency: 1 },
       );
       this.workers.push(worker);
     }
@@ -36,5 +38,10 @@ export class StubConsumersService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await Promise.all(this.workers.map((w) => w.close().catch(() => undefined)));
+    await Promise.all(
+      this.connections.map((c) =>
+        c.status === 'end' ? undefined : c.quit().catch(() => undefined),
+      ),
+    );
   }
 }

@@ -18,9 +18,10 @@ import {
   resolveParser,
   sha256Hex,
 } from '@mnela/ingestion';
-import { type IngestFileJob, publishEvent, QUEUE_NAMES } from '@mnela/queue';
+import { type IngestFileJob, createQueueConnection, publishEvent, QUEUE_NAMES } from '@mnela/queue';
 import { Prisma, type DocumentStatus, type SourceType } from '@prisma/client';
 import { Worker, type Job as BullJob } from 'bullmq';
+import { type Redis } from 'ioredis';
 
 import { attachmentsDir, loadEnv } from '../env.js';
 import { PrismaService } from '../prisma.service.js';
@@ -30,6 +31,7 @@ import { RedisService } from '../redis.service.js';
 export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IngestionConsumer.name);
   private worker?: Worker<IngestFileJob>;
+  private bullConnection?: Redis;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -41,11 +43,15 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
+    // BullMQ requires a dedicated connection because it issues blocking
+    // commands (BRPOPLPUSH); sharing with the pubsub-publishing client
+    // causes "Connection in subscriber mode" / "already connecting" races.
+    this.bullConnection = createQueueConnection(env.REDIS_URL);
     this.worker = new Worker<IngestFileJob>(
       QUEUE_NAMES[0], // 'ingestion'
       async (bullJob) => this.handleJob(bullJob),
       {
-        connection: this.redis.client,
+        connection: this.bullConnection,
         concurrency: env.WORKER_INGESTION_CONCURRENCY,
       },
     );
@@ -62,6 +68,9 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.worker?.close().catch(() => undefined);
+    if (this.bullConnection && this.bullConnection.status !== 'end') {
+      await this.bullConnection.quit().catch(() => undefined);
+    }
   }
 
   private async handleJob(bullJob: BullJob<IngestFileJob>): Promise<{
@@ -79,12 +88,14 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
     try {
       const buf = await fs.readFile(data.filePath);
+      const baseAttachments = attachmentsDir();
+      await fs.mkdir(baseAttachments, { recursive: true });
       const ctx: ParseContext = {
         mimeType: data.mimeType,
         extension: path.extname(data.originalName).toLowerCase(),
         filename: path.basename(data.originalName),
-        origin: data.origin === 'dropbox' ? 'manual_upload' : 'manual_upload',
-        workdir: await fs.mkdtemp(path.join(attachmentsDir(), '.work-')),
+        origin: 'manual_upload',
+        workdir: await fs.mkdtemp(path.join(baseAttachments, '.work-')),
       };
 
       const { parser } = await resolveParser(buf, ctx);
@@ -143,8 +154,16 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     doc: ParsedDocument,
     job: IngestFileJob,
   ): Promise<{ documentId: string; duplicate: boolean }> {
-    const subKey = doc.sourceId ?? doc.title;
-    const seed = job.contentHash + '::' + subKey + '::' + doc.rawText.length;
+    void job;
+    // Dedup key:
+    //   - With a stable sourceId (ChatGPT/Claude conversation uuid) the hash
+    //     is sha256(rawText :: source :: sourceId) so the same conversation
+    //     re-uploaded inside another archive collapses to one row.
+    //   - Without sourceId (markdown/txt/etc) the hash is sha256(rawText)
+    //     alone — different filenames around the same body still dedupe.
+    const seed = doc.sourceId
+      ? `${doc.source}::${doc.sourceId}::${sha256Hex(doc.rawText)}`
+      : sha256Hex(doc.rawText);
     const contentHash = sha256Hex(seed);
 
     const existing = await this.documents.findByContentHash(contentHash);

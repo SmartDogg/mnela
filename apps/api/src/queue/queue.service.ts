@@ -1,26 +1,29 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { type IngestFileJob, QUEUE_NAMES, publishEvent } from '@mnela/queue';
+import { type IngestFileJob, QUEUE_NAMES, createQueueConnection, publishEvent } from '@mnela/queue';
 import { Queue, type JobsOptions } from 'bullmq';
+import { type Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
 
 /**
- * API-side BullMQ producer. Owns the queue handles for the lifetime of the
- * application; consumers live in apps/worker.
+ * API-side BullMQ producer. Owns the queue handle for the lifetime of the
+ * application; consumers live in apps/worker. Uses a dedicated Redis
+ * connection because BullMQ requires `maxRetriesPerRequest: null`.
  */
 @Injectable()
 export class QueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
   private ingestionQueue?: Queue<IngestFileJob>;
+  private bullConnection?: Redis;
 
   constructor(private readonly redis: RedisService) {}
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
-    void env;
+    this.bullConnection = createQueueConnection(env.REDIS_URL);
     this.ingestionQueue = new Queue<IngestFileJob>(QUEUE_NAMES[0], {
-      connection: this.redis.client,
+      connection: this.bullConnection,
     });
     await this.ingestionQueue.waitUntilReady();
     this.logger.log('bullmq ingestion queue connected');
@@ -28,6 +31,9 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     await this.ingestionQueue?.close().catch(() => undefined);
+    if (this.bullConnection && this.bullConnection.status !== 'end') {
+      await this.bullConnection.quit().catch(() => undefined);
+    }
   }
 
   async enqueueIngestFile(payload: IngestFileJob, opts: JobsOptions = {}): Promise<string> {
@@ -47,14 +53,6 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       },
     });
     return bullJob.id ?? payload.dbJobId;
-  }
-
-  async pause(dbJobId: string): Promise<void> {
-    const job = await this.ingestionQueue?.getJob(dbJobId);
-    if (!job) return;
-    // BullMQ doesn't support per-job pause; remove + re-add when resumed.
-    // For Phase-2 we just mark the DB Job as paused via service — the BullMQ
-    // worker will skip if the DB row is paused (or noop until restart).
   }
 
   async cancel(dbJobId: string): Promise<void> {

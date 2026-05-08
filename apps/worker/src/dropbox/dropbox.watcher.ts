@@ -4,10 +4,11 @@ import path from 'node:path';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { JobRepository } from '@mnela/db';
 import { sha256Hex } from '@mnela/ingestion';
-import { type IngestFileJob, QUEUE_NAMES } from '@mnela/queue';
+import { type IngestFileJob, QUEUE_NAMES, createQueueConnection } from '@mnela/queue';
 import { Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import chokidar, { type FSWatcher } from 'chokidar';
+import { type Redis } from 'ioredis';
 
 import { dropboxDir, loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
@@ -19,11 +20,14 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(DropboxWatcher.name);
   private watcher?: FSWatcher;
   private queue?: Queue<IngestFileJob>;
+  private bullConnection?: Redis;
 
   constructor(
     private readonly redis: RedisService,
     private readonly jobs: JobRepository,
-  ) {}
+  ) {
+    void this.redis;
+  }
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
@@ -34,7 +38,8 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
     const dir = dropboxDir(env);
     await fs.mkdir(dir, { recursive: true });
 
-    this.queue = new Queue<IngestFileJob>(QUEUE_NAMES[0], { connection: this.redis.client });
+    this.bullConnection = createQueueConnection(env.REDIS_URL);
+    this.queue = new Queue<IngestFileJob>(QUEUE_NAMES[0], { connection: this.bullConnection });
     await this.queue.waitUntilReady();
 
     this.watcher = chokidar.watch(dir, {
@@ -60,6 +65,9 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     await this.watcher?.close();
     await this.queue?.close().catch(() => undefined);
+    if (this.bullConnection && this.bullConnection.status !== 'end') {
+      await this.bullConnection.quit().catch(() => undefined);
+    }
   }
 
   private async enqueue(filePath: string): Promise<void> {
