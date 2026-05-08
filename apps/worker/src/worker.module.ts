@@ -1,11 +1,11 @@
 import { Global, Module } from '@nestjs/common';
+import { PrismaService } from '@mnela/db';
 import { LoggerModule } from 'nestjs-pino';
 
 import { DropboxWatcher } from './dropbox/dropbox.watcher.js';
 import { loadEnv } from './env.js';
 import { IngestionConsumer } from './ingestion/ingestion.consumer.js';
 import { StubConsumersService } from './ingestion/stub-consumers.service.js';
-import { PrismaService } from './prisma.service.js';
 import { RedisService } from './redis.service.js';
 import { RepositoriesModule } from './repositories.module.js';
 

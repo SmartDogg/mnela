@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { PrismaService } from '@mnela/db';
 import {
   FtsSearchAdapter,
   HybridSearchAdapter,
@@ -10,7 +11,6 @@ import {
 } from '@mnela/search';
 
 import { loadEnv } from '../../env.js';
-import { PrismaService } from '../../prisma.service.js';
 
 @Injectable()
 export class SearchService implements OnModuleInit {

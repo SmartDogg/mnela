@@ -2,8 +2,9 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 
+import { PrismaService } from '@mnela/db';
+
 import { Public } from '../../auth/public.decorator.js';
-import { PrismaService } from '../../prisma.service.js';
 import { RedisService } from '../../redis.service.js';
 
 @ApiTags('system')

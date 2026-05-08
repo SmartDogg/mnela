@@ -7,6 +7,7 @@ import {
   DocumentRepository,
   EntityRepository,
   JobRepository,
+  PrismaService,
   normalizeEntityName,
   type CreateDocumentInput,
 } from '@mnela/db';
@@ -33,7 +34,6 @@ import { Queue, Worker, type Job as BullJob } from 'bullmq';
 import { type Redis } from 'ioredis';
 
 import { attachmentsDir, loadEnv } from '../env.js';
-import { PrismaService } from '../prisma.service.js';
 import { RedisService } from '../redis.service.js';
 
 @Injectable()

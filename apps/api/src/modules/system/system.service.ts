@@ -1,8 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { SystemConfigRepository } from '@mnela/db';
+import { PrismaService, SystemConfigRepository } from '@mnela/db';
 import type { Prisma, SystemConfig } from '@prisma/client';
-
-import { PrismaService } from '../../prisma.service.js';
 
 export interface SystemStats {
   documents: number;

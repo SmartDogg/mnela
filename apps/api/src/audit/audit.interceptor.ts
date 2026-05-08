@@ -1,12 +1,11 @@
 import { CallHandler, ExecutionContext, Injectable, Logger, NestInterceptor } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { AuditLogRepository } from '@mnela/db';
+import { AuditLogRepository, PrismaService } from '@mnela/db';
 import type { Prisma } from '@prisma/client';
 import type { Request } from 'express';
 import { Observable, firstValueFrom } from 'rxjs';
 
 import type { Principal } from '../auth/types.js';
-import { PrismaService } from '../prisma.service.js';
 import { AUDIT_META_KEY, type AuditMeta } from './audit.decorator.js';
 
 @Injectable()

@@ -2,12 +2,12 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   EdgeRepository,
   EntityRepository,
+  PrismaService,
   type UpdateEntityInput,
   normalizeEntityName,
 } from '@mnela/db';
 import type { Edge, Entity, EntityType } from '@prisma/client';
 
-import { PrismaService } from '../../prisma.service.js';
 import { GRAPH_MAX_EDGES, GRAPH_MAX_NODES } from './dto.js';
 
 export interface CytoscapeNode {

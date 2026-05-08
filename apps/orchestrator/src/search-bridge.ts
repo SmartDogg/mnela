@@ -1,7 +1,6 @@
+import { PrismaService } from '@mnela/db';
 import { HybridSearchAdapter } from '@mnela/search';
 import { Injectable } from '@nestjs/common';
-
-import { PrismaService } from './prisma.service.js';
 
 @Injectable()
 export class SearchBridge {

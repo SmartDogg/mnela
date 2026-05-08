@@ -1,4 +1,6 @@
-import { Global, Module, Provider } from '@nestjs/common';
+import { Global, Module, type Provider } from '@nestjs/common';
+
+import { PrismaService } from './prisma.service.js';
 import {
   AdminUserRepository,
   AttachmentRepository,
@@ -14,9 +16,7 @@ import {
   JobRepository,
   ProjectRepository,
   SystemConfigRepository,
-} from '@mnela/db';
-
-import { PrismaService } from './prisma.service.js';
+} from './repositories/index.js';
 
 type RepoCtor = new (provider: () => ReturnType<PrismaService['active']>) => unknown;
 

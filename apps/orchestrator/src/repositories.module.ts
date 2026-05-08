@@ -5,10 +5,9 @@ import {
   EntityRepository,
   InboxRepository,
   JobRepository,
+  PrismaService,
 } from '@mnela/db';
 import { Global, Module, type Provider } from '@nestjs/common';
-
-import { PrismaService } from './prisma.service.js';
 
 type RepoCtor = new (provider: () => ReturnType<PrismaService['active']>) => unknown;
 

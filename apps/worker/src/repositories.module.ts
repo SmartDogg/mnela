@@ -5,10 +5,9 @@ import {
   DocumentRepository,
   EntityRepository,
   JobRepository,
+  PrismaService,
   ProjectRepository,
 } from '@mnela/db';
-
-import { PrismaService } from './prisma.service.js';
 
 type RepoCtor = new (provider: () => ReturnType<PrismaService['active']>) => unknown;
 

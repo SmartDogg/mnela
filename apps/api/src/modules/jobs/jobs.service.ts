@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { JobRepository, type JobListFilters } from '@mnela/db';
+import { JobRepository, type JobListFilters, PrismaService } from '@mnela/db';
 import { Prisma, type Job, type JobStatus } from '@prisma/client';
 
-import { PrismaService } from '../../prisma.service.js';
 import { SINCE_MS, type StatsSince, type ThroughputBucket } from './dto.js';
 
 export interface ThroughputBucketRow {

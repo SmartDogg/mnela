@@ -27,7 +27,7 @@ const REAL_ZIP = path.join(
 
 let app: INestApplication;
 let worker: INestApplicationContext;
-let prisma: import('../../src/prisma.service.js').PrismaService;
+let prisma: import('@mnela/db').PrismaService;
 let cookie: string;
 let baseUrl: string;
 let createdDocId: string;
@@ -35,7 +35,7 @@ let createdDocId: string;
 beforeAll(async () => {
   app = await buildTestApp();
   worker = await buildTestWorker();
-  const { PrismaService } = await import('../../src/prisma.service.js');
+  const { PrismaService } = await import('@mnela/db');
   prisma = app.get(PrismaService);
 
   await app.listen(0, '127.0.0.1');
@@ -464,7 +464,7 @@ describe('Phase 2 — real Claude.ai export', () => {
 });
 
 async function pollUntilDropboxJob(
-  prisma: import('../../src/prisma.service.js').PrismaService,
+  prisma: import('@mnela/db').PrismaService,
   timeoutMs: number,
 ): Promise<import('@prisma/client').Job> {
   const deadline = Date.now() + timeoutMs;

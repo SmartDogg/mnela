@@ -1,6 +1,6 @@
 import type { Job, JobStatus } from '@prisma/client';
 
-import type { PrismaService } from '../src/prisma.service.js';
+import type { PrismaService } from '@mnela/db';
 
 const TERMINAL: ReadonlySet<JobStatus> = new Set(['completed', 'failed', 'cancelled']);
 

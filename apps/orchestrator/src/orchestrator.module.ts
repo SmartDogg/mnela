@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { PrismaService } from '@mnela/db';
 import { LoggerModule } from 'nestjs-pino';
 
 import { ClaudeStatusBoot } from './claude-status/claude-status.boot.js';
@@ -6,7 +7,6 @@ import { ClaudeStatusService } from './claude-status/claude-status.service.js';
 import { EnrichmentConsumer } from './enrichment/enrichment.consumer.js';
 import { EnrichmentPipeline } from './enrichment/pipeline.js';
 import { loadEnv } from './env.js';
-import { PrismaService } from './prisma.service.js';
 import { RateLimitService } from './rate-limit/rate-limit.service.js';
 import { RedisService } from './redis.service.js';
 import { RepositoriesModule } from './repositories.module.js';

@@ -12,6 +12,7 @@ import {
   type DocumentListFilters,
   DocumentRepository,
   JobRepository,
+  PrismaService,
   ProjectRepository,
   type UpdateDocumentInput,
 } from '@mnela/db';
@@ -19,7 +20,6 @@ import { Prisma } from '@prisma/client';
 import type { Document, Job } from '@prisma/client';
 
 import { loadEnv } from '../../env.js';
-import { PrismaService } from '../../prisma.service.js';
 import { QueueService } from '../../queue/queue.service.js';
 
 const PHASE2_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB; ZIP imports go through /imports.

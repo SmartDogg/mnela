@@ -18,10 +18,9 @@ import { LiveModule } from './live/live.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
-import { PrismaModule } from './prisma.module.js';
+import { PrismaModule, RepositoriesModule } from '@mnela/db';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis.module.js';
-import { RepositoriesModule } from './repositories.module.js';
 
 const env = loadEnv();
 

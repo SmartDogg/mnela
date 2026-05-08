@@ -26,12 +26,12 @@ interface ErrorRateResponse {
 }
 
 let app: INestApplication;
-let prisma: import('../../src/prisma.service.js').PrismaService;
+let prisma: import('@mnela/db').PrismaService;
 let cookie: string;
 
 beforeAll(async () => {
   app = await buildTestApp();
-  const { PrismaService } = await import('../../src/prisma.service.js');
+  const { PrismaService } = await import('@mnela/db');
   prisma = app.get(PrismaService);
 
   const login = await request(app.getHttpServer())
