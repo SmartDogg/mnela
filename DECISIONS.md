@@ -4,6 +4,42 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0024 — Graph payload: server denormalized, UI owns Cytoscape transform
+
+**Context:** Phase 4 needs both (a) GET `/graph` returning a snapshot for the page-load and (b) `graph.*` Socket.io events streaming Entity/Edge as they appear. Cytoscape expects elements shaped `{ data: { id, source, target, ... }, classes: [...] }`. We could (a) keep API in domain shape (Entity/Edge with `confidence`, `status`, `relationType`) and transform inside `@mnela/ui`, (b) have the API emit pre-Cytoscape elements, (c) introduce a normalized view-model package between them.
+**Decision:** API stays in domain shape — `GET /graph` returns `{ nodes: Entity[], edges: Edge[], stats }`; live events carry the same Entity/Edge objects. `@mnela/ui` owns a single transform function `toCytoscapeElements(node | edge)` that maps domain → Cytoscape elements and assigns CSS classes from `entity.type` and `edge.status` (`auto_confirmed` solid, `needs_review` dashed). The transform is exported from `@mnela/ui` so consumers can pre-shape during SSR if needed. Confidence is encoded both as a class (`high|mid|low`) and as a numeric data attribute for tooltip rendering.
+**Alternatives:** Pre-Cytoscape elements from API (couples API to a UI library — bad for the MCP-frontable contract); normalized view-model package (drift risk between API and UI for marginal benefit in single-tenant).
+**Status:** Accepted.
+
+## ADR-0023 — Live event → TanStack Query: per-event-type sync strategy
+
+**Context:** TanStack Query owns server state (ADR-0018); Socket.io streams live events. Two ways to keep the cache fresh: (a) `queryClient.invalidateQueries(...)` on every event — triggers refetch, canonical, but extra HTTP; (b) `queryClient.setQueryData(...)` patch from the event payload — zero HTTP, but only safe when payload is sufficient. Picking the wrong policy per event causes flicker, drift, or wasted bandwidth.
+**Decision:** Per-event-type table:
+
+- `job.created/started/progress/completed/failed` → `setQueryData` on `['jobs', id]` and `['imports', id]`. Payload self-sufficient.
+- `document.created/parsed` → `setQueryData` on `['imports', jobId, 'documents']` (append/update item).
+- `document.enriched` (Phase 5+) → `invalidateQueries` — payload only counts; canonical refetch needed.
+- `graph.node_added/edge_added` → **bypasses** TanStack Query — streamed directly into the Zustand `liveStore`/Cytoscape imperative ref. `/graph` page does a one-shot `useQuery` on mount; the live store appends after.
+- `graph.node_updated` → `invalidateQueries` on `['graph', 'entities', entityId]`.
+- `inbox.item_added` (Phase 7) → `invalidateQueries` on `['inbox']`.
+- `system.claude_status_changed` (Phase 5) → `setQueryData` on `['system', 'claude-status']`.
+  **Alternatives:** Invalidate everywhere (HTTP storm during heavy ingestion, /graph flickers on every node added); patch everywhere (drift on enrichment which sends only deltas).
+  **Status:** Accepted.
+
+## ADR-0022 — Cytoscape lives in `@mnela/ui` as a direct dep, layout plugins lazy-loaded
+
+**Context:** `<MnelaGraph>` is the first real export of `@mnela/ui`. Cytoscape core is ~200 KB minified; `cytoscape-cose-bilkent` adds ~80 KB; a navigator (mini-map) plugin adds ~20 KB. The web app should not pay for the cose-bilkent layout on routes that don't need it (e.g. `/imports/:id` defaults to the lighter cose layout).
+**Decision:** `cytoscape` is a direct `dependency` of `@mnela/ui` (not peer) — single resolved copy via the shared package, no version-skew risk in a single-app monorepo. `cytoscape-cose-bilkent` and the navigator plugin are direct deps too, but loaded via dynamic `await import('cytoscape-cose-bilkent')` inside `<MnelaGraph>` only when their layout/feature is first activated. React 18+ goes as a `peerDependency`. Bundle budget for `/graph`: ≤ 350 KB gzip on first load (Cytoscape + plugins) — measured via `next build` analyzer in Phase 11.
+**Alternatives:** `cytoscape` as peer (forces every consumer to install — fine when there are many consumers; we have one); plugins as peers (no benefit, same risk); Cytoscape direct in `apps/web` (defeats the purpose of a shared `@mnela/ui`).
+**Status:** Accepted.
+
+## ADR-0021 — Socket.io transport: direct connect to `MNELA_API_ORIGIN`, not via Next rewrites
+
+**Context:** Web runs on `:3001`, API on `:3000`. ADR-0020 routes HTTP through Next.js `rewrites()` (`/_api/*` → API), which works because rewrites preserve cookies and method/body. Next 15 rewrites do NOT preserve the `Upgrade: websocket` handshake — Socket.io would silently fall back to long-polling, defeating the live-progress UX. In production behind Caddy, the same origin serves both HTTP and WS, so direct same-origin connect is identity.
+**Decision:** Browser opens `io(NEXT_PUBLIC_MNELA_API_ORIGIN, { withCredentials: true, transports: ['websocket'], path: '/socket.io' }).of('/live')`. `NEXT_PUBLIC_MNELA_API_ORIGIN` defaults to `http://localhost:3000` in dev; in prod it's the public origin (same one the page is served from, so the connect is same-origin and cookies flow). The `mnela_session` signed cookie auto-attaches because of `withCredentials: true` — no bearer token needed for the Web UI; the live gateway's existing dual auth (ADR-0017) accepts it. API CORS is already permissive enough (`{ origin: true, credentials: true }` on the gateway). Polling fallback (HTTP `/jobs/:id` every 2 s) kicks in when the Zustand `liveStatus` stays `'unavailable'` >5 s after the first connect attempt.
+**Alternatives:** Custom Next.js server with WS proxy (extra hop, breaks `next start`/static export, more failure modes); Caddy-only WS in dev (forces dev devs to run Caddy locally — nope); Server-Sent Events (one-way, would force a separate channel for control messages).
+**Status:** Accepted.
+
 ## ADR-0020 — Web auth: Next.js middleware + same-origin proxy via rewrites
 
 **Context:** The web app runs on `:3001` and the API on `:3000`. The session cookie is `HttpOnly` + signed + `SameSite=lax` and is scoped to the API origin. We need (a) the web app to reach the API in dev without CORS noise, (b) `Set-Cookie` on `/auth/login` to actually land in the browser, and (c) middleware on the web app to gate unauthenticated routes by checking presence of `mnela_session`.
