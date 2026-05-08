@@ -1,0 +1,8 @@
+.next/
+.turbo/
+node_modules/
+playwright-report/
+test-results/
+coverage/
+*.tsbuildinfo
+src/lib/api/schema.ts
