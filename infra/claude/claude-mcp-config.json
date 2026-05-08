@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "mnela": {
+      "command": "node",
+      "args": ["/opt/mnela/orchestrator/dist/mcp/stdio-host.js"],
+      "env": {
+        "DATABASE_URL": "${DATABASE_URL}",
+        "REDIS_URL": "${REDIS_URL}",
+        "MNELA_LOG_LEVEL": "info"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/var/lib/mnela/vault"]
+    }
+  }
+}
