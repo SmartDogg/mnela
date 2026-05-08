@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@mnela/mcp-tools",
   "version": "0.0.0",
   "private": true,
@@ -18,6 +18,21 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "clean": "rimraf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@mnela/db": "workspace:*",
+    "@mnela/queue": "workspace:*",
+    "@mnela/search": "workspace:*",
+    "@prisma/client": "^6.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
