@@ -42,14 +42,18 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Uploaded ChatGPT export ZIP turns into N parsed documents, all searchable; deduped by `content_hash`; folder watch picks up dropbox files.
 
-- [ ] `packages/ingestion` — parsers: chatgpt, claude, claude-code-session, docx, pdf, md, txt, html, csv/json, image, audio (audio behind whisper flag)
-- [ ] BullMQ queues: `ingestion`, `enrichment`, `indexing`, `maintenance`
-- [ ] Idempotency by `content_hash`
-- [ ] Chunker (700–1200 tokens, 100–150 overlap; tokenizer per DECISIONS)
-- [ ] `apps/worker` — BullMQ consumers
-- [ ] Redis pubsub bridge → Socket.io gateway in API
-- [ ] Folder watcher on `/var/lib/mnela/dropbox/` (chokidar)
-- [ ] Tests with real Claude.ai export from `data-*.zip`
+- [x] `packages/ingestion` — parsers: chatgpt, claude, claude-code-session, docx, pdf, md, txt, html, csv, json, image, audio (audio behind whisper flag)
+- [x] `packages/queue` — BullMQ queue names + Redis pubsub helpers (ADR-0015)
+- [x] BullMQ queues registered: `ingestion` (concurrency 4), stubs for `enrichment` / `indexing` / `maintenance`
+- [x] Idempotency: `content_hash = sha256(rawText)` (no sourceId) or `sha256(source::sourceId::rawText)` (per-conversation)
+- [x] Chunker (700–1200 tokens, 100–150 overlap; gpt-tokenizer per ADR-0005)
+- [x] `apps/worker` — NestJS application context with BullMQ consumers (ADR-0016)
+- [x] Redis pubsub bridge `mnela:events` → Socket.io gateway `/live` (ADR-0017)
+- [x] Folder watcher on `${MNELA_DATA_DIR}/dropbox/` (chokidar)
+- [x] `/documents/upload` and `/imports` route every file through the worker (async contract, returns Job)
+- [x] Image and audio without Claude/whisper → Attachment + Document(status=raw) (ADR-0014)
+- [x] Ingestion writes are not audited; user-initiated job creation is (ADR-0013)
+- [x] Integration tests on testcontainers: real Claude.ai ZIP, dropbox watcher smoke, Socket.io live events
 
 ## Phase 3 — Web UI skeleton (TZ §7)
 
