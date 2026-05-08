@@ -107,7 +107,7 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 - [ ] All tools from TZ §5 (read, write, admin)
 - [ ] Bearer-token auth with scope (admin / mcp / read_only)
 - [ ] Audit logging
-- [ ] `docs/MCP_INTEGRATION.md` with examples for Claude Code, Cursor, Cline
+- [x] `docs/MCP_INTEGRATION.md` with examples for Claude Code, Cursor, Cline
 
 ## Phase 7 — Inbox + quality (TZ §7.2)
 
