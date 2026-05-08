@@ -6,7 +6,16 @@ import { McpInputError, McpScopeError, McpUnknownToolError } from './errors.js';
 import { ADD_ENTITIES_TOOL, addEntities } from './tools/add-entities.js';
 import { ADD_LINKS_TOOL, addLinks } from './tools/add-links.js';
 import { FIND_SIMILAR_TOOL, findSimilar } from './tools/find-similar.js';
+import { GET_CHUNKS_TOOL, getChunks } from './tools/get-chunks.js';
+import { GET_DAILY_NOTE_TOOL, getDailyNote } from './tools/get-daily-note.js';
+import { GET_DECISIONS_TOOL, getDecisions } from './tools/get-decisions.js';
 import { GET_DOCUMENT_TOOL, getDocument } from './tools/get-document.js';
+import { GET_ENTITY_TOOL, getEntity } from './tools/get-entity.js';
+import { GET_PROJECT_CONTEXT_TOOL, getProjectContext } from './tools/get-project-context.js';
+import { LIST_PROJECTS_TOOL, listProjects } from './tools/list-projects.js';
+import { RECENT_ACTIVITY_TOOL, recentActivity } from './tools/recent-activity.js';
+import { SEARCH_TOOL, search } from './tools/search.js';
+import { TRAVERSE_GRAPH_TOOL, traverseGraph } from './tools/traverse-graph.js';
 
 export type ToolScope = 'admin' | 'mcp' | 'read_only';
 
@@ -41,11 +50,22 @@ function defineTool<I, O>(
   return { ...meta, handler };
 }
 
+// Phase 5 tools (4) + Phase 6 read tools (9) so far. The full registry name is
+// retained for backward compat with consumers that imported PHASE_5_TOOLS.
 export const PHASE_5_TOOLS: readonly ToolDefinition<unknown, unknown>[] = [
   defineTool(GET_DOCUMENT_TOOL, getDocument) as ToolDefinition<unknown, unknown>,
   defineTool(FIND_SIMILAR_TOOL, findSimilar) as ToolDefinition<unknown, unknown>,
   defineTool(ADD_ENTITIES_TOOL, addEntities) as ToolDefinition<unknown, unknown>,
   defineTool(ADD_LINKS_TOOL, addLinks) as ToolDefinition<unknown, unknown>,
+  defineTool(SEARCH_TOOL, search) as ToolDefinition<unknown, unknown>,
+  defineTool(GET_CHUNKS_TOOL, getChunks) as ToolDefinition<unknown, unknown>,
+  defineTool(LIST_PROJECTS_TOOL, listProjects) as ToolDefinition<unknown, unknown>,
+  defineTool(GET_PROJECT_CONTEXT_TOOL, getProjectContext) as ToolDefinition<unknown, unknown>,
+  defineTool(GET_DECISIONS_TOOL, getDecisions) as ToolDefinition<unknown, unknown>,
+  defineTool(GET_ENTITY_TOOL, getEntity) as ToolDefinition<unknown, unknown>,
+  defineTool(TRAVERSE_GRAPH_TOOL, traverseGraph) as ToolDefinition<unknown, unknown>,
+  defineTool(GET_DAILY_NOTE_TOOL, getDailyNote) as ToolDefinition<unknown, unknown>,
+  defineTool(RECENT_ACTIVITY_TOOL, recentActivity) as ToolDefinition<unknown, unknown>,
 ];
 
 export function findTool(name: string): ToolDefinition<unknown, unknown> | undefined {
