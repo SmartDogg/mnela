@@ -1,7 +1,20 @@
-import type { Entity, EntityType, Prisma } from '@prisma/client';
+import type { Edge, Entity, EntityType, Prisma } from '@prisma/client';
 
 import { type Page, type PageOptions, makePage, paginationParams } from './pagination.js';
 import type { PrismaProvider } from './types.js';
+
+export interface DocumentSummary {
+  id: string;
+  title: string;
+  type: string | null;
+  createdAt: Date;
+}
+
+export interface EntityWithRelations {
+  entity: Entity;
+  documents: DocumentSummary[];
+  edges: Edge[];
+}
 
 export interface CreateEntityInput {
   name: string;
@@ -45,6 +58,38 @@ export class EntityRepository {
     return this.getPrisma().entity.findUnique({
       where: { normalizedName_type: { normalizedName, type } },
     });
+  }
+
+  async findByNameWithJoins(name: string, type?: EntityType): Promise<EntityWithRelations | null> {
+    const prisma = this.getPrisma();
+    const normalizedName = normalizeEntityName(name);
+    const entity = await prisma.entity.findFirst({
+      where: { normalizedName, mergedIntoId: null, ...(type ? { type } : {}) },
+    });
+    if (!entity) return null;
+
+    const [docRows, edges] = await Promise.all([
+      prisma.documentEntity.findMany({
+        where: { entityId: entity.id },
+        take: 50,
+        orderBy: { document: { createdAt: 'desc' } },
+        select: {
+          document: {
+            select: { id: true, title: true, type: true, createdAt: true },
+          },
+        },
+      }),
+      prisma.edge.findMany({
+        where: {
+          OR: [{ fromId: entity.id }, { toId: entity.id }],
+          status: { in: ['auto_confirmed', 'needs_review'] },
+        },
+      }),
+    ]);
+
+    const documents: DocumentSummary[] = docRows.map((row) => row.document);
+
+    return { entity, documents, edges };
   }
 
   async list(filters: EntityListFilters = {}, opts: PageOptions = {}): Promise<Page<Entity>> {

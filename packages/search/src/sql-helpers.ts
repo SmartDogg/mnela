@@ -24,6 +24,15 @@ export function buildFilterClause(filters: SearchFilters | undefined): Prisma.Sq
       Prisma.sql`EXISTS (SELECT 1 FROM "DocumentProject" dp JOIN "Project" p ON p.id = dp."projectId" WHERE dp."documentId" = d.id AND p.slug = ${filters.projectSlug})`,
     );
   }
+  if (filters.dateFrom) {
+    parts.push(Prisma.sql`d."createdAt" >= ${filters.dateFrom}`);
+  }
+  if (filters.dateTo) {
+    parts.push(Prisma.sql`d."createdAt" <= ${filters.dateTo}`);
+  }
+  if (filters.languages && filters.languages.length > 0) {
+    parts.push(Prisma.sql`d."language" = ANY(${filters.languages})`);
+  }
   if (parts.length === 0) return Prisma.empty;
   return Prisma.sql`AND (${Prisma.join(parts, ' AND ')})`;
 }

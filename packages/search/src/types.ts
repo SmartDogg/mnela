@@ -7,6 +7,9 @@ export interface SearchFilters {
   source?: SourceType;
   type?: string;
   projectSlug?: string;
+  dateFrom?: Date;
+  dateTo?: Date;
+  languages?: string[];
 }
 
 export interface SearchOptions {

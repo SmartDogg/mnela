@@ -10,6 +10,9 @@ export interface DocumentListFilters {
   projectSlug?: string;
   q?: string;
   archived?: boolean;
+  dateFrom?: Date;
+  dateTo?: Date;
+  languages?: string[];
 }
 
 export interface CreateDocumentInput {
@@ -65,6 +68,15 @@ export class DocumentRepository {
         { title: { contains: filters.q, mode: 'insensitive' } },
         { rawText: { contains: filters.q, mode: 'insensitive' } },
       ];
+    }
+    if (filters.dateFrom || filters.dateTo) {
+      const createdAt: Prisma.DateTimeFilter = {};
+      if (filters.dateFrom) createdAt.gte = filters.dateFrom;
+      if (filters.dateTo) createdAt.lte = filters.dateTo;
+      where.createdAt = createdAt;
+    }
+    if (filters.languages && filters.languages.length > 0) {
+      where.language = { in: filters.languages };
     }
     const prisma = this.getPrisma();
     const [items, total] = await Promise.all([
