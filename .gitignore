@@ -51,12 +51,12 @@ Thumbs.db
 # OS
 desktop.ini
 
-# Local data
-data/
-attachments/
-vault/
-backups/
-dropbox/
+# Local data (only top-level — apps/worker/src/dropbox is source code)
+/data/
+/attachments/
+/vault/
+/backups/
+/dropbox/
 
 # Test data archives (kept in repo root for now during dev)
 data-*.zip
