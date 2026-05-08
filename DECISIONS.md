@@ -4,6 +4,27 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0020 — Web auth: Next.js middleware + same-origin proxy via rewrites
+
+**Context:** The web app runs on `:3001` and the API on `:3000`. The session cookie is `HttpOnly` + signed + `SameSite=lax` and is scoped to the API origin. We need (a) the web app to reach the API in dev without CORS noise, (b) `Set-Cookie` on `/auth/login` to actually land in the browser, and (c) middleware on the web app to gate unauthenticated routes by checking presence of `mnela_session`.
+**Decision:** Use Next.js `rewrites()` in `apps/web/next.config.ts` to proxy `/_api/*` → `http://localhost:3000/api/v1/*`. The fetch client always talks to `/_api/...` (same-origin), so cookies flow naturally and the API doesn't need CORS. Middleware in `apps/web/middleware.ts` redirects unauthenticated traffic to `/login` based on the presence of the `mnela_session` cookie (the cookie is signed; presence is sufficient gate — `/auth/me` is the authoritative check inside protected pages). In production behind Caddy, the same path mapping is provided by the reverse proxy and the rewrite is a no-op.
+**Alternatives:** Direct CORS (forces credentialed CORS config, doubles error surface area, weaker CSRF posture); BFF route handlers in Next.js (extra hop, no benefit for a single-tenant app); deploy api+web on the same Node process (couples lifecycles, breaks Phase 0 split).
+**Status:** Accepted.
+
+## ADR-0019 — Web client types: generated from OpenAPI
+
+**Context:** The API uses `nestjs-zod` to derive runtime validators and Swagger schemas (ADR-0009). The web app needs accurate types for request bodies and responses. We could re-export the Zod schemas from `@mnela/shared-types`, but Zod brings a runtime dep into every web client bundle that imports it, and the schemas are NestJS-flavoured (parameter-property classes via `createZodDto`) which doesn't tree-shake cleanly into a Next.js client bundle.
+**Decision:** Generate `apps/web/src/lib/api/schema.ts` from `http://localhost:3000/api/docs-json` with `openapi-typescript`. A `pnpm --filter @mnela/web codegen:api` script runs `openapi-typescript` against the live API (or a checked-in `openapi.json` for CI). The fetch client uses `openapi-fetch` for typed calls and inferred response types. `@mnela/shared-types` keeps its tiny role for cross-cutting type aliases (e.g. branded ids) but is NOT the typing channel for HTTP DTOs.
+**Alternatives:** Re-export Zod schemas from `@mnela/shared-types` (couples client bundle to nestjs-zod runtime); hand-roll DTO interfaces in the web app (drift risk); tRPC (would require API rewrite away from REST/MCP-shaped contracts).
+**Status:** Accepted.
+
+## ADR-0018 — Web state split: TanStack Query for server, Zustand for ephemeral UI
+
+**Context:** TZ §2 names both TanStack Query and Zustand. We need a clear rule for which library owns what — otherwise we get duplicated cache-and-state for the same value and stale UI.
+**Decision:** TanStack Query owns every server-derived value (lists, detail, search results, jobs, principal). Zustand owns ephemeral client-only state (Cmd-K open/closed, sidebar collapsed, theme override before persistence, draft form state shared across two components). React Server Components own anything that can be rendered server-side without interactivity. Form state stays local to the component (`react-hook-form`) unless it crosses a route boundary.
+**Alternatives:** TanStack Query everywhere (forces every UI bit through a query cache); Zustand everywhere (loses HTTP cache + retries + dedupe); Server Components only (loses optimistic updates and Cmd-K live filter UX).
+**Status:** Accepted.
+
 ## ADR-0017 — Redis pubsub message format
 
 **Context:** Worker emits live progress events; API forwards them to Socket.io clients in `/live`. We need a wire format that's small, type-safe, and matches the WebSocket events listed in TZ §6.

@@ -59,13 +59,13 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Login + setup wizard work; all CRUD pages reachable; search page functional; no live progress yet.
 
-- [ ] `apps/web` — Next.js 15 App Router, Tailwind, shadcn/ui, dark default
-- [ ] Layout: sidebar nav + main + right context pane
-- [ ] Pages: `/login`, `/setup`, `/`, `/search`, `/documents`, `/documents/:id`, `/projects`, `/projects/:slug`, `/decisions`, `/daily`, `/daily/:date`, `/inbox` (skeleton), `/imports`, `/imports/new`, `/imports/:id` (skeleton), `/admin/{system,tokens,claude,backup}`
-- [ ] i18n via next-intl (English first, Russian dictionary)
-- [ ] Auth flow with session cookie
-- [ ] Cmd-K global search
-- [ ] TanStack Query + Zustand wiring
+- [x] `apps/web` — Next.js 15 App Router, Tailwind, shadcn/ui, dark default
+- [x] Layout: sidebar nav + main + right context pane
+- [x] Pages: `/login`, `/setup`, `/`, `/search`, `/documents`, `/documents/:id`, `/projects`, `/projects/:slug`, `/decisions`, `/daily`, `/daily/:date`, `/inbox` (skeleton), `/imports`, `/imports/new`, `/imports/:id` (skeleton), `/admin/{system,tokens,claude,backup}`
+- [x] i18n via next-intl (English first, Russian dictionary)
+- [x] Auth flow with session cookie
+- [x] Cmd-K global search
+- [x] TanStack Query + Zustand wiring
 
 ## Phase 4 — Live progress + Graph (TZ §11)
 
