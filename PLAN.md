@@ -84,15 +84,20 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** New document is automatically enriched, entities and edges land in the graph; rate limit detected and respected; retry with backoff works.
 
-- [ ] `packages/claude-runner` — typed wrapper around `claude` CLI subprocess
-- [ ] `apps/orchestrator` — concurrency-1 enrichment worker, rate limiter
-- [ ] CLAUDE.md template in `infra/claude/`
-- [ ] MCP config for server-side Claude
-- [ ] Health check (`mnela claude:test`)
-- [ ] Confidence routing per TZ §3.3 step 6
-- [ ] Retry with exponential backoff
-- [ ] Rate-limit detection (parse subprocess output, system pubsub event)
-- [ ] Pause/resume by rate-limit window
+- [x] `packages/claude-runner` — typed wrapper around `claude` CLI subprocess
+- [x] `apps/orchestrator` — concurrency-1 enrichment worker, rate limiter
+- [x] CLAUDE.md template in `infra/claude/`
+- [x] MCP config for server-side Claude
+- [x] Health check (`mnela claude:test`) — `POST /system/claude-test`
+- [x] Confidence routing per TZ §3.3 step 6 (lives in `mnela_add_links`)
+- [x] Retry with exponential backoff (BullMQ attempts:3)
+- [x] Rate-limit detection (stream-json frames + result text parse, ADR-0026)
+- [x] Pause/resume by rate-limit window (`RateLimitService` + setTimeout)
+- [x] `packages/mcp-tools` — shared registry (4 tools) reused by Phase 6 HTTP host (ADR-0025)
+- [x] stdio MCP host at `apps/orchestrator/src/mcp/stdio-host.ts`
+- [x] `/system/claude-status` real, pubsub-fed (`system.claude_status_changed`, ADR-0029)
+- [x] Web Inbox shows `link_suggestion` cards with Accept/Reject + live updates
+- [x] Web `/admin/claude` shows status badge, version, last-test, rate-limit window, test button
 
 ## Phase 6 — MCP server (TZ §5)
 
