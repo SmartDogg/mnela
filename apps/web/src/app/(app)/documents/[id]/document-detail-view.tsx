@@ -26,7 +26,8 @@ interface TranscriptionMeta {
   completedAt?: string;
 }
 
-function readTranscriptionMeta(metadata: Record<string, unknown>): TranscriptionMeta | null {
+function readTranscriptionMeta(metadata: Record<string, unknown> | null): TranscriptionMeta | null {
+  if (!metadata) return null;
   const t = metadata['transcription'];
   if (!t || typeof t !== 'object' || Array.isArray(t)) return null;
   const obj = t as Record<string, unknown>;

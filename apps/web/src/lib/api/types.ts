@@ -56,7 +56,7 @@ export interface DocumentSummary {
 export interface DocumentDetail extends DocumentSummary {
   rawText: string;
   cleanText: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, unknown> | null;
   contentHash: string;
   vaultPath: string | null;
 }
