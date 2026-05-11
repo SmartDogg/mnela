@@ -38,9 +38,9 @@ export function DecisionsList(): JSX.Element {
   const [page] = useState(1);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
-  const [contextMd, setContextMd] = useState('');
-  const [decisionMd, setDecisionMd] = useState('');
-  const [consequencesMd, setConsequencesMd] = useState('');
+  const [context, setContext] = useState('');
+  const [decision, setDecision] = useState('');
+  const [consequences, setConsequences] = useState('');
 
   const query = useQuery({
     queryKey: ['decisions', page],
@@ -52,17 +52,17 @@ export function DecisionsList(): JSX.Element {
   const createMutation = useMutation({
     mutationFn: (body: {
       title: string;
-      contextMd: string;
-      decisionMd: string;
-      consequencesMd: string;
+      decision: string;
+      context?: string;
+      consequences?: string;
     }) => api.post<DecisionSummary>('/decisions', body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['decisions'] });
       setOpen(false);
       setTitle('');
-      setContextMd('');
-      setDecisionMd('');
-      setConsequencesMd('');
+      setContext('');
+      setDecision('');
+      setConsequences('');
       toast.success('Decision created');
     },
     onError: (err) => {
@@ -93,8 +93,8 @@ export function DecisionsList(): JSX.Element {
                 <Textarea
                   id="d-context"
                   rows={3}
-                  value={contextMd}
-                  onChange={(e) => setContextMd(e.target.value)}
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
@@ -102,8 +102,8 @@ export function DecisionsList(): JSX.Element {
                 <Textarea
                   id="d-decision"
                   rows={3}
-                  value={decisionMd}
-                  onChange={(e) => setDecisionMd(e.target.value)}
+                  value={decision}
+                  onChange={(e) => setDecision(e.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
@@ -111,16 +111,21 @@ export function DecisionsList(): JSX.Element {
                 <Textarea
                   id="d-cons"
                   rows={3}
-                  value={consequencesMd}
-                  onChange={(e) => setConsequencesMd(e.target.value)}
+                  value={consequences}
+                  onChange={(e) => setConsequences(e.target.value)}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button
-                disabled={!title || !decisionMd || createMutation.isPending}
+                disabled={!title || !decision || createMutation.isPending}
                 onClick={() =>
-                  createMutation.mutate({ title, contextMd, decisionMd, consequencesMd })
+                  createMutation.mutate({
+                    title,
+                    decision,
+                    ...(context ? { context } : {}),
+                    ...(consequences ? { consequences } : {}),
+                  })
                 }
               >
                 {createMutation.isPending && <Loader2 className="animate-spin" />}

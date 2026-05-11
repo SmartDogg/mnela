@@ -89,7 +89,7 @@ export interface ProjectDetail extends ProjectSummary {
   metadata: Record<string, unknown> | null;
 }
 
-export type DecisionStatus = 'active' | 'superseded' | 'rejected';
+export type DecisionStatus = 'active' | 'superseded' | 'reverted';
 
 export interface DecisionSummary {
   id: string;
