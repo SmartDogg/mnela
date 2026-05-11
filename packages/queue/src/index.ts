@@ -34,3 +34,12 @@ export {
   readClaudeStatus,
   writeClaudeStatus,
 } from './claude-status.js';
+export {
+  type SlotOwner,
+  type SlotState,
+  CLAUDE_SLOT_KEY,
+  acquireSlot,
+  refreshSlot,
+  releaseSlot,
+  peekSlot,
+} from './slot-lock.js';
