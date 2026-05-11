@@ -265,6 +265,97 @@ export interface LinkSuggestionPayload {
   evidenceDocumentId?: string | null;
 }
 
+export interface EntityMergeSuggestionPayload {
+  sourceId: string;
+  targetId: string;
+  sourceName?: string;
+  targetName?: string;
+  sharedNeighbors?: number;
+  sharedDocuments?: number;
+}
+
+export interface DuplicateDetectionPayload {
+  documentIdA: string;
+  documentIdB: string;
+  titleA?: string;
+  titleB?: string;
+  contentHashMatch?: boolean;
+  similarityScore?: number;
+}
+
+export interface EnrichmentFailedPayload {
+  documentId: string;
+  attempts?: number;
+  lastError?: string;
+}
+
+export interface ConflictingDecisionPayload {
+  decisionId: string;
+  conflictingDecisionId: string;
+  summary?: string;
+}
+
+export interface BulkInboxResult {
+  batchId: string;
+  accepted: { id: string }[];
+  failed: { id: string; reason: string }[];
+}
+
+export type EntityType =
+  | 'project'
+  | 'person'
+  | 'organization'
+  | 'technology'
+  | 'concept'
+  | 'product'
+  | 'service'
+  | 'bug'
+  | 'feature'
+  | 'custom';
+
+export type LinkStatus = 'auto_confirmed' | 'needs_review' | 'manual' | 'rejected';
+
+export interface EntitySummary {
+  id: string;
+  name: string;
+  normalizedName: string;
+  type: EntityType;
+  description: string | null;
+  aliases: string[];
+  mergedIntoId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EdgeSummary {
+  id: string;
+  fromId: string;
+  toId: string;
+  relationType: string;
+  confidence: number;
+  status: LinkStatus;
+  evidenceDocumentId: string | null;
+  evidenceChunkId: string | null;
+  validFrom: string;
+  validUntil: string | null;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+export interface MergeCounts {
+  documentLinks: number;
+  edgeRepoints: number;
+  edgeDedupes: number;
+  selfLoops: number;
+}
+
+export interface MergeEntitiesResult {
+  dryRun: boolean;
+  counts: MergeCounts;
+  entity: EntitySummary | null;
+}
+
 export interface ClaudeStatus {
   available: boolean;
   reason?: 'no-binary' | 'not-logged-in' | 'rate-limit' | 'orchestrator-not-running';
