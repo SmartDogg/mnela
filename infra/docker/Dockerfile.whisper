@@ -1,0 +1,58 @@
+# whisper.cpp HTTP server, multi-stage CPU build. See ADR-0045.
+#
+# Build:
+#   docker compose -f infra/docker/docker-compose.yml \
+#     -f infra/docker/docker-compose.optional.yml \
+#     --profile optional build whisper
+#
+# Override model/language via build args (rebuild required):
+#   --build-arg WHISPER_MODEL=small --build-arg WHISPER_LANGUAGE=en
+#
+# Runtime: serves multipart audio at POST /inference and a status page at GET /.
+# Bound inside the compose network; no host port exposure by default.
+
+FROM debian:bookworm-slim AS builder
+
+ARG WHISPER_MODEL=base
+ARG WHISPER_REPO=https://github.com/ggerganov/whisper.cpp.git
+ARG WHISPER_REF=master
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential \
+      cmake \
+      git \
+      ca-certificates \
+      curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone --depth 1 --branch ${WHISPER_REF} ${WHISPER_REPO} . \
+ && cmake -B build -DWHISPER_BUILD_SERVER=ON -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build build --target whisper-server -j"$(nproc)"
+
+RUN mkdir -p /models \
+ && curl -fL -o /models/ggml-${WHISPER_MODEL}.bin \
+      "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${WHISPER_MODEL}.bin"
+
+FROM debian:bookworm-slim AS runtime
+
+ARG WHISPER_MODEL=base
+ARG WHISPER_LANGUAGE=ru
+ENV WHISPER_MODEL=${WHISPER_MODEL} \
+    WHISPER_LANGUAGE=${WHISPER_LANGUAGE}
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      libgomp1 \
+      ca-certificates \
+      wget \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/build/bin/whisper-server /usr/local/bin/whisper-server
+COPY --from=builder /models /models
+
+EXPOSE 8080
+
+# Use shell form so $WHISPER_MODEL / $WHISPER_LANGUAGE expand at container start.
+ENTRYPOINT ["/bin/sh", "-c", "exec whisper-server -m /models/ggml-${WHISPER_MODEL}.bin --host 0.0.0.0 --port 8080 --language ${WHISPER_LANGUAGE}"]
