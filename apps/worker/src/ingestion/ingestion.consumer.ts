@@ -22,12 +22,12 @@ import {
   sha256Hex,
 } from '@mnela/ingestion';
 import {
-  type EnrichmentJob,
   type IngestFileJob,
+  type TranscribeAudioJob,
   createQueueConnection,
   publishEvent,
   QUEUE_NAMES,
-  readClaudeStatus,
+  readWhisperStatus,
 } from '@mnela/queue';
 import { Prisma, type DocumentStatus, type SourceType } from '@prisma/client';
 import { Queue, Worker, type Job as BullJob } from 'bullmq';
@@ -35,14 +35,15 @@ import { type Redis } from 'ioredis';
 
 import { attachmentsDir, loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
+import { EnrichmentEnqueueService } from '../shared/enrichment-enqueue.service.js';
 
 @Injectable()
 export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(IngestionConsumer.name);
   private worker?: Worker<IngestFileJob>;
   private bullConnection?: Redis;
-  private enrichmentQueue?: Queue<EnrichmentJob>;
-  private enrichmentConnection?: Redis;
+  private transcriptionQueue?: Queue<TranscribeAudioJob>;
+  private transcriptionConnection?: Redis;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -51,6 +52,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly attachments: AttachmentRepository,
     private readonly jobs: JobRepository,
     private readonly entities: EntityRepository,
+    private readonly enrichmentEnqueue: EnrichmentEnqueueService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -74,9 +76,9 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       );
     });
 
-    this.enrichmentConnection = createQueueConnection(env.REDIS_URL);
-    this.enrichmentQueue = new Queue<EnrichmentJob>(QUEUE_NAMES[1], {
-      connection: this.enrichmentConnection,
+    this.transcriptionConnection = createQueueConnection(env.REDIS_URL);
+    this.transcriptionQueue = new Queue<TranscribeAudioJob>(QUEUE_NAMES[4], {
+      connection: this.transcriptionConnection,
     });
 
     await this.worker.waitUntilReady();
@@ -88,9 +90,9 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
-    await this.enrichmentQueue?.close().catch(() => undefined);
-    if (this.enrichmentConnection && this.enrichmentConnection.status !== 'end') {
-      await this.enrichmentConnection.quit().catch(() => undefined);
+    await this.transcriptionQueue?.close().catch(() => undefined);
+    if (this.transcriptionConnection && this.transcriptionConnection.status !== 'end') {
+      await this.transcriptionConnection.quit().catch(() => undefined);
     }
   }
 
@@ -245,29 +247,31 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     await this.emitGraphEventsForDocument(created.id, created.title, doc.metadata ?? {});
 
     if (doc.rawText.trim().length > 0) {
-      await this.maybeEnqueueEnrichment(created.id);
+      await this.enrichmentEnqueue.maybeEnqueue(created.id);
+    } else if (doc.type === 'audio') {
+      await this.maybeEnqueueTranscription(created.id);
     }
 
     return { documentId: created.id, duplicate: false };
   }
 
-  private async maybeEnqueueEnrichment(documentId: string): Promise<void> {
-    if (!this.enrichmentQueue) return;
-    const status = await readClaudeStatus(this.redis.client);
+  private async maybeEnqueueTranscription(documentId: string): Promise<void> {
+    if (!this.transcriptionQueue) return;
+    const status = await readWhisperStatus(this.redis.client);
     if (!status.available) {
       this.logger.debug(
-        `enrichment skipped for ${documentId}: claude unavailable (${status.reason ?? 'unknown'})`,
+        `transcription skipped for ${documentId}: whisper unavailable (${status.reason ?? 'unknown'})`,
       );
       return;
     }
-    const enrichmentJob = await this.jobs.create({
-      type: 'enrich_document',
+    const dbJob = await this.jobs.create({
+      type: 'transcribe_audio',
       payload: { documentId },
       documentId,
     });
-    await this.enrichmentQueue.add(
-      'enrich-document',
-      { dbJobId: enrichmentJob.id, documentId },
+    await this.transcriptionQueue.add(
+      'transcribe-audio',
+      { dbJobId: dbJob.id, documentId },
       {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },

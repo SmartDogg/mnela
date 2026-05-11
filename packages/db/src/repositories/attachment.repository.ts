@@ -26,4 +26,11 @@ export class AttachmentRepository {
   findByContentHash(contentHash: string): Promise<Attachment[]> {
     return this.getPrisma().attachment.findMany({ where: { contentHash } });
   }
+
+  listForDocument(documentId: string): Promise<Attachment[]> {
+    return this.getPrisma().attachment.findMany({
+      where: { documentId },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
 }

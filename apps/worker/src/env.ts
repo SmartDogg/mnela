@@ -9,6 +9,10 @@ const EnvSchema = z.object({
   MNELA_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   MNELA_DATA_DIR: z.string().default('./data'),
   MNELA_TRANSCRIPTION: z.enum(['enabled', 'disabled']).default('disabled'),
+  MNELA_TRANSCRIPTION_LANGUAGE: z.string().min(2).default('ru'),
+  MNELA_WHISPER_MODEL: z.enum(['tiny', 'base', 'small', 'medium']).default('base'),
+  WHISPER_URL: z.string().url().default('http://whisper:8080'),
+  WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   WORKER_INGESTION_CONCURRENCY: z.coerce.number().int().positive().default(4),
   WORKER_DROPBOX_DISABLED: z
     .enum(['true', 'false'])
