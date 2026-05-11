@@ -201,7 +201,12 @@
     "decisions": "Decisions",
     "entities": "Entities",
     "questions": "Open questions",
-    "refresh": "Refresh context (Phase 5)"
+    "refresh": "Refresh context",
+    "refreshStarted": "Context refresh enqueued (job {jobId}…)",
+    "refreshUnavailable": "Claude orchestrator is not reachable. Start it to refresh project context.",
+    "noContext": "No context yet. Run \"Refresh context\" once Claude is available.",
+    "noEntities": "No entities surfaced yet — enrich some documents in this project first.",
+    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug { metadata: { openQuestions: [...] } }."
   },
   "decisions": {
     "title": "Decisions",

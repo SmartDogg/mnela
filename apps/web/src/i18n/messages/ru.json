@@ -201,7 +201,12 @@
     "decisions": "Решения",
     "entities": "Сущности",
     "questions": "Открытые вопросы",
-    "refresh": "Обновить контекст (фаза 5)"
+    "refresh": "Обновить контекст",
+    "refreshStarted": "Обновление контекста поставлено в очередь (задача {jobId}…)",
+    "refreshUnavailable": "Orchestrator Claude недоступен. Запустите его, чтобы обновить контекст.",
+    "noContext": "Контекста пока нет. Запустите \"Обновить контекст\" когда Claude доступен.",
+    "noEntities": "Сущности ещё не извлечены — обогатите документы проекта.",
+    "noQuestions": "В metadata.openQuestions пока пусто. Добавьте через PATCH /projects/:slug."
   },
   "decisions": {
     "title": "Решения",

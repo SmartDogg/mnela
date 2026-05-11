@@ -1,15 +1,56 @@
 'use client';
 
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { Loader2, RotateCw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { toast } from 'sonner';
 
 import { PageHeader } from '@/components/page-header';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ApiError, api } from '@/lib/api/client';
 import type { ProjectDetail } from '@/lib/api/types';
+
+interface ProjectEntity {
+  id: string;
+  name: string;
+  type: string;
+  description: string | null;
+}
 
 export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.Element {
   const t = useTranslations('projects');
+
+  const entitiesQuery = useQuery({
+    queryKey: ['project', project.slug, 'entities'],
+    queryFn: () =>
+      api.get<ProjectEntity[]>(`/projects/${encodeURIComponent(project.slug)}/entities`),
+  });
+
+  const openQuestionsQuery = useQuery({
+    queryKey: ['project', project.slug, 'open-questions'],
+    queryFn: () =>
+      api.get<string[]>(`/projects/${encodeURIComponent(project.slug)}/open-questions`),
+  });
+
+  const refreshMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ jobId: string }>(
+        `/projects/${encodeURIComponent(project.slug)}/refresh-context`,
+        {},
+      ),
+    onSuccess: (res) => toast.success(t('refreshStarted', { jobId: res.jobId.slice(0, 8) })),
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 503) {
+        toast.error(t('refreshUnavailable'));
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : 'Failed to refresh');
+    },
+  });
+
   return (
     <div>
       <PageHeader
@@ -17,7 +58,12 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
         subtitle={project.description ?? project.slug}
         actions={
           <>
-            <Button variant="outline" disabled>
+            <Button
+              variant="outline"
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+            >
+              {refreshMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCw />}
               {t('refresh')}
             </Button>
           </>
@@ -41,7 +87,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
                 {project.contextMd ? (
                   <pre className="whitespace-pre-wrap text-sm">{project.contextMd}</pre>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No context yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('noContext')}</p>
                 )}
               </CardContent>
             </Card>
@@ -57,10 +103,45 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
             </p>
           </TabsContent>
           <TabsContent value="entities">
-            <p className="text-sm text-muted-foreground">Mini-graph appears in Phase 4.</p>
+            {entitiesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {entitiesQuery.data && entitiesQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('noEntities')}</p>
+            )}
+            {entitiesQuery.data && entitiesQuery.data.length > 0 && (
+              <ul className="space-y-2">
+                {entitiesQuery.data.map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex items-center justify-between rounded-md border bg-card px-3 py-2"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs uppercase">
+                        {e.type}
+                      </Badge>
+                      <span className="text-sm font-medium">{e.name}</span>
+                    </div>
+                    {e.description && (
+                      <span className="text-xs text-muted-foreground">{e.description}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </TabsContent>
           <TabsContent value="questions">
-            <p className="text-sm text-muted-foreground">Open questions surface in Phase 7.</p>
+            {openQuestionsQuery.isLoading && (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            )}
+            {openQuestionsQuery.data && openQuestionsQuery.data.length === 0 && (
+              <p className="text-sm text-muted-foreground">{t('noQuestions')}</p>
+            )}
+            {openQuestionsQuery.data && openQuestionsQuery.data.length > 0 && (
+              <ul className="list-disc space-y-1.5 pl-5 text-sm">
+                {openQuestionsQuery.data.map((q, idx) => (
+                  <li key={idx}>{q}</li>
+                ))}
+              </ul>
+            )}
           </TabsContent>
         </Tabs>
       </div>

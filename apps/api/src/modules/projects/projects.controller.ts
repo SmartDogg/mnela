@@ -67,6 +67,23 @@ export class ProjectsController {
     return this.projects.getContext(slug);
   }
 
+  @Get(':slug/entities')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'Top entities co-occurring in documents tagged to this project, ordered by document count',
+  })
+  topEntities(@Param('slug') slug: string) {
+    return this.projects.listTopEntities(slug);
+  }
+
+  @Get(':slug/open-questions')
+  @RequiredScope('read_only')
+  @ApiOperation({ summary: 'Open questions captured in Project.metadata.openQuestions' })
+  openQuestions(@Param('slug') slug: string) {
+    return this.projects.listOpenQuestions(slug);
+  }
+
   @Post(':slug/refresh-context')
   @RequiredScope('mcp')
   @Audit({ action: 'project.refresh_context', targetType: 'Project', targetIdParam: 'slug' })

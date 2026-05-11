@@ -6,12 +6,13 @@ import {
 } from '@nestjs/common';
 import {
   type CreateProjectInput,
+  EntityRepository,
   JobRepository,
   ProjectRepository,
   type UpdateProjectInput,
 } from '@mnela/db';
 import { readClaudeStatus } from '@mnela/queue';
-import type { Project } from '@prisma/client';
+import type { Entity, Project } from '@prisma/client';
 import { Prisma } from '@prisma/client';
 
 import { QueueService } from '../../queue/queue.service.js';
@@ -21,6 +22,7 @@ import { RedisService } from '../../redis.service.js';
 export class ProjectsService {
   constructor(
     private readonly projects: ProjectRepository,
+    private readonly entities: EntityRepository,
     private readonly jobs: JobRepository,
     private readonly queue: QueueService,
     private readonly redis: RedisService,
@@ -61,6 +63,20 @@ export class ProjectsService {
   async getContext(slug: string): Promise<{ slug: string; contextMd: string | null }> {
     const p = await this.findBySlug(slug);
     return { slug: p.slug, contextMd: p.contextMd };
+  }
+
+  async listTopEntities(slug: string, limit = 50): Promise<Entity[]> {
+    await this.findBySlug(slug);
+    return this.entities.listTopForProject(slug, limit);
+  }
+
+  async listOpenQuestions(slug: string): Promise<string[]> {
+    const project = await this.findBySlug(slug);
+    const meta = project.metadata;
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return [];
+    const value = (meta as Record<string, unknown>)['openQuestions'];
+    if (!Array.isArray(value)) return [];
+    return value.filter((v): v is string => typeof v === 'string');
   }
 
   async refreshContext(slug: string): Promise<{ jobId: string }> {
