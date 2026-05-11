@@ -1,5 +1,7 @@
+import { JobRepository, PrismaService } from '@mnela/db';
 import { type EnrichmentJob, createQueueConnection, publishEvent, QUEUE_NAMES } from '@mnela/queue';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { DelayedError, Worker, type Job as BullJob } from 'bullmq';
 import type { Redis } from 'ioredis';
 
@@ -16,6 +18,8 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly pipeline: EnrichmentPipeline,
     private readonly redis: RedisService,
+    private readonly jobs: JobRepository,
+    private readonly prisma: PrismaService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -58,6 +62,11 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     const jobType = isProjectContext ? 'refresh_project_context' : 'enrich_document';
+    // Sync DB Job → 'running' before doing anything else. Mirrors the worker's
+    // markRunning pattern; without this the row stays at status='queued',
+    // attempts=0, startedAt=null forever after enrichment runs (live UI then
+    // shows ghost-queued jobs and JobStats numbers drift).
+    await this.jobs.setStatus(data.dbJobId, 'running').catch(() => undefined);
     await publishEvent(this.redis.client, {
       type: 'job.started',
       payload: { jobId: data.dbJobId, jobType, startedAt: new Date().toISOString() },
@@ -78,23 +87,55 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
         // ADR-0041: yield the Claude slot to Ask Brain; re-queue this job
         // 30s later. moveToDelayed + DelayedError tells BullMQ this isn't
         // a failure and shouldn't consume an attempts counter.
+        await this.jobs.setStatus(data.dbJobId, 'queued').catch(() => undefined);
         await bullJob.moveToDelayed(Date.now() + 30_000, bullJob.token ?? '');
         throw new DelayedError(`yielded to ${outcome.reason}`);
       }
 
-      await publishEvent(this.redis.client, {
-        type: 'job.completed',
-        payload: {
-          jobId: data.dbJobId,
-          result: outcome,
-          completedAt: new Date().toISOString(),
-        },
-      });
+      // Map pipeline outcome → DB Job terminal status.
+      // 'enriched' / 'skipped' (when claude unavailable or rate-limit window
+      // is paused) → completed; everything else is a failure surface that
+      // the operator should see in /jobs.
+      const dbStatus =
+        outcome.status === 'enriched' || outcome.status === 'skipped' ? 'completed' : 'failed';
+      const errorMessage = dbStatus === 'failed' ? (outcome.reason ?? outcome.status) : undefined;
+      await this.prisma.client.job
+        .update({
+          where: { id: data.dbJobId },
+          data: {
+            status: dbStatus,
+            completedAt: new Date(),
+            result: outcome as unknown as Prisma.InputJsonValue,
+            ...(errorMessage ? { error: errorMessage } : {}),
+          },
+        })
+        .catch(() => undefined);
+
+      if (dbStatus === 'completed') {
+        await publishEvent(this.redis.client, {
+          type: 'job.completed',
+          payload: {
+            jobId: data.dbJobId,
+            result: outcome,
+            completedAt: new Date().toISOString(),
+          },
+        });
+      } else {
+        await publishEvent(this.redis.client, {
+          type: 'job.failed',
+          payload: {
+            jobId: data.dbJobId,
+            error: errorMessage ?? 'unknown',
+            failedAt: new Date().toISOString(),
+          },
+        });
+      }
 
       return outcome;
     } catch (err) {
       if (err instanceof DelayedError) throw err;
       const message = err instanceof Error ? err.message : String(err);
+      await this.jobs.setStatus(data.dbJobId, 'failed', message).catch(() => undefined);
       await publishEvent(this.redis.client, {
         type: 'job.failed',
         payload: { jobId: data.dbJobId, error: message, failedAt: new Date().toISOString() },
