@@ -14,3 +14,5 @@ export * from './audit.repository.js';
 export * from './system-config.repository.js';
 export * from './auth-token.repository.js';
 export * from './admin-user.repository.js';
+export * from './conversation.repository.js';
+export * from './message.repository.js';

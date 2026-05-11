@@ -22,6 +22,10 @@ export class AdminUserRepository {
     return this.getPrisma().adminUser.findUnique({ where: { id } });
   }
 
+  findFirst(): Promise<AdminUser | null> {
+    return this.getPrisma().adminUser.findFirst({ orderBy: { createdAt: 'asc' } });
+  }
+
   count(): Promise<number> {
     return this.getPrisma().adminUser.count();
   }

@@ -6,6 +6,7 @@ import {
   AttachmentRepository,
   AuditLogRepository,
   AuthTokenRepository,
+  ConversationRepository,
   DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
@@ -14,6 +15,7 @@ import {
   EntityRepository,
   InboxRepository,
   JobRepository,
+  MessageRepository,
   ProjectRepository,
   SystemConfigRepository,
 } from './repositories/index.js';
@@ -25,6 +27,7 @@ const REPO_CLASSES = [
   AttachmentRepository,
   AuditLogRepository,
   AuthTokenRepository,
+  ConversationRepository,
   DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
@@ -33,6 +36,7 @@ const REPO_CLASSES = [
   EntityRepository,
   InboxRepository,
   JobRepository,
+  MessageRepository,
   ProjectRepository,
   SystemConfigRepository,
 ] as const satisfies readonly RepoCtor[];
