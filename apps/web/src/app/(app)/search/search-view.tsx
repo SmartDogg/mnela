@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api/client';
+import { sanitizeHighlight } from '@/lib/text/sanitize-highlights';
 import type { SearchHit, SearchMode, SearchResult } from '@/lib/api/types';
 
 const DEBOUNCE_MS = 250;
@@ -93,7 +94,7 @@ export function SearchView(): JSX.Element {
         {hits.map((hit) => (
           <Link
             key={hit.documentId}
-            href={`/documents/${hit.documentId}`}
+            href={`/documents/${hit.documentId}?highlight=${encodeURIComponent(debounced)}`}
             className="block px-5 py-3 transition-colors hover:bg-muted/50"
           >
             <div className="flex items-center gap-2">
@@ -106,7 +107,10 @@ export function SearchView(): JSX.Element {
               </span>
             </div>
             {hit.snippet && (
-              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{hit.snippet}</p>
+              <p
+                className="mt-1 line-clamp-2 text-sm text-muted-foreground"
+                dangerouslySetInnerHTML={{ __html: sanitizeHighlight(hit.snippet) }}
+              />
             )}
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
               <span>{hit.source}</span>

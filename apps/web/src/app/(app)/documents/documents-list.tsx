@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useState } from 'react';
 
+import { ErrorState } from '@/components/error-state';
 import { DocumentStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -90,7 +91,15 @@ export function DocumentsList(): JSX.Element {
         </Select>
       </div>
 
-      <div className="rounded-lg border">
+      {query.isError && (
+        <ErrorState
+          title={t('empty')}
+          description={query.error instanceof Error ? query.error.message : undefined}
+          onRetry={() => query.refetch()}
+        />
+      )}
+
+      <div className="rounded-lg border" hidden={query.isError}>
         <Table>
           <TableHeader>
             <TableRow>

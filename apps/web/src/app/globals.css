@@ -73,6 +73,9 @@
   body {
     @apply min-h-screen antialiased;
   }
+  mark {
+    @apply rounded-sm bg-yellow-200/40 px-0.5 text-inherit dark:bg-yellow-500/30;
+  }
 }
 
 @layer utilities {

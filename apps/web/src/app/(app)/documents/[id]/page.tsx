@@ -5,15 +5,19 @@ import { apiServer } from '@/lib/api/server';
 import type { DocumentDetail } from '@/lib/api/types';
 
 import { DocumentDetailView } from './document-detail-view';
+import { HighlightBanner } from './highlight-banner';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DocumentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ highlight?: string }>;
 }): Promise<JSX.Element> {
   const { id } = await params;
+  const { highlight } = await searchParams;
   let document: DocumentDetail;
   try {
     document = await apiServer.get<DocumentDetail>(`/documents/${encodeURIComponent(id)}`);
@@ -22,5 +26,12 @@ export default async function DocumentDetailPage({
     throw err;
   }
 
-  return <DocumentDetailView document={document} />;
+  return (
+    <>
+      {highlight && (
+        <HighlightBanner body={document.rawText || document.contentMd} query={highlight} />
+      )}
+      <DocumentDetailView document={document} />
+    </>
+  );
 }
