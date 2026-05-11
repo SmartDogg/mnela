@@ -293,6 +293,61 @@
     "hits": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}",
     "cmdkHint": "Нажмите ⌘K / Ctrl+K чтобы открыть поиск из любого места"
   },
+  "ask": {
+    "title": "Спросить мозг",
+    "subtitle": "Серверный Claude с инлайн-цитатами.",
+    "placeholder": "Спросите что угодно о своих заметках…",
+    "send": "Отправить",
+    "sending": "Стримим…",
+    "stop": "Остановить",
+    "newChat": "Новый диалог",
+    "saveSynthesis": "Сохранить как заметку",
+    "input": {
+      "hint": "Enter — отправить · Cmd+Enter — перенос строки"
+    },
+    "empty": {
+      "title": "Спросите что-нибудь",
+      "subtitle": "Ответ придёт стримом, с инлайн-ссылками на исходные заметки.",
+      "examples": "Попробуйте «Что я решил про Postgres FTS?» или «Подытожь мои идеи в Linear за последний месяц»."
+    },
+    "messages": {
+      "you": "Вы",
+      "assistant": "Мозг",
+      "system": "Система"
+    },
+    "citation": {
+      "tooltipMissing": "Источник не найден"
+    },
+    "dumbMode": {
+      "banner": "AI Smart Mode отключён — показываю только результаты поиска по ключевым словам."
+    },
+    "rateLimit": {
+      "banner": "Достигнут rate-limit Claude. Возобновится в {resetAt}."
+    },
+    "error": {
+      "generic": "Что-то пошло не так во время стрима.",
+      "auth": "Claude разлогинен на сервере. Выполните claude login.",
+      "noBinary": "Бинарник claude не установлен на сервере."
+    },
+    "conversations": {
+      "title": "Диалоги",
+      "empty": "История диалогов пуста.",
+      "newConversation": "Новый чат",
+      "deleteConfirm": "Удалить диалог?",
+      "synthesisBadge": "Сохранён как заметка",
+      "rename": "Переименовать",
+      "delete": "Удалить"
+    },
+    "save": {
+      "dialogTitle": "Сохранить как synthesis",
+      "dialogSubtitle": "Создаст новый Document (type=synthesis) с этим ответом и цитатами.",
+      "titleLabel": "Заголовок",
+      "confirm": "Сохранить",
+      "saving": "Сохраняем…",
+      "saved": "Сохранено",
+      "openDocument": "Открыть документ"
+    }
+  },
   "cmdk": {
     "placeholder": "Поиск документов, проектов, решений…",
     "hint": "Подсказка: ⌘K — открыть, ↑/↓ — навигация, ↵ — открыть"

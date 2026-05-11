@@ -48,7 +48,7 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
       items: [
         { href: '/', label: t('dashboard'), icon: LayoutDashboard },
         { href: '/search', label: t('search'), icon: Search },
-        { href: '/ask', label: t('ask'), icon: MessageCircleQuestion, comingSoon: true },
+        { href: '/ask', label: t('ask'), icon: MessageCircleQuestion },
       ],
     },
     {

@@ -1,29 +1,20 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 
-import { PageHeader } from '@/components/page-header';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ChatPanel } from './_components/chat-panel';
+import { ConversationsSidebar } from './_components/conversations-sidebar';
 
 export default function AskPage(): JSX.Element {
-  const t = useTranslations('nav');
+  const [activeId, setActiveId] = useState<string | null>(null);
   return (
-    <div>
-      <PageHeader
-        title={t('ask')}
-        subtitle="Chat-style synthesis through server-side Claude (Phase 5/8)."
+    <div className="flex h-[calc(100vh-3.5rem)]">
+      <ConversationsSidebar
+        activeId={activeId}
+        onSelect={setActiveId}
+        onNew={() => setActiveId(null)}
       />
-      <div className="px-8 py-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>AI Smart Mode</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            Ask Brain streams answers with inline citations. It depends on the server-side Claude
-            orchestrator, which lands in Phase 5.
-          </CardContent>
-        </Card>
-      </div>
+      <ChatPanel conversationId={activeId} onConversationCreated={(id) => setActiveId(id)} />
     </div>
   );
 }

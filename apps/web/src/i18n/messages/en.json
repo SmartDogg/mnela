@@ -293,6 +293,61 @@
     "hits": "{count, plural, one {# result} other {# results}}",
     "cmdkHint": "Press ⌘K / Ctrl+K to search from anywhere"
   },
+  "ask": {
+    "title": "Ask Brain",
+    "subtitle": "Server-side Claude with inline citations.",
+    "placeholder": "Ask anything about your notes…",
+    "send": "Send",
+    "sending": "Streaming…",
+    "stop": "Stop",
+    "newChat": "New conversation",
+    "saveSynthesis": "Save as note",
+    "input": {
+      "hint": "Enter to send · Cmd+Enter for newline"
+    },
+    "empty": {
+      "title": "Ask anything",
+      "subtitle": "Your answer streams back with inline citations to the source notes.",
+      "examples": "Try \"What did I decide about Postgres FTS?\" or \"Summarize my Linear ideas from the last month\"."
+    },
+    "messages": {
+      "you": "You",
+      "assistant": "Brain",
+      "system": "System"
+    },
+    "citation": {
+      "tooltipMissing": "Source not found"
+    },
+    "dumbMode": {
+      "banner": "AI Smart Mode disabled — showing keyword search results only."
+    },
+    "rateLimit": {
+      "banner": "Claude rate limit reached. Resumes at {resetAt}."
+    },
+    "error": {
+      "generic": "Something went wrong while streaming the answer.",
+      "auth": "Claude is signed out on the server. Run claude login.",
+      "noBinary": "Claude binary is not installed on the server."
+    },
+    "conversations": {
+      "title": "Conversations",
+      "empty": "No past conversations yet.",
+      "newConversation": "New chat",
+      "deleteConfirm": "Delete this conversation?",
+      "synthesisBadge": "Saved as note",
+      "rename": "Rename",
+      "delete": "Delete"
+    },
+    "save": {
+      "dialogTitle": "Save as synthesis",
+      "dialogSubtitle": "Creates a new Document (type=synthesis) with this answer and its citations.",
+      "titleLabel": "Title",
+      "confirm": "Save",
+      "saving": "Saving…",
+      "saved": "Saved",
+      "openDocument": "Open document"
+    }
+  },
   "cmdk": {
     "placeholder": "Search documents, projects, decisions…",
     "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open"
