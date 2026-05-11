@@ -31,3 +31,19 @@ export const SearchSchema = z.object({
 });
 
 export class SearchDto extends createZodDto(SearchSchema) {}
+
+export const AskSchema = z.object({
+  query: z.string().min(1).max(4000),
+  conversationId: z.string().min(1).optional(),
+  mode: z.enum(['auto', 'fts']).default('auto'),
+});
+
+export class AskDto extends createZodDto(AskSchema) {}
+
+export const SaveSynthesisSchema = z.object({
+  conversationId: z.string().min(1),
+  messageId: z.string().min(1),
+  title: z.string().min(1).max(200).optional(),
+});
+
+export class SaveSynthesisDto extends createZodDto(SaveSynthesisSchema) {}

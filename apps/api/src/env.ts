@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { z } from 'zod';
 
 const EnvSchema = z.object({
@@ -28,6 +30,13 @@ const EnvSchema = z.object({
   SEARCH_FTS_WEIGHT: z.coerce.number().min(0).max(1).default(0.7),
   SEARCH_TRIGRAM_WEIGHT: z.coerce.number().min(0).max(1).default(0.3),
   SEARCH_TRIGRAM_THRESHOLD: z.coerce.number().min(0).max(1).default(0.3),
+
+  // Ask Brain (Phase 8) — same Claude binary + MCP config as the orchestrator.
+  MNELA_CLAUDE_BIN: z.string().default('claude'),
+  MNELA_CLAUDE_VAULT_DIR: z.string().optional(),
+  MNELA_CLAUDE_MCP_CONFIG: z.string().optional(),
+  MNELA_CLAUDE_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000),
+  ASK_DUMB_MODE_FTS_LIMIT: z.coerce.number().int().positive().max(20).default(5),
 });
 
 export type AppEnv = z.infer<typeof EnvSchema>;
@@ -49,4 +58,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
 
 export function resetEnvCache(): void {
   cached = undefined;
+}
+
+export function claudeVaultDir(env: AppEnv = loadEnv()): string {
+  return env.MNELA_CLAUDE_VAULT_DIR ?? path.resolve(env.MNELA_DATA_DIR, 'vault');
+}
+
+export function claudeMcpConfigPath(env: AppEnv = loadEnv()): string {
+  return (
+    env.MNELA_CLAUDE_MCP_CONFIG ?? path.resolve(env.MNELA_DATA_DIR, 'claude/claude-mcp-config.json')
+  );
 }

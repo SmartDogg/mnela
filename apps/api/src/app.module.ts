@@ -7,6 +7,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
+import { ConversationsModule } from './modules/conversations/conversations.module.js';
 import { DailyModule } from './modules/daily/daily.module.js';
 import { DecisionsModule } from './modules/decisions/decisions.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
@@ -60,6 +61,7 @@ const env = loadEnv();
     RepositoriesModule,
     AuditModule,
     AuthModule,
+    ConversationsModule,
     DailyModule,
     DecisionsModule,
     DocumentsModule,

@@ -36,6 +36,15 @@ export class SearchService implements OnModuleInit {
     return this.adapterFor(opts.mode).search(opts);
   }
 
+  /**
+   * FTS-only path used by Ask Brain Dumb Mode fallback (ADR-0029).
+   * Hybrid + trigram would require Claude to interpret the results;
+   * pure FTS is honest about being keyword-only.
+   */
+  searchFts(opts: SearchOptions): Promise<SearchResult> {
+    return this.fts.search(opts);
+  }
+
   private adapterFor(mode: SearchMode): SearchAdapter {
     switch (mode) {
       case 'fts':
