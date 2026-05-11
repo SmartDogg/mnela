@@ -69,3 +69,6 @@ data-*.zip
 .cache/
 .tmp-*/
 *.tgz
+
+# Claude Code session lock (Anthropic CLI)
+.claude/
