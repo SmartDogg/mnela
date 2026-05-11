@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api, ApiError } from '@/lib/api/client';
 import type { DocumentDetail } from '@/lib/api/types';
-import { formatBytes, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
 
 interface TranscriptionMeta {
   engine?: string;
@@ -51,7 +51,11 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
   const t = useTranslations('documentDetail');
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(document.title);
-  const [contentMd, setContentMd] = useState(document.contentMd);
+  // Document model has rawText + optional cleanText (enrichment output). The
+  // editor edits cleanText so the user's manual corrections don't overwrite
+  // the source-of-truth rawText.
+  const initialContent = document.cleanText ?? document.rawText;
+  const [contentMd, setContentMd] = useState(initialContent);
 
   const isAudio = document.type === 'audio';
   const transcription = readTranscriptionMeta(document.metadata);
@@ -86,7 +90,7 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
     },
   });
 
-  const dirty = title !== document.title || contentMd !== document.contentMd;
+  const dirty = title !== document.title || contentMd !== initialContent;
 
   return (
     <div className="grid grid-cols-1 gap-0 xl:grid-cols-[1fr_320px]">
@@ -205,7 +209,11 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
             <Field label={t('language')} value={document.language ?? '—'} />
             <Field
               label={t('size')}
-              value={document.byteSize ? formatBytes(document.byteSize) : '—'}
+              value={
+                document.rawText.length > 0
+                  ? `${document.rawText.length.toLocaleString()} chars`
+                  : '—'
+              }
             />
             <Field
               label={t('hash')}
@@ -215,25 +223,31 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
             />
             <Field
               label={t('fetchedAt')}
-              value={document.fetchedAt ? formatDate(document.fetchedAt) : '—'}
+              value={document.enrichedAt ? formatDate(document.enrichedAt) : '—'}
             />
           </CardContent>
         </Card>
 
-        {document.projectSlugs && document.projectSlugs.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Projects</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {document.projectSlugs.map((slug) => (
-                <Badge key={slug} variant="outline">
-                  {slug}
-                </Badge>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+        {(() => {
+          const importMeta =
+            document.metadata && typeof document.metadata === 'object'
+              ? (document.metadata['__import'] as { batchId?: string; origin?: string } | undefined)
+              : undefined;
+          if (!importMeta?.batchId) return null;
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle>Import</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                <Badge variant="outline">{importMeta.origin ?? 'upload'}</Badge>
+                <code className="font-mono text-[10px] text-muted-foreground">
+                  {importMeta.batchId.slice(0, 8)}…
+                </code>
+              </CardContent>
+            </Card>
+          );
+        })()}
       </aside>
     </div>
   );

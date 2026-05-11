@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api/client';
-import type { ProjectDetail } from '@/lib/api/types';
+import type { DecisionSummary, DocumentSummary, Paginated, ProjectDetail } from '@/lib/api/types';
 
 interface ProjectEntity {
   id: string;
@@ -34,6 +34,26 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
     queryFn: () =>
       api.get<string[]>(`/projects/${encodeURIComponent(project.slug)}/open-questions`),
   });
+
+  // API doesn't expose denormalized counts on /projects/:slug — fetch them
+  // through the list endpoints with limit=1 and read the .total field. Cheap
+  // and avoids drift.
+  const documentCountQuery = useQuery({
+    queryKey: ['project', project.slug, 'documents-count'],
+    queryFn: () =>
+      api.get<Paginated<DocumentSummary>>('/documents', {
+        query: { projectSlug: project.slug, limit: 1 },
+      }),
+  });
+  const decisionCountQuery = useQuery({
+    queryKey: ['project', project.slug, 'decisions-count'],
+    queryFn: () =>
+      api.get<Paginated<DecisionSummary>>('/decisions', {
+        query: { projectSlug: project.slug, limit: 1 },
+      }),
+  });
+  const documentCount = documentCountQuery.data?.total ?? 0;
+  const decisionCount = decisionCountQuery.data?.total ?? 0;
 
   const refreshMutation = useMutation({
     mutationFn: () =>
@@ -94,12 +114,12 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
           </TabsContent>
           <TabsContent value="documents">
             <p className="text-sm text-muted-foreground">
-              {project.documentCount} document{project.documentCount === 1 ? '' : 's'} linked.
+              {documentCount} document{documentCount === 1 ? '' : 's'} linked.
             </p>
           </TabsContent>
           <TabsContent value="decisions">
             <p className="text-sm text-muted-foreground">
-              {project.decisionCount} decision{project.decisionCount === 1 ? '' : 's'}.
+              {decisionCount} decision{decisionCount === 1 ? '' : 's'}.
             </p>
           </TabsContent>
           <TabsContent value="entities">

@@ -37,24 +37,28 @@ export interface Paginated<T> {
 export interface DocumentSummary {
   id: string;
   title: string;
-  type: DocumentType;
+  type: DocumentType | null;
   status: DocumentStatus;
   source: SourceType;
+  sourceId?: string | null;
   language: string | null;
+  tokenCount?: number | null;
   createdAt: string;
   updatedAt: string;
-  archived: boolean;
-  contentPreview?: string;
-  projectSlugs?: string[];
+  ingestedAt: string;
+  enrichedAt: string | null;
+  archivedAt: string | null;
 }
 
+// Mirrors what /documents/:id returns — full Document row from Prisma. Earlier
+// the web type invented contentMd/byteSize/fetchedAt/projectSlugs that the API
+// never emits. Use `cleanText ?? rawText` when you want a single editable body.
 export interface DocumentDetail extends DocumentSummary {
-  contentMd: string;
   rawText: string;
+  cleanText: string | null;
   metadata: Record<string, unknown>;
   contentHash: string;
-  byteSize: number | null;
-  fetchedAt: string | null;
+  vaultPath: string | null;
 }
 
 export interface DocumentChunk {
@@ -65,38 +69,45 @@ export interface DocumentChunk {
   tokenCount: number;
 }
 
+export type ProjectStatus = 'active' | 'archived' | 'paused';
+
 export interface ProjectSummary {
   id: string;
   slug: string;
   name: string;
+  description: string | null;
+  status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
-  archived: boolean;
-  description?: string | null;
 }
 
+// API /projects/:slug returns the bare Project row — no derived counts.
+// Components needing documentCount / decisionCount should issue separate
+// queries (e.g. /documents?projectSlug=foo&limit=1 and read `.total`).
 export interface ProjectDetail extends ProjectSummary {
   contextMd: string | null;
-  documentCount: number;
-  decisionCount: number;
+  metadata: Record<string, unknown> | null;
 }
 
-export type DecisionStatus = 'open' | 'in_progress' | 'decided' | 'reverted';
+export type DecisionStatus = 'active' | 'superseded' | 'rejected';
 
 export interface DecisionSummary {
   id: string;
+  projectId: string | null;
   title: string;
   status: DecisionStatus;
-  projectSlug: string | null;
-  decidedAt: string | null;
+  decidedAt: string;
   createdAt: string;
-  updatedAt: string;
 }
 
+// Mirrors the Decision Prisma row — fields are decision/context/consequences
+// (not *Md). Drop the `updatedAt` invention.
 export interface DecisionDetail extends DecisionSummary {
-  contextMd: string;
-  decisionMd: string;
-  consequencesMd: string;
+  decision: string;
+  context: string | null;
+  consequences: string | null;
+  supersededById: string | null;
+  sourceDocumentId: string | null;
 }
 
 export interface DailyNote {
@@ -235,6 +246,8 @@ export interface SystemStats {
   edges: number;
   projects: number;
   decisions: number;
+  inboxPending: number;
+  jobsQueued: number;
   dbSizeBytes: number;
 }
 

@@ -244,6 +244,8 @@ function translateError(
       return t('error.noBinary');
     case 'auth':
       return t('error.auth');
+    case 'rate-limit':
+      return t('error.rateLimit');
     default:
       return t('error.generic');
   }

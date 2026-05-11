@@ -7,6 +7,7 @@ import { ClaudeStatusService } from './claude-status/claude-status.service.js';
 import { EnrichmentConsumer } from './enrichment/enrichment.consumer.js';
 import { EnrichmentPipeline } from './enrichment/pipeline.js';
 import { loadEnv } from './env.js';
+import { McpConfigBoot } from './mcp/mcp-config.boot.js';
 import { RateLimitService } from './rate-limit/rate-limit.service.js';
 import { RedisService } from './redis.service.js';
 import { RepositoriesModule } from './repositories.module.js';
@@ -33,6 +34,7 @@ const env = loadEnv();
     RedisService,
     SearchBridge,
     ClaudeStatusService,
+    McpConfigBoot,
     ClaudeStatusBoot,
     RateLimitService,
     EnrichmentPipeline,

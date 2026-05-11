@@ -29,7 +29,7 @@ export default async function DocumentDetailPage({
   return (
     <>
       {highlight && (
-        <HighlightBanner body={document.rawText || document.contentMd} query={highlight} />
+        <HighlightBanner body={document.cleanText ?? document.rawText} query={highlight} />
       )}
       <DocumentDetailView document={document} />
     </>

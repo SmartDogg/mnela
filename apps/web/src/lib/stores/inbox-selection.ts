@@ -26,7 +26,7 @@ export const useInboxSelection = create<InboxSelectionState>((set, get) => ({
       else next.delete(id);
       return { selectedIds: next };
     }),
-  clear: () => set({ selectedIds: new Set() }),
+  clear: () => set((state) => (state.selectedIds.size === 0 ? state : { selectedIds: new Set() })),
   selectAll: (ids) => set({ selectedIds: new Set(ids) }),
   has: (id) => get().selectedIds.has(id),
   size: () => get().selectedIds.size,

@@ -343,9 +343,10 @@
       "banner": "Достигнут rate-limit Claude. Возобновится в {resetAt}."
     },
     "error": {
-      "generic": "Что-то пошло не так во время стрима.",
-      "auth": "Claude разлогинен на сервере. Выполните claude login.",
-      "noBinary": "Бинарник claude не установлен на сервере."
+      "generic": "Claude не смог сгенерировать ответ. Попробуй `claude -p \"hi\"` в shell сервера для отладки (обычно: MCP stdio config или rate limit).",
+      "auth": "Claude разлогинен на сервере. SSH и `claude login`.",
+      "noBinary": "Бинарник claude не установлен на сервере.",
+      "rateLimit": "Достигнут rate-limit Claude. Дождись сброса окна."
     },
     "conversations": {
       "title": "Диалоги",

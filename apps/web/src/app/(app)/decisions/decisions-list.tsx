@@ -164,10 +164,14 @@ export function DecisionsList(): JSX.Element {
                   <Badge variant="outline">{t(`status.${d.status}`)}</Badge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {d.projectSlug ?? '—'}
+                  {d.projectId ? (
+                    <code className="font-mono">{d.projectId.slice(0, 8)}…</code>
+                  ) : (
+                    '—'
+                  )}
                 </TableCell>
                 <TableCell className="text-right text-xs text-muted-foreground">
-                  {relativeTime(d.updatedAt)}
+                  {relativeTime(d.decidedAt)}
                 </TableCell>
               </TableRow>
             ))}

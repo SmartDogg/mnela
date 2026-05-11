@@ -80,12 +80,16 @@ export default function InboxPage(): JSX.Element {
     return items.filter((i) => new Date(i.createdAt) >= after);
   }, [inboxQuery.data, filters.range]);
 
-  // Clear selection when filters change so stale ids don't survive.
+  // Clear selection when filters change so stale ids don't survive. Depend on
+  // the Zustand `clear` action — its identity is stable across renders, unlike
+  // the whole `selection` object whose reference flips on every state change
+  // and used to trigger an infinite re-render loop here.
+  const clearSelection = useInboxSelection((s) => s.clear);
   useEffect(() => {
-    selection.clear();
+    clearSelection();
     setEditingId(null);
     setFocusedId(null);
-  }, [filters.status, filters.type, filters.projectSlug, filters.range, selection]);
+  }, [filters.status, filters.type, filters.projectSlug, filters.range, clearSelection]);
 
   const handleFilterChange = (next: typeof DEFAULT_FILTERS): void => {
     const params = filtersToSearchParams(next).toString();

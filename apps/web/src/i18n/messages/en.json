@@ -343,9 +343,10 @@
       "banner": "Claude rate limit reached. Resumes at {resetAt}."
     },
     "error": {
-      "generic": "Something went wrong while streaming the answer.",
-      "auth": "Claude is signed out on the server. Run claude login.",
-      "noBinary": "Claude binary is not installed on the server."
+      "generic": "Claude failed to produce an answer. Try `claude -p \"hi\"` in your server shell to reproduce and debug (often: MCP stdio config or rate limit).",
+      "auth": "Claude is signed out on the server. SSH in and run `claude login`.",
+      "noBinary": "Claude binary is not installed on the server. Install Claude Code first.",
+      "rateLimit": "Claude rate limit hit. Wait for the window to reset."
     },
     "conversations": {
       "title": "Conversations",

@@ -133,11 +133,6 @@ export function DocumentsList(): JSX.Element {
                   <Link href={`/documents/${doc.id}`} className="font-medium hover:underline">
                     {doc.title}
                   </Link>
-                  {doc.contentPreview && (
-                    <p className="line-clamp-1 text-xs text-muted-foreground">
-                      {doc.contentPreview}
-                    </p>
-                  )}
                 </TableCell>
                 <TableCell>
                   <span className="text-xs text-muted-foreground">{doc.type}</span>
