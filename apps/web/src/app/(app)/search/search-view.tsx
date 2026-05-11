@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { api } from '@/lib/api/client';
 import { sanitizeHighlight } from '@/lib/text/sanitize-highlights';
 import type { SearchHit, SearchMode, SearchResult } from '@/lib/api/types';
@@ -28,7 +27,7 @@ export function SearchView(): JSX.Element {
   const [debounced, setDebounced] = useState('');
   const [mode, setMode] = useState<SearchMode>('hybrid');
   const [hits, setHits] = useState<SearchHit[]>([]);
-  const [meta, setMeta] = useState<{ total: number; durationMs: number } | null>(null);
+  const [meta, setMeta] = useState<{ total: number } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), DEBOUNCE_MS);
@@ -40,7 +39,7 @@ export function SearchView(): JSX.Element {
       api.post<SearchResult>('/search', { query: q, mode: m, limit: 30 }),
     onSuccess: (res) => {
       setHits(res.hits);
-      setMeta({ total: res.total, durationMs: res.durationMs });
+      setMeta({ total: res.total });
     },
   });
 
@@ -80,8 +79,6 @@ export function SearchView(): JSX.Element {
       {meta && (
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span>{t('hits', { count: meta.total })}</span>
-          <span>·</span>
-          <span>{t('duration', { ms: meta.durationMs })}</span>
         </div>
       )}
 
@@ -99,10 +96,7 @@ export function SearchView(): JSX.Element {
           >
             <div className="flex items-center gap-2">
               <span className="font-medium">{hit.title}</span>
-              <Badge variant="outline" className="ml-auto text-[10px]">
-                {hit.type}
-              </Badge>
-              <span className="text-xs tabular-nums text-muted-foreground">
+              <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                 {hit.score.toFixed(2)}
               </span>
             </div>
@@ -112,15 +106,6 @@ export function SearchView(): JSX.Element {
                 dangerouslySetInnerHTML={{ __html: sanitizeHighlight(hit.snippet) }}
               />
             )}
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-              <span>{hit.source}</span>
-              {hit.matchedTerms.length > 0 && (
-                <>
-                  <span>·</span>
-                  <span>{hit.matchedTerms.slice(0, 5).join(', ')}</span>
-                </>
-              )}
-            </div>
           </Link>
         ))}
       </div>

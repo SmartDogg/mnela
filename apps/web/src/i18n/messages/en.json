@@ -369,7 +369,8 @@
   },
   "cmdk": {
     "placeholder": "Search documents, projects, decisions…",
-    "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open"
+    "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open",
+    "results": "Results"
   },
   "graph": {
     "title": "Graph",

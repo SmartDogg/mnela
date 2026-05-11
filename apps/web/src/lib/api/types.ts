@@ -181,14 +181,16 @@ export interface JobErrorRateStats {
   rate: number;
 }
 
+// Mirrors @mnela/search SearchHit — the API only returns documentId/title/
+// snippet/score plus the FTS / trigram intermediates. Source/type/matchedTerms
+// are not emitted; resolve them via /documents/:id when needed.
 export interface SearchHit {
   documentId: string;
   title: string;
-  snippet: string;
+  snippet?: string;
   score: number;
-  source: SourceType;
-  type: DocumentType;
-  matchedTerms: string[];
+  ftsRank?: number;
+  trigramSimilarity?: number;
 }
 
 export interface SearchResult {
@@ -197,7 +199,6 @@ export interface SearchResult {
   limit: number;
   total: number;
   mode: 'fts' | 'fuzzy' | 'hybrid';
-  durationMs: number;
 }
 
 export type SearchMode = 'fts' | 'fuzzy' | 'hybrid';
@@ -251,9 +252,12 @@ export interface SystemStats {
   dbSizeBytes: number;
 }
 
+// API stores SystemConfig.value as Json — entries can be strings, booleans, or
+// objects (e.g. enrichment.confidenceThresholds = { needsReview, autoConfirmed }).
+// Don't render `value` directly into JSX — stringify it first.
 export interface SystemConfigEntry {
   key: string;
-  value: string;
+  value: unknown;
   updatedAt: string;
 }
 

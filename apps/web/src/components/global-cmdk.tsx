@@ -3,7 +3,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   Command,
@@ -70,7 +70,6 @@ export function GlobalCmdk(): JSX.Element {
   );
 
   const isLoading = search.isPending;
-  const groups = useMemo(() => groupHits(hits), [hits]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => (o ? open() : close())}>
@@ -85,9 +84,9 @@ export function GlobalCmdk(): JSX.Element {
             {!isLoading && debounced && hits.length === 0 && (
               <CommandEmpty>{tCommon('empty')}</CommandEmpty>
             )}
-            {groups.map((group) => (
-              <CommandGroup key={group.label} heading={group.label}>
-                {group.hits.map((hit) => (
+            {hits.length > 0 && (
+              <CommandGroup heading={t('results')}>
+                {hits.map((hit) => (
                   <CommandItem
                     key={hit.documentId}
                     onSelect={() => select(hit)}
@@ -102,7 +101,7 @@ export function GlobalCmdk(): JSX.Element {
                   </CommandItem>
                 ))}
               </CommandGroup>
-            ))}
+            )}
           </CommandList>
           <div className="flex items-center justify-end gap-2 border-t px-3 py-2 text-[11px] text-muted-foreground">
             {t('hint')}
@@ -111,43 +110,4 @@ export function GlobalCmdk(): JSX.Element {
       </DialogContent>
     </Dialog>
   );
-}
-
-interface HitGroup {
-  label: string;
-  hits: SearchHit[];
-}
-
-function groupHits(hits: SearchHit[]): HitGroup[] {
-  const map = new Map<string, SearchHit[]>();
-  for (const hit of hits) {
-    const key = labelForType(hit.type);
-    const existing = map.get(key);
-    if (existing) existing.push(hit);
-    else map.set(key, [hit]);
-  }
-  return Array.from(map.entries()).map(([label, hits]) => ({ label, hits }));
-}
-
-function labelForType(type: string): string {
-  switch (type) {
-    case 'conversation':
-      return 'Conversations';
-    case 'note':
-      return 'Notes';
-    case 'article':
-      return 'Articles';
-    case 'document':
-      return 'Documents';
-    case 'transcript':
-      return 'Transcripts';
-    case 'image':
-      return 'Images';
-    case 'audio':
-      return 'Audio';
-    case 'synthesis':
-      return 'Synthesis';
-    default:
-      return 'Other';
-  }
 }
