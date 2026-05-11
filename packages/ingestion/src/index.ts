@@ -11,6 +11,17 @@ export { detectLanguage } from './language.js';
 export { sha256Hex, namespaceHash } from './content-hash.js';
 export { readZipEntries, type ZipEntry } from './zip.js';
 export { resolveParser, type ResolvedParser } from './registry.js';
+export {
+  createWhisperClient,
+  WhisperError,
+  type WhisperClient,
+  type WhisperClientOptions,
+  type WhisperErrorReason,
+  type WhisperHealth,
+  type WhisperSegment,
+  type WhisperTranscription,
+  type TranscribeOptions,
+} from './whisper-client.js';
 
 export { txtParser } from './parsers/txt.js';
 export { mdParser } from './parsers/md.js';
