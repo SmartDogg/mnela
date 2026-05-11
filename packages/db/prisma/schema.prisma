@@ -303,6 +303,7 @@ enum JobType {
   refresh_project_context
   rebuild_index
   export_vault
+  transcribe_audio
 }
 
 enum JobStatus {
