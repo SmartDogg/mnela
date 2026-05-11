@@ -22,6 +22,7 @@ export interface MnelaGraphProps {
   edges: Edge[];
   layout?: MnelaGraphLayout;
   onNodeClick?: (entity: Entity) => void;
+  onEdgeClick?: (edge: Edge) => void;
   onEdgeHover?: (edge: Edge | null) => void;
   className?: string;
   miniMap?: boolean;
@@ -314,6 +315,7 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
     edges,
     layout = 'cose',
     onNodeClick,
+    onEdgeClick,
     onEdgeHover,
     className,
     miniMap = false,
@@ -329,8 +331,10 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
   edgesRef.current = edges;
 
   const onNodeClickRef = useRef(onNodeClick);
+  const onEdgeClickRef = useRef(onEdgeClick);
   const onEdgeHoverRef = useRef(onEdgeHover);
   onNodeClickRef.current = onNodeClick;
+  onEdgeClickRef.current = onEdgeClick;
   onEdgeHoverRef.current = onEdgeHover;
 
   const runLayout = useCallback(async (cy: cytoscape.Core, name: MnelaGraphLayout) => {
@@ -356,6 +360,11 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
       const data = evt.target.data() as { id?: string };
       const found = nodesRef.current.find((n) => n.id === data.id);
       if (found) onNodeClickRef.current?.(found);
+    });
+    cy.on('tap', 'edge', (evt) => {
+      const data = evt.target.data() as { id?: string };
+      const found = edgesRef.current.find((e) => e.id === data.id);
+      if (found) onEdgeClickRef.current?.(found);
     });
     cy.on('mouseover', 'edge', (evt) => {
       const data = evt.target.data() as { id?: string };
