@@ -1,14 +1,17 @@
 import crypto from 'node:crypto';
-import { promises as fs } from 'node:fs';
+import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
 
 import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
 } from '@nestjs/common';
 import {
+  AttachmentRepository,
   type DocumentListFilters,
   DocumentRepository,
   JobRepository,
@@ -16,11 +19,13 @@ import {
   ProjectRepository,
   type UpdateDocumentInput,
 } from '@mnela/db';
+import { readWhisperStatus } from '@mnela/queue';
 import { Prisma } from '@prisma/client';
-import type { Document, Job } from '@prisma/client';
+import type { Attachment, Document, Job } from '@prisma/client';
 
 import { loadEnv } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
+import { RedisService } from '../../redis.service.js';
 
 const PHASE2_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB; ZIP imports go through /imports.
 
@@ -43,6 +48,17 @@ interface RelatedRow {
   similarity: number;
 }
 
+export interface AttachmentStreamInput {
+  range?: string;
+}
+
+export interface AttachmentStreamResult {
+  status: 200 | 206 | 416;
+  headers: Record<string, string>;
+  stream?: Readable;
+  filename: string;
+}
+
 @Injectable()
 export class DocumentsService {
   private readonly uploadsDir: string;
@@ -53,6 +69,8 @@ export class DocumentsService {
     private readonly prisma: PrismaService,
     private readonly jobs: JobRepository,
     private readonly queue: QueueService,
+    private readonly attachments: AttachmentRepository,
+    private readonly redis: RedisService,
   ) {
     void this.projects;
     const env = loadEnv();
@@ -176,6 +194,144 @@ export class DocumentsService {
     `);
     return rows.map((r) => ({ id: r.id, title: r.title, similarity: Number(r.similarity) }));
   }
+
+  async retranscribe(id: string): Promise<{ jobId: string }> {
+    const doc = await this.findById(id);
+    if (doc.type !== 'audio') {
+      throw new ConflictException(`Document ${id} is not audio (type=${doc.type ?? 'null'})`);
+    }
+    const whisper = await readWhisperStatus(this.redis.client);
+    if (!whisper.available) {
+      throw new ServiceUnavailableException({
+        title: 'Whisper unavailable',
+        reason: whisper.reason ?? 'unknown',
+        hint:
+          whisper.reason === 'not-enabled'
+            ? 'Set MNELA_TRANSCRIPTION=enabled and start the whisper container with --profile optional'
+            : 'Check that the whisper container is running and healthy',
+      });
+    }
+    const job = await this.jobs.create({
+      type: 'transcribe_audio',
+      payload: { documentId: id, retranscribe: true },
+      documentId: id,
+    });
+    await this.queue.enqueueTranscribeAudio({ dbJobId: job.id, documentId: id });
+    return { jobId: job.id };
+  }
+
+  async retranscribePending(limit = 50): Promise<{ enqueued: number; jobIds: string[] }> {
+    const whisper = await readWhisperStatus(this.redis.client);
+    if (!whisper.available) {
+      throw new ServiceUnavailableException({
+        title: 'Whisper unavailable',
+        reason: whisper.reason ?? 'unknown',
+      });
+    }
+    const pending = await this.prisma.active().document.findMany({
+      where: { type: 'audio', status: 'raw' },
+      select: { id: true },
+      take: Math.min(limit, 200),
+      orderBy: { createdAt: 'asc' },
+    });
+    const jobIds: string[] = [];
+    for (const { id } of pending) {
+      const job = await this.jobs.create({
+        type: 'transcribe_audio',
+        payload: { documentId: id, backfill: true },
+        documentId: id,
+      });
+      await this.queue.enqueueTranscribeAudio({ dbJobId: job.id, documentId: id });
+      jobIds.push(job.id);
+    }
+    return { enqueued: jobIds.length, jobIds };
+  }
+
+  async streamAttachment(
+    id: string,
+    input: AttachmentStreamInput,
+  ): Promise<AttachmentStreamResult> {
+    const doc = await this.findById(id);
+    if (doc.archivedAt) {
+      throw new NotFoundException(`Document ${id} is archived`);
+    }
+    const atts = await this.attachments.listForDocument(id);
+    const att: Attachment | undefined =
+      atts.find((a) => doc.type === 'audio' && a.mimeType.startsWith('audio/')) ?? atts[0];
+    if (!att) {
+      throw new NotFoundException(`Document ${id} has no attachment`);
+    }
+
+    let stat: Awaited<ReturnType<typeof fs.stat>>;
+    try {
+      stat = await fs.stat(att.path);
+    } catch {
+      throw new NotFoundException(`Attachment file missing on disk: ${att.path}`);
+    }
+    const totalSize = stat.size;
+    const safeFilename = att.filename.replace(/[\r\n"\\]/g, '_');
+    const baseHeaders: Record<string, string> = {
+      'Content-Type': att.mimeType,
+      'Accept-Ranges': 'bytes',
+      'Content-Disposition': `inline; filename="${safeFilename}"`,
+      'Cache-Control': 'private, max-age=0',
+    };
+
+    const range = input.range;
+    if (!range) {
+      return {
+        status: 200,
+        headers: { ...baseHeaders, 'Content-Length': String(totalSize) },
+        stream: createReadStream(att.path),
+        filename: att.filename,
+      };
+    }
+
+    const parsed = parseRangeHeader(range, totalSize);
+    if (!parsed) {
+      return {
+        status: 416,
+        headers: { ...baseHeaders, 'Content-Range': `bytes */${totalSize}` },
+        filename: att.filename,
+      };
+    }
+    const { start, end } = parsed;
+    return {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+        'Content-Length': String(end - start + 1),
+      },
+      stream: createReadStream(att.path, { start, end }),
+      filename: att.filename,
+    };
+  }
+}
+
+function parseRangeHeader(
+  header: string,
+  totalSize: number,
+): { start: number; end: number } | null {
+  // Only single-range `bytes=START-END?` (no multipart). Anything else → 416.
+  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!match) return null;
+  const startRaw = match[1] ?? '';
+  const endRaw = match[2] ?? '';
+  if (startRaw === '' && endRaw === '') return null;
+  const lastByte = totalSize - 1;
+  if (startRaw === '') {
+    // Suffix range: last N bytes.
+    const suffix = Number.parseInt(endRaw, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return null;
+    const start = Math.max(0, totalSize - suffix);
+    return { start, end: lastByte };
+  }
+  const start = Number.parseInt(startRaw, 10);
+  if (!Number.isFinite(start) || start < 0 || start > lastByte) return null;
+  const end = endRaw === '' ? lastByte : Math.min(Number.parseInt(endRaw, 10), lastByte);
+  if (!Number.isFinite(end) || end < start) return null;
+  return { start, end };
 }
 
 function sha256Hex(input: Buffer): string {

@@ -4,18 +4,21 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
   Query,
+  Res,
   ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
@@ -113,5 +116,45 @@ export class DocumentsController {
       title: 'AI Smart Mode disabled',
       message: 'Claude Code orchestrator lands in Phase 5',
     });
+  }
+
+  @Post(':id/retranscribe')
+  @RequiredScope('mcp')
+  @Audit({ action: 'document.retranscribe', targetType: 'Document', targetIdParam: 'id' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary:
+      'Re-enqueue audio transcription via whisper.cpp (requires MNELA_TRANSCRIPTION=enabled)',
+  })
+  retranscribe(@Param('id') id: string) {
+    return this.documents.retranscribe(id);
+  }
+
+  @Get(':id/attachment')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'Stream the document attachment (audio/image binary) with Range support (206 Partial Content)',
+  })
+  async attachment(
+    @Param('id') id: string,
+    @Headers('range') range: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    const result = await this.documents.streamAttachment(id, range ? { range } : {});
+    res.status(result.status);
+    for (const [key, value] of Object.entries(result.headers)) {
+      res.setHeader(key, value);
+    }
+    if (!result.stream) {
+      res.end();
+      return;
+    }
+    result.stream.on('error', (err) => {
+      // Stream errors after headers were sent — just terminate. NestJS error
+      // filters can't intercept a half-written response anyway.
+      res.destroy(err);
+    });
+    result.stream.pipe(res);
   }
 }

@@ -1,12 +1,25 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Get,
+  HttpCode,
+  HttpStatus,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { Public } from '../../auth/public.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
+import { DocumentsService } from '../documents/documents.service.js';
 import { ClaudeService } from './claude.service.js';
 import { SetConfigDto } from './dto.js';
 import { SystemService } from './system.service.js';
+import { WhisperService } from './whisper.service.js';
 
 @ApiTags('system')
 @ApiCookieAuth('mnela_session')
@@ -16,6 +29,8 @@ export class SystemController {
   constructor(
     private readonly system: SystemService,
     private readonly claude: ClaudeService,
+    private readonly whisper: WhisperService,
+    private readonly documents: DocumentsService,
   ) {}
 
   @Get('stats')
@@ -54,5 +69,28 @@ export class SystemController {
   @ApiOperation({ summary: 'Probe Claude Code binary and refresh status' })
   claudeTest() {
     return this.claude.runTest();
+  }
+
+  @Get('whisper-status')
+  @Public()
+  @ApiOperation({
+    summary: 'whisper.cpp transcription availability (Redis-backed, mirror of claude-status)',
+  })
+  whisperStatus() {
+    return this.whisper.getStatus();
+  }
+
+  @Post('transcribe-pending')
+  @RequiredScope('admin')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Audit({ action: 'system.transcribe_pending', targetType: 'System' })
+  @ApiOperation({
+    summary:
+      'Backfill: enqueue transcription jobs for every audio Document still at status=raw (capped at 50; pass ?limit=N up to 200).',
+  })
+  transcribePending(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ): Promise<{ enqueued: number; jobIds: string[] }> {
+    return this.documents.retranscribePending(limit);
   }
 }

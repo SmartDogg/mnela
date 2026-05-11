@@ -1,5 +1,11 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { type IngestFileJob, QUEUE_NAMES, createQueueConnection, publishEvent } from '@mnela/queue';
+import {
+  type IngestFileJob,
+  type TranscribeAudioJob,
+  QUEUE_NAMES,
+  createQueueConnection,
+  publishEvent,
+} from '@mnela/queue';
 import { Queue, type JobsOptions } from 'bullmq';
 import { type Redis } from 'ioredis';
 
@@ -7,7 +13,7 @@ import { loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
 
 /**
- * API-side BullMQ producer. Owns the queue handle for the lifetime of the
+ * API-side BullMQ producer. Owns the queue handles for the lifetime of the
  * application; consumers live in apps/worker. Uses a dedicated Redis
  * connection because BullMQ requires `maxRetriesPerRequest: null`.
  */
@@ -15,6 +21,7 @@ import { RedisService } from '../redis.service.js';
 export class QueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(QueueService.name);
   private ingestionQueue?: Queue<IngestFileJob>;
+  private transcriptionQueue?: Queue<TranscribeAudioJob>;
   private bullConnection?: Redis;
 
   constructor(private readonly redis: RedisService) {}
@@ -25,12 +32,17 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     this.ingestionQueue = new Queue<IngestFileJob>(QUEUE_NAMES[0], {
       connection: this.bullConnection,
     });
+    this.transcriptionQueue = new Queue<TranscribeAudioJob>(QUEUE_NAMES[4], {
+      connection: this.bullConnection,
+    });
     await this.ingestionQueue.waitUntilReady();
-    this.logger.log('bullmq ingestion queue connected');
+    await this.transcriptionQueue.waitUntilReady();
+    this.logger.log('bullmq ingestion + transcription queues connected');
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.ingestionQueue?.close().catch(() => undefined);
+    await this.transcriptionQueue?.close().catch(() => undefined);
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
@@ -49,6 +61,30 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       payload: {
         jobId: payload.dbJobId,
         jobType: 'ingest_file',
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return bullJob.id ?? payload.dbJobId;
+  }
+
+  async enqueueTranscribeAudio(
+    payload: TranscribeAudioJob,
+    opts: JobsOptions = {},
+  ): Promise<string> {
+    if (!this.transcriptionQueue) throw new Error('transcription queue not initialized');
+    const bullJob = await this.transcriptionQueue.add('transcribe-audio', payload, {
+      jobId: payload.dbJobId,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
+      removeOnComplete: { count: 1000 },
+      removeOnFail: { count: 1000 },
+      ...opts,
+    });
+    await publishEvent(this.redis.client, {
+      type: 'job.created',
+      payload: {
+        jobId: payload.dbJobId,
+        jobType: 'transcribe_audio',
         createdAt: new Date().toISOString(),
       },
     });
