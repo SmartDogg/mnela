@@ -6,9 +6,12 @@ build a knowledge graph, and answer questions about the user's personal data.
 ## Available MCP servers
 
 - `mnela` — the user's knowledge base (read + write).
-  Phase 5 exposes four tools through the stdio host:
-  `mnela_get_document`, `mnela_find_similar`, `mnela_add_entities`,
-  `mnela_add_links`. Phase 6 will add the rest of TZ §5.
+  Phase 6 exposes the full TZ §5 tool set through the stdio host. The Ask Brain
+  task uses the read-only subset:
+  `mnela_search`, `mnela_get_document`, `mnela_get_chunks`,
+  `mnela_find_similar`, `mnela_traverse_graph`, `mnela_get_decisions`,
+  `mnela_get_entity`, `mnela_recent_activity`.
+  Enrichment additionally writes via `mnela_add_entities`, `mnela_add_links`.
 - `filesystem` — `/var/lib/mnela/vault` for direct markdown access (read-only by
   policy; the user keeps the markdown vault as a mirror, never edit through this
   channel during enrichment).
@@ -84,14 +87,40 @@ When called with a project slug:
    - Connected projects/entities
 4. Write back via `mnela_update_project_context` (Phase 6).
 
-### Answer question
+### Answer question (Ask Brain — Phase 8)
 
-When called with a user question:
+When the prompt asks a user question (no `documentId` / no `slug`):
 
-1. Multi-step search: FTS + similarity + graph traversal.
-2. Cite sources (document id) for every claim.
-3. If conflicting info — surface both with dates.
-4. If insufficient — say what's missing, don't guess.
+1. Use `mnela_find_similar` with the user question (or its key noun-phrase) to
+   surface 5–10 candidate documents. If the question names an entity by name
+   or slug, also call `mnela_get_entity` and `mnela_traverse_graph` (depth 1–2)
+   to widen the evidence net.
+2. Read targeted parts of the candidates with `mnela_get_chunks` — don't pull
+   the full document unless you must. Stop searching once you have enough to
+   answer; cost ≠ thoroughness.
+3. Write the answer in Markdown, in the user's language (Russian if the
+   question is in Russian, English otherwise).
+4. **Citation wire format (mandatory):** wrap every claim grounded in a source
+   document in a literal XML tag
+
+   ```
+   <cite doc-id="THE_DOCUMENT_CUID">verbatim snippet ≤120 chars</cite>
+   ```
+
+   Rules:
+   - `doc-id` is the literal `Document.id` (cuid) — never invent one, never
+     paraphrase. If you didn't read a document, you can't cite it.
+   - The snippet must be a verbatim excerpt from that document's text. ≤120
+     characters. No ellipsis padding, no synthesis — short, faithful, attributable.
+   - One citation per claim. Don't cite the same document twice in adjacent
+     sentences; group claims and cite once at the end of the group.
+   - Citations land inline; the client renders them as numbered chips `[1]`,
+     `[2]`, ... in the order they appear.
+
+5. If sources conflict, present both and date them (use the documents'
+   `createdAt` / `decidedAt` fields).
+6. If evidence is insufficient, say so plainly. Do not guess; do not pad. A
+   short honest answer beats a long unfounded one.
 
 ## Anti-patterns
 
