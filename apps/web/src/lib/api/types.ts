@@ -203,21 +203,15 @@ export interface CreatedAuthToken extends AuthTokenSummary {
   token: string;
 }
 
-export interface PrincipalAdmin {
-  kind: 'admin';
-  adminUserId: string;
-  username: string;
-  scope: 'admin';
-}
-
-export interface PrincipalToken {
-  kind: 'token';
-  tokenId: string;
-  name: string;
+// Mirrors the API's canonical Principal (packages/db/src/auth.ts:13). Earlier
+// versions hand-rolled adminUserId/username/tokenId fields that the API does
+// not return — keep this in sync with what /api/v1/auth/me actually emits.
+export interface Principal {
+  kind: 'admin' | 'token';
+  id: string;
   scope: TokenScope;
+  name?: string;
 }
-
-export type Principal = PrincipalAdmin | PrincipalToken;
 
 export interface SystemStats {
   documents: number;

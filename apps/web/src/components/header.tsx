@@ -39,7 +39,9 @@ export function Header({ principal }: { principal: Principal }): JSX.Element {
     router.refresh();
   };
 
-  const displayName = principal.kind === 'admin' ? principal.username : principal.name;
+  // Principal.name is optional on the API side (token rows can be unnamed);
+  // fall back to id-prefix + kind so the avatar / dropdown never crash.
+  const displayName = principal.name ?? `${principal.kind}:${principal.id.slice(0, 6)}`;
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 px-6 backdrop-blur">
