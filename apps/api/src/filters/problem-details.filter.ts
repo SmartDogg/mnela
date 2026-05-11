@@ -16,7 +16,15 @@ interface ProblemDetails {
   detail?: string;
   instance?: string;
   errors?: unknown;
+  // RFC 7807 §3.2 allows extension members. We preserve anything the caller
+  // attached to the exception body so endpoints like /documents/:id/retranscribe
+  // can pass reason / hint through to the client without losing structure.
+  [key: string]: unknown;
 }
+
+// Keys consumed by the base ProblemDetails contract — everything else on the
+// exception body is treated as an extension member and passed through.
+const RESERVED_BODY_KEYS = new Set(['type', 'title', 'status', 'detail', 'instance', 'message']);
 
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
@@ -59,11 +67,17 @@ export class ProblemDetailsFilter implements ExceptionFilter {
             ? message
             : undefined;
         const errors = obj['errors'];
+        const extensions: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(obj)) {
+          if (RESERVED_BODY_KEYS.has(key) || key === 'errors') continue;
+          extensions[key] = value;
+        }
         return {
           ...base,
           ...(typeof obj['title'] === 'string' ? { title: obj['title'] as string } : {}),
           ...(detail ? { detail } : {}),
           ...(errors ? { errors } : {}),
+          ...extensions,
         };
       }
       return base;
