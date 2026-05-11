@@ -134,10 +134,11 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** With whisper profile enabled, voice upload triggers transcription; with profile disabled, voice attaches as raw file only.
 
-- [ ] `infra/docker/Dockerfile.whisper` + `docker-compose.optional.yml`
-- [ ] HTTP wrapper around whisper.cpp
-- [ ] Voice upload UI
-- [ ] Transcription pipeline integration
+- [x] `infra/docker/Dockerfile.whisper` + `docker-compose.optional.yml`
+- [x] HTTP wrapper around whisper.cpp (`packages/ingestion/src/whisper-client.ts`)
+- [x] Voice upload UI — `<audio>` player + Re-transcribe button on `/documents/:id`, Setup Wizard checkbox persists `transcription_enabled` to SystemConfig
+- [x] Transcription pipeline integration — `transcription` BullMQ queue + worker consumer + `mnela:whisper:status` (ADR-0043/44/45/46)
+- [x] API surface: POST `/documents/:id/retranscribe`, GET `/documents/:id/attachment` (Range-aware 206/416), GET `/system/whisper-status`, POST `/system/transcribe-pending`
 
 ## Phase 10 — Deploy & DX (TZ §8)
 
