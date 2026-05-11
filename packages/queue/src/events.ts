@@ -61,13 +61,39 @@ export interface GraphNodeUpdatedEvent {
   type: 'graph.node_updated';
   payload: { entityId: string; changes: Record<string, unknown> };
 }
-export type GraphEvent = GraphNodeAddedEvent | GraphEdgeAddedEvent | GraphNodeUpdatedEvent;
+export interface GraphEdgeUpdatedEvent {
+  type: 'graph.edge_updated';
+  payload: {
+    edgeId: string;
+    changes: { relationType?: string; status?: string; reviewedBy?: string };
+  };
+}
+export interface GraphEdgeRemovedEvent {
+  type: 'graph.edge_removed';
+  payload: { edgeId: string };
+}
+export type GraphEvent =
+  | GraphNodeAddedEvent
+  | GraphEdgeAddedEvent
+  | GraphNodeUpdatedEvent
+  | GraphEdgeUpdatedEvent
+  | GraphEdgeRemovedEvent;
 
 export interface InboxItemAddedEvent {
   type: 'inbox.item_added';
   payload: { itemId: string; itemType: string; title: string };
 }
-export type InboxEvent = InboxItemAddedEvent;
+export interface InboxItemResolvedEvent {
+  type: 'inbox.item_resolved';
+  payload: {
+    itemId: string;
+    itemType: string;
+    status: 'accepted' | 'rejected';
+    resolvedBy: string;
+    batchId?: string;
+  };
+}
+export type InboxEvent = InboxItemAddedEvent | InboxItemResolvedEvent;
 
 export interface SystemClaudeStatusChangedEvent {
   type: 'system.claude_status_changed';
