@@ -1,16 +1,18 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ExternalLink, X } from 'lucide-react';
+import { ExternalLink, GitMerge, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useState } from 'react';
 
+import { EntityMergeDialog } from '@/components/entity-merge-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api/client';
-import type { DocumentSummary, Paginated } from '@/lib/api/types';
+import type { DocumentSummary, EntitySummary, Paginated } from '@/lib/api/types';
 
 interface EntityPanelProps {
   entityId: string;
@@ -22,15 +24,7 @@ interface EntityPanelProps {
   initialType?: string;
 }
 
-interface EntityDetail {
-  id: string;
-  name: string;
-  type: string;
-  description: string | null;
-  aliases?: string[];
-  createdAt?: string;
-  updatedAt?: string;
-}
+type EntityDetail = EntitySummary;
 
 interface NeighborhoodNode {
   data: { id: string; label: string; type: string };
@@ -88,6 +82,7 @@ export function EntityPanel({
   const entity = entityQuery.data;
   const name = entity?.name ?? initialName ?? entityId;
   const type = entity?.type ?? initialType ?? 'entity';
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   return (
     <aside className="flex w-80 shrink-0 flex-col border-l bg-background">
@@ -139,14 +134,26 @@ export function EntityPanel({
           )}
 
           <Section label={t('actions')}>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 w-full justify-start text-xs"
-              onClick={() => onSetCenter(entityId)}
-            >
-              {t('setCenter')}
-            </Button>
+            <div className="space-y-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-full justify-start text-xs"
+                onClick={() => onSetCenter(entityId)}
+              >
+                {t('setCenter')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 w-full justify-start text-xs"
+                disabled={!entity || entity.mergedIntoId !== null}
+                onClick={() => setMergeOpen(true)}
+              >
+                <GitMerge className="size-3" />
+                <span className="ml-1.5">{t('mergeInto')}</span>
+              </Button>
+            </div>
           </Section>
 
           <Section label={t('projects')}>
@@ -200,6 +207,7 @@ export function EntityPanel({
           </Section>
         </div>
       </ScrollArea>
+      {entity && <EntityMergeDialog open={mergeOpen} onOpenChange={setMergeOpen} source={entity} />}
     </aside>
   );
 }

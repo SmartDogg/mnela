@@ -1,23 +1,24 @@
 'use client';
 
-import type { Entity as GraphEntity, MnelaGraphLayout } from '@mnela/ui';
+import type { Edge as GraphEdge, Entity as GraphEntity, MnelaGraphLayout } from '@mnela/ui';
 import { Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import {
-  DEFAULT_FILTERS,
-  type GraphFilters,
-  filtersFromSearchParams,
-  filtersToSearchParams,
-} from './_components/filterState';
+import { EdgeEditorDialog, type EdgeEditorTarget } from '@/components/edge-editor-dialog';
 import { EntityPanel } from './_components/EntityPanel';
 import { FilterSidebar } from './_components/FilterSidebar';
 import { GraphView, type GraphViewHandle } from './_components/GraphView';
 import { LayoutSwitcher } from './_components/LayoutSwitcher';
 import { SearchBar } from './_components/SearchBar';
 import { TruncatedBanner } from './_components/TruncatedBanner';
+import {
+  DEFAULT_FILTERS,
+  type GraphFilters,
+  filtersFromSearchParams,
+  filtersToSearchParams,
+} from './_components/filterState';
 import { useGraphQuery } from './_components/use-graph-query';
 
 export default function GraphPage(): JSX.Element {
@@ -30,6 +31,7 @@ export default function GraphPage(): JSX.Element {
   );
   const [layout, setLayout] = useState<MnelaGraphLayout>('cose');
   const [selectedEntity, setSelectedEntity] = useState<GraphEntity | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<EdgeEditorTarget | null>(null);
   const graphRef = useRef<GraphViewHandle | null>(null);
 
   // Sync filter changes back to the URL without remounting the page. We
@@ -52,6 +54,23 @@ export default function GraphPage(): JSX.Element {
 
   const handleNodeClick = useCallback((entity: GraphEntity) => {
     setSelectedEntity(entity);
+  }, []);
+
+  const handleEdgeClick = useCallback((edge: GraphEdge) => {
+    setSelectedEdge({
+      id: edge.id,
+      fromId: edge.fromId,
+      toId: edge.toId,
+      relationType: edge.relationType,
+      confidence: edge.confidence,
+      status:
+        edge.status === 'auto_confirmed' ||
+        edge.status === 'needs_review' ||
+        edge.status === 'manual' ||
+        edge.status === 'rejected'
+          ? (edge.status as EdgeEditorTarget['status'])
+          : 'manual',
+    });
   }, []);
 
   const handleSetCenter = useCallback((entityId: string) => {
@@ -122,6 +141,7 @@ export default function GraphPage(): JSX.Element {
                 edges={edges}
                 layout={layout}
                 onNodeClick={handleNodeClick}
+                onEdgeClick={handleEdgeClick}
               />
             )}
           </div>
@@ -137,6 +157,17 @@ export default function GraphPage(): JSX.Element {
           />
         )}
       </div>
+      {selectedEdge && (
+        <EdgeEditorDialog
+          open={selectedEdge !== null}
+          onOpenChange={(open) => {
+            if (!open) setSelectedEdge(null);
+          }}
+          edge={selectedEdge}
+          fromName={nodes.find((n) => n.id === selectedEdge.fromId)?.name}
+          toName={nodes.find((n) => n.id === selectedEdge.toId)?.name}
+        />
+      )}
     </div>
   );
 }

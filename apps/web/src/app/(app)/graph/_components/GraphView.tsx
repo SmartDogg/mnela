@@ -16,6 +16,7 @@ interface GraphViewProps {
   edges: GraphEdge[];
   layout: MnelaGraphLayout;
   onNodeClick: (entity: GraphEntity) => void;
+  onEdgeClick?: (edge: GraphEdge) => void;
 }
 
 interface GraphCanvasComponentProps extends GraphViewProps {

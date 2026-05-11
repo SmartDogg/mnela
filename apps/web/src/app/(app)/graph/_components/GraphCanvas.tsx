@@ -14,13 +14,14 @@ interface GraphCanvasProps {
   edges: GraphEdge[];
   layout: MnelaGraphLayout;
   onNodeClick: (entity: GraphEntity) => void;
+  onEdgeClick?: (edge: GraphEdge) => void;
 }
 
 // Thin client-side wrapper around <MnelaGraph>. Lives in its own file so the
 // page can lazy-load it via next/dynamic with ssr disabled — Cytoscape touches
 // `window` at module init.
 export const GraphCanvas = forwardRef<MnelaGraphHandle, GraphCanvasProps>(function GraphCanvas(
-  { nodes, edges, layout, onNodeClick },
+  { nodes, edges, layout, onNodeClick, onEdgeClick },
   ref,
 ): JSX.Element {
   return (
@@ -30,6 +31,7 @@ export const GraphCanvas = forwardRef<MnelaGraphHandle, GraphCanvasProps>(functi
       edges={edges}
       layout={layout}
       onNodeClick={onNodeClick}
+      onEdgeClick={onEdgeClick}
       miniMap
       className="h-full w-full"
     />
