@@ -23,3 +23,9 @@ export const EditInboxSchema = z.object({
 });
 
 export class EditInboxDto extends createZodDto(EditInboxSchema) {}
+
+export const BulkInboxSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+});
+
+export class BulkInboxDto extends createZodDto(BulkInboxSchema) {}

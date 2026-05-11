@@ -83,9 +83,12 @@ export class GraphController {
   @RequiredScope('admin')
   @Audit({ action: 'entity.merge', targetType: 'Entity' })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Merge sourceId into targetId; rewrites mentions and edges' })
+  @ApiOperation({
+    summary:
+      'Merge sourceId into targetId; rewrites mentions, dedupes colliding edges, removes self-loops. dryRun=true returns counts without writing.',
+  })
   mergeEntities(@Body() body: MergeEntitiesDto) {
-    return this.graph.mergeEntities(body.sourceId, body.targetId);
+    return this.graph.mergeEntities(body.sourceId, body.targetId, { dryRun: body.dryRun });
   }
 
   @Get('edges')

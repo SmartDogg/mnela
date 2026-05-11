@@ -74,6 +74,7 @@ export class UpdateEntityDto extends createZodDto(UpdateEntitySchema) {}
 export const MergeEntitiesSchema = z.object({
   sourceId: z.string().min(1),
   targetId: z.string().min(1),
+  dryRun: z.boolean().optional(),
 });
 
 export class MergeEntitiesDto extends createZodDto(MergeEntitiesSchema) {}

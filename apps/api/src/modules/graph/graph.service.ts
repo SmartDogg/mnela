@@ -2,13 +2,22 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import {
   EdgeRepository,
   EntityRepository,
+  type MergeCounts,
   PrismaService,
   type UpdateEntityInput,
   normalizeEntityName,
 } from '@mnela/db';
+import { publishEvent } from '@mnela/queue';
 import type { Edge, Entity, EntityType } from '@prisma/client';
 
+import { RedisService } from '../../redis.service.js';
 import { GRAPH_MAX_EDGES, GRAPH_MAX_NODES } from './dto.js';
+
+export interface MergeEntitiesResult {
+  dryRun: boolean;
+  counts: MergeCounts;
+  entity: Entity | null;
+}
 
 export interface CytoscapeNode {
   data: {
@@ -62,6 +71,7 @@ export class GraphService {
     private readonly entities: EntityRepository,
     private readonly edges: EdgeRepository,
     private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
   ) {}
 
   async neighborhood(centerId: string, options: NeighborhoodOptions = {}): Promise<CytoscapeGraph> {
@@ -194,15 +204,46 @@ export class GraphService {
     return this.entities.update(id, data);
   }
 
-  async mergeEntities(sourceId: string, targetId: string): Promise<Entity> {
+  async mergeEntities(
+    sourceId: string,
+    targetId: string,
+    options: { dryRun?: boolean } = {},
+  ): Promise<MergeEntitiesResult> {
     if (sourceId === targetId) throw new BadRequestException('Cannot merge entity into itself');
-    const [source] = await Promise.all([this.findEntity(sourceId), this.findEntity(targetId)]);
+    const [source, target] = await Promise.all([
+      this.findEntity(sourceId),
+      this.findEntity(targetId),
+    ]);
     if (source.mergedIntoId) {
       throw new BadRequestException(
         `Entity ${sourceId} is already merged into ${source.mergedIntoId}`,
       );
     }
-    return this.entities.merge(sourceId, targetId);
+    if (target.mergedIntoId) {
+      throw new BadRequestException(
+        `Cannot merge into ${targetId}: target is already merged into ${target.mergedIntoId}`,
+      );
+    }
+
+    const dryRun = options.dryRun === true;
+    const result = await this.prisma.runInTx(() =>
+      this.entities.merge(sourceId, targetId, { dryRun }),
+    );
+
+    if (!dryRun) {
+      await Promise.all([
+        publishEvent(this.redis.client, {
+          type: 'graph.node_updated',
+          payload: { entityId: sourceId, changes: { mergedIntoId: targetId } },
+        }),
+        publishEvent(this.redis.client, {
+          type: 'graph.node_updated',
+          payload: { entityId: targetId, changes: { merged_from: sourceId } },
+        }),
+      ]);
+    }
+
+    return { dryRun, counts: result.counts, entity: result.entity };
   }
 
   listEdges(
@@ -215,11 +256,14 @@ export class GraphService {
 
   async updateEdge(
     id: string,
-    patch: { relationType?: string; status?: Edge['status'] },
+    patch: { relationType?: string; status?: Edge['status']; reviewedBy?: string },
   ): Promise<Edge> {
     const e = await this.edges.findById(id);
     if (!e) throw new NotFoundException(`Edge ${id} not found`);
-    const update: Parameters<EdgeRepository['update']>[1] = { ...patch };
+    const update: Parameters<EdgeRepository['update']>[1] = {};
+    if (patch.relationType !== undefined) update.relationType = patch.relationType;
+    if (patch.status !== undefined) update.status = patch.status;
+    if (patch.reviewedBy !== undefined) update.reviewedBy = patch.reviewedBy;
     if (
       patch.status === 'manual' ||
       patch.status === 'rejected' ||
@@ -227,13 +271,26 @@ export class GraphService {
     ) {
       update.reviewedAt = new Date();
     }
-    return this.edges.update(id, update);
+    const updated = await this.edges.update(id, update);
+    const changes: { relationType?: string; status?: string; reviewedBy?: string } = {};
+    if (patch.relationType !== undefined) changes.relationType = patch.relationType;
+    if (patch.status !== undefined) changes.status = patch.status;
+    if (patch.reviewedBy !== undefined) changes.reviewedBy = patch.reviewedBy;
+    await publishEvent(this.redis.client, {
+      type: 'graph.edge_updated',
+      payload: { edgeId: id, changes },
+    });
+    return updated;
   }
 
   async deleteEdge(id: string): Promise<{ id: string; deleted: true }> {
     const e = await this.edges.findById(id);
     if (!e) throw new NotFoundException(`Edge ${id} not found`);
     await this.edges.delete(id);
+    await publishEvent(this.redis.client, {
+      type: 'graph.edge_removed',
+      payload: { edgeId: id },
+    });
     return { id, deleted: true };
   }
 }

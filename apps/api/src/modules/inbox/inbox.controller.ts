@@ -1,11 +1,24 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Query,
+  Res,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { CurrentPrincipal } from '../../auth/principal.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
 import type { Principal } from '../../auth/types.js';
-import { EditInboxDto, ListInboxQuery } from './dto.js';
+import { BulkInboxDto, EditInboxDto, ListInboxQuery } from './dto.js';
+import type { BulkInboxResult } from './inbox.service.js';
 import { InboxService } from './inbox.service.js';
 
 @ApiTags('inbox')
@@ -57,5 +70,44 @@ export class InboxController {
     @CurrentPrincipal() principal: Principal | undefined,
   ) {
     return this.inbox.edit(id, body.payload, principal);
+  }
+
+  @Post('bulk/accept')
+  @RequiredScope('mcp')
+  @ApiOperation({ summary: 'Bulk accept inbox items (per-item tx, partial-success report)' })
+  async bulkAccept(
+    @Body() body: BulkInboxDto,
+    @CurrentPrincipal() principal: Principal | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<BulkInboxResult> {
+    const result = await this.inbox.acceptMany(body.ids, principal);
+    this.setBulkStatus(res, result);
+    return result;
+  }
+
+  @Post('bulk/reject')
+  @RequiredScope('mcp')
+  @ApiOperation({ summary: 'Bulk reject inbox items (per-item tx, partial-success report)' })
+  async bulkReject(
+    @Body() body: BulkInboxDto,
+    @CurrentPrincipal() principal: Principal | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<BulkInboxResult> {
+    const result = await this.inbox.rejectMany(body.ids, principal);
+    this.setBulkStatus(res, result);
+    return result;
+  }
+
+  private setBulkStatus(res: Response, result: BulkInboxResult): void {
+    if (result.accepted.length === 0) {
+      throw new UnprocessableEntityException({
+        type: 'about:blank',
+        title: 'Bulk operation failed for every item',
+        status: HttpStatus.UNPROCESSABLE_ENTITY,
+        batchId: result.batchId,
+        failed: result.failed,
+      });
+    }
+    res.status(result.failed.length > 0 ? HttpStatus.MULTI_STATUS : HttpStatus.OK);
   }
 }
