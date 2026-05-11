@@ -1,15 +1,26 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { QUEUE_NAMES, createQueueConnection } from '@mnela/queue';
+import { type QueueName, createQueueConnection } from '@mnela/queue';
 import { Worker } from 'bullmq';
 import { type Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
 
 /**
- * Stub Workers for enrichment, indexing, and maintenance queues. Phase-2
- * acceptance only requires the queues exist and don't deadlock — the real
- * consumers land in Phase 5 (Claude orchestrator) and Phase 11 (maintenance).
+ * Drain-only Workers for queues whose real consumers don't exist yet.
+ *
+ *   'enrichment'    → live (apps/orchestrator EnrichmentConsumer, Phase 5)
+ *   'transcription' → live (apps/worker TranscriptionConsumer, Phase 9)
+ *   'indexing'      → Phase 11 (rebuild_index, export_vault)
+ *   'maintenance'   → Phase 11 (backup, cleanup cron)
+ *
+ * Stubbing a queue that already has a real consumer is a load-bearing race
+ * condition — BullMQ hands the job to whichever Worker grabs it first, and
+ * the stub's `{stubbed:true}` return collapses the job before the real
+ * consumer ever sees it. So this service only mounts stubs for the queues
+ * still pending implementation.
  */
+const STUBBED_QUEUES: QueueName[] = ['indexing', 'maintenance'];
+
 @Injectable()
 export class StubConsumersService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StubConsumersService.name);
@@ -18,14 +29,14 @@ export class StubConsumersService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
-    for (const name of QUEUE_NAMES.slice(1)) {
+    for (const name of STUBBED_QUEUES) {
       const connection = createQueueConnection(env.REDIS_URL);
       this.connections.push(connection);
       const worker = new Worker(
         name,
         async (job) => {
           this.logger.warn(
-            `${name} stub received ${job.name} (id=${job.id}); will be implemented in a later phase`,
+            `${name} stub received ${job.name} (id=${job.id}); will be implemented in Phase 11`,
           );
           return { stubbed: true };
         },
