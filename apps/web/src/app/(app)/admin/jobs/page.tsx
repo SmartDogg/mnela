@@ -106,7 +106,7 @@ export default function AdminJobsPage(): JSX.Element {
         </div>
 
         <FailedJobsTile
-          jobs={failed.data?.data ?? []}
+          jobs={failed.data?.items ?? []}
           isLoading={failed.isLoading}
           onRetry={(id) => retry.mutate(id)}
           retryingId={retry.isPending ? retry.variables : null}

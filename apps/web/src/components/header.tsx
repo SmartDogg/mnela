@@ -5,6 +5,7 @@ import { Languages, LogOut, Moon, Search as SearchIcon, Sun } from 'lucide-react
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -23,8 +24,13 @@ import { LOCALE_COOKIE, SUPPORTED_LOCALES, type Locale } from '@/i18n/config';
 export function Header({ principal }: { principal: Principal }): JSX.Element {
   const t = useTranslations('common');
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const openCmdk = useCmdkStore((s) => s.open);
+  // next-themes resolves the theme client-side. Render a neutral placeholder
+  // on the server to avoid a hydration mismatch between SSR (no theme) and
+  // the first client paint (theme resolved from localStorage / system).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const logoutMutation = useMutation({
     mutationFn: () => api.post<{ ok: true }>('/auth/logout'),
@@ -60,10 +66,19 @@ export function Header({ principal }: { principal: Principal }): JSX.Element {
       <Button
         variant="ghost"
         size="icon"
-        onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
         aria-label="Toggle theme"
+        suppressHydrationWarning
       >
-        {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        {mounted ? (
+          resolvedTheme === 'dark' ? (
+            <Sun className="h-4 w-4" />
+          ) : (
+            <Moon className="h-4 w-4" />
+          )
+        ) : (
+          <Moon className="h-4 w-4 opacity-0" />
+        )}
       </Button>
 
       <DropdownMenu>

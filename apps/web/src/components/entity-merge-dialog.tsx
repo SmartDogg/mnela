@@ -64,7 +64,7 @@ export function EntityMergeDialog({
     staleTime: 10_000,
   });
 
-  const target = candidates.data?.data.find((e) => e.id === targetId);
+  const target = candidates.data?.items.find((e) => e.id === targetId);
 
   const previewMutation = useMutation({
     mutationFn: () =>
@@ -95,7 +95,7 @@ export function EntityMergeDialog({
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('error.generic')),
   });
 
-  const filteredCandidates = (candidates.data?.data ?? []).filter(
+  const filteredCandidates = (candidates.data?.items ?? []).filter(
     (e) => e.id !== source.id && e.mergedIntoId === null,
   );
 

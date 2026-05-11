@@ -120,14 +120,14 @@ export function DocumentsList(): JSX.Element {
                   </TableCell>
                 </TableRow>
               ))}
-            {query.data?.data.length === 0 && (
+            {query.data?.items.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="text-center text-muted-foreground">
                   {t('empty')}
                 </TableCell>
               </TableRow>
             )}
-            {query.data?.data.map((doc) => (
+            {query.data?.items.map((doc) => (
               <TableRow key={doc.id}>
                 <TableCell>
                   <Link href={`/documents/${doc.id}`} className="font-medium hover:underline">

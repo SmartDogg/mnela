@@ -61,7 +61,7 @@ export function SearchBar({
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const results = query.data?.data ?? [];
+  const results = query.data?.items ?? [];
 
   return (
     <div ref={containerRef} className="relative w-full max-w-md">

@@ -29,7 +29,7 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
     queryFn: () =>
       api.get<Paginated<ProjectSummary>>('/projects', { query: { page: 1, limit: 100 } }),
   });
-  const projects = projectsQuery.data?.data ?? [];
+  const projects = projectsQuery.data?.items ?? [];
 
   function toggleType(type: EntityType): void {
     const has = filters.types.includes(type);

@@ -126,7 +126,7 @@ export function ProjectsList(): JSX.Element {
               </CardContent>
             </Card>
           ))}
-        {query.data?.data.map((project) => (
+        {query.data?.items.map((project) => (
           <Link key={project.id} href={`/projects/${project.slug}`}>
             <Card className="h-full transition-colors hover:border-primary/50">
               <CardHeader>

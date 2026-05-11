@@ -74,7 +74,7 @@ export default function InboxPage(): JSX.Element {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const filtered = useMemo(() => {
-    const items = inboxQuery.data?.data ?? [];
+    const items = inboxQuery.data?.items ?? [];
     const after = rangeStart(filters.range);
     if (!after) return items;
     return items.filter((i) => new Date(i.createdAt) >= after);
@@ -197,7 +197,7 @@ export default function InboxPage(): JSX.Element {
       <InboxFiltersBar
         value={filters}
         onChange={handleFilterChange}
-        projects={projectsQuery.data?.data ?? []}
+        projects={projectsQuery.data?.items ?? []}
         total={totalShown}
       />
       <div className="space-y-2 px-8 py-6">

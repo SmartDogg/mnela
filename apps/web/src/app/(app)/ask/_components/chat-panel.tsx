@@ -61,14 +61,25 @@ export function ChatPanel({
     staleTime: 30_000,
   });
 
+  // Destructure stable handles (useState setters + useCallback'd reset) so the
+  // effect deps stay referentially stable; depending on the whole `ask`
+  // object previously rebuilt the effect every render and `reset()` itself
+  // triggered a new render → infinite loop. Track the previous
+  // conversationId via a ref so we only reset on actual transitions to null.
+  const { reset, setConversationId: askSetConversationId, setMessages: askSetMessages } = ask;
+  const messagesCount = ask.messages.length;
+  const prevConversationIdRef = useRef<string | null>(conversationId);
   useEffect(() => {
-    if (!conversationId) {
-      ask.reset();
-      return;
+    if (prevConversationIdRef.current !== conversationId) {
+      prevConversationIdRef.current = conversationId;
+      if (!conversationId) {
+        reset();
+        return;
+      }
     }
-    if (history.data && ask.messages.length === 0) {
-      ask.setConversationId(history.data.conversation.id);
-      ask.setMessages(
+    if (conversationId && history.data && messagesCount === 0) {
+      askSetConversationId(history.data.conversation.id);
+      askSetMessages(
         history.data.messages.map<AskMessage>((m) => ({
           id: m.id,
           role: m.role,
@@ -79,7 +90,7 @@ export function ChatPanel({
         })),
       );
     }
-  }, [conversationId, history.data, ask]);
+  }, [conversationId, history.data, messagesCount, reset, askSetConversationId, askSetMessages]);
 
   useEffect(() => {
     if (ask.conversationId && ask.conversationId !== conversationId) {

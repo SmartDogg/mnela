@@ -150,14 +150,14 @@ export function DecisionsList(): JSX.Element {
                   </TableCell>
                 </TableRow>
               ))}
-            {query.data?.data.length === 0 && (
+            {query.data?.items.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-muted-foreground">
                   No decisions yet.
                 </TableCell>
               </TableRow>
             )}
-            {query.data?.data.map((d) => (
+            {query.data?.items.map((d) => (
               <TableRow key={d.id}>
                 <TableCell className="font-medium">{d.title}</TableCell>
                 <TableCell>

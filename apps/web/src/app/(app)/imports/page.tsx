@@ -63,14 +63,14 @@ export default function ImportsPage(): JSX.Element {
                     </TableCell>
                   </TableRow>
                 ))}
-              {query.data?.data.length === 0 && (
+              {query.data?.items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No imports yet.
                   </TableCell>
                 </TableRow>
               )}
-              {query.data?.data.map((job) => {
+              {query.data?.items.map((job) => {
                 const filename =
                   typeof job.payload?.filename === 'string'
                     ? (job.payload.filename as string)

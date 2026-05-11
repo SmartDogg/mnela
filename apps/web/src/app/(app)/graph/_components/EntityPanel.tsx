@@ -186,12 +186,12 @@ export function EntityPanel({
             {documentsQuery.error !== null && documentsQuery.error !== undefined && (
               <p className="text-xs text-muted-foreground">{t('emptyDocuments')}</p>
             )}
-            {documentsQuery.data && documentsQuery.data.data.length === 0 && (
+            {documentsQuery.data && documentsQuery.data.items.length === 0 && (
               <p className="text-xs text-muted-foreground">{t('emptyDocuments')}</p>
             )}
-            {documentsQuery.data && documentsQuery.data.data.length > 0 && (
+            {documentsQuery.data && documentsQuery.data.items.length > 0 && (
               <ul className="space-y-1">
-                {documentsQuery.data.data.map((doc) => (
+                {documentsQuery.data.items.map((doc) => (
                   <li key={doc.id}>
                     <Link
                       href={`/documents/${doc.id}`}

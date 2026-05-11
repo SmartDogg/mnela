@@ -64,14 +64,14 @@ export default function JobsPage(): JSX.Element {
                     </TableCell>
                   </TableRow>
                 ))}
-              {query.data?.data.length === 0 && (
+              {query.data?.items.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
                     No jobs.
                   </TableCell>
                 </TableRow>
               )}
-              {query.data?.data.map((job) => (
+              {query.data?.items.map((job) => (
                 <TableRow key={job.id}>
                   <TableCell>
                     <span className="font-mono text-xs">{job.type}</span>

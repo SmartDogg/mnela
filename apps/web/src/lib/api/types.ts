@@ -25,8 +25,10 @@ export type DocumentType =
   | 'audio'
   | 'synthesis';
 
+// The API returns `{ items, total, page, limit }` (packages/db pagination contract).
+// Earlier the web mis-typed this as `data` — every list page crashed at `.data.data.map`.
 export interface Paginated<T> {
-  data: T[];
+  items: T[];
   page: number;
   limit: number;
   total: number;
