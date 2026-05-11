@@ -124,11 +124,11 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Chat triggers server-side Claude subprocess; SSE streams answer with inline citations; "save synthesis" creates a new document.
 
-- [ ] Chat UI
-- [ ] SSE endpoint backed by `claude-runner`
-- [ ] Citation parsing + rendering
-- [ ] Save synthesis as note
-- [ ] Conversation history
+- [x] Chat UI
+- [x] SSE endpoint backed by `claude-runner`
+- [x] Citation parsing + rendering
+- [x] Save synthesis as note
+- [x] Conversation history
 
 ## Phase 9 — Optional modules (TZ §3.1)
 

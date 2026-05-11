@@ -4,6 +4,126 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0042 — SSE transport: NestJS streamable response, explicit headers, server-side flush per frame
+
+**Context:** Phase 8's `POST /search/ask` needs to stream tokens + citations + final result over a long-lived HTTP response. NestJS ships `@Sse()` which returns an `Observable<MessageEvent>` and assumes a `GET` route — Ask is `POST` (the user query goes in the body, can't fit in query string for non-trivial questions). The web client also can't use the native `EventSource` (which is GET-only — see Q33), so it uses `fetch` + `ReadableStream` parsing. Headers must defeat any intermediate buffering (Next.js `rewrites()`, Caddy reverse proxy in Phase 10) so the user sees tokens as they arrive, not in one final dump.
+**Decision:** Replace the Phase-1 stub at `apps/api/src/modules/search/search.controller.ts` with a controller method that opts out of NestJS's auto-serialization via `@Res({ passthrough: false }) res: Response`, writes headers explicitly:
+
+```
+Content-Type: text/event-stream; charset=utf-8
+Cache-Control: no-cache, no-transform
+Connection: keep-alive
+X-Accel-Buffering: no
+```
+
+then iterates an async-iterator from `AskService.streamAsk(...)` and writes each frame as `event: <name>\ndata: <json>\n\n` + `res.flush?.()` (Express adds `.flush()` via compression middleware — call defensively, gate on `typeof res.flush === 'function'`). On client abort (`req.on('close')`), the iterator's abort signal cancels the Claude subprocess and a partial `Message` row is persisted with `metadata.aborted: true`.
+
+Next.js `rewrites()` in `apps/web/next.config.ts` passes the stream through transparently — confirmed by recon (no Accept-Encoding stripping, no timeout). Caddy in Phase 10 requires `flush_interval -1` on the `/api/v1/search/ask` route — captured in Q28 + DEPLOYMENT.md (Phase 10).
+
+`@Sse()` is **not** used because (a) it forces GET, (b) it wraps every payload in NestJS's `MessageEvent` envelope which adds an extra newline that some SSE clients dislike, (c) manual writes give us per-event `event:` names (`meta`, `token`, `citation`, `done`, `error`) which `@Sse()` defaults can swallow.
+**Alternatives:** (a) `@Sse()` + GET with query-string question — fails for questions > ~2 KB; query-string history leaks the question to access logs; (b) WebSocket on `/live` — overkill for one-shot streams, doubles auth surface (already covered by ADR-0007 session cookie on same-origin), and breaks reconnection semantics that SSE has free; (c) chunked JSON-NDJSON over POST — works but requires custom client parser anyway and we lose named events (meta vs token vs citation).
+**Status:** Accepted.
+
+## ADR-0041 — Ask Brain shares the Claude rate-limit budget with enrichment via Redis slot lock
+
+**Context:** Phase 5's orchestrator runs concurrency-1 enrichment subprocesses; Phase 8 introduces Ask Brain which spawns `runClaude` from `apps/api` directly (interactive, can't queue through BullMQ — ADR-0027 covers the _enrichment_ path, not interactive Q&A). Both subprocess paths share the same Claude Max account, so they share the same rate-limit footprint (~200 msg / 5h). Without coordination, an active enrichment burst can exhaust the budget mid-Ask, producing a mid-stream `error` SSE frame with `reason: 'rate-limit'`. Conversely, AskService grabbing the runner mid-enrichment could double-spend the budget within a single 5h window.
+**Decision:** Introduce a Redis lock key `mnela:claude:slot` (new helper in `packages/queue/src/slot-lock.ts`: `acquireSlot(redis, owner: 'ask'|'enrichment', ttlSec)` / `releaseSlot(redis, owner)` / `peekSlot(redis)`). The value is `{ owner, acquiredAt, sessionId }` stored via `SET key value NX EX ttlSec` (atomic acquire); release is a Lua script (`if GET == value then DEL`) to avoid releasing someone else's lock. Sliding refresh via `SET XX EX ttlSec` for in-flight calls.
+
+**Priority semantics:**
+
+- **Ask is non-blocking:** AskService writes the slot key with `owner: 'ask'` _before_ spawning `runClaude` (TTL 180s, refreshed every 60s while streaming). On `done`/`error`/`abort` → releases.
+- **Enrichment yields:** The orchestrator's `EnrichmentPipeline.run()` reads `peekSlot()` on each job pickup _in addition to_ `mnela:claude:status` (ADR-0029). If slot is held by `ask`, the job is _not_ moved to failed — it is re-queued with a 30s delay (`BullMQ moveToDelayed(now+30000)`) so the user's Ask gets the lane. Once Ask releases, the delayed job becomes runnable on the next tick.
+- **No preemption of in-flight enrichment subprocess.** If enrichment is already spawning when Ask arrives, both run concurrently for the brief overlap. Q27 captures the reasoning (Claude Max allows concurrent CLI sessions; rate-limit is the shared constraint, not subprocess count). The slot lock prevents _new_ enrichment jobs from starting while Ask streams.
+
+**Implementation surface:** `packages/queue/src/slot-lock.ts` (new file, exports the three helpers + a typed `SlotOwner` union). `apps/api/src/modules/search/ask.service.ts` acquires/releases around `runClaude`. `apps/orchestrator/src/enrichment/pipeline.ts` adds a `peekSlot()` check between the existing `claudeStatus.available` gate and the `runClaude` invocation.
+**Alternatives:** (a) Single dedicated BullMQ `ask` queue with concurrency-1 — adds latency (interactive UX feels noticeably worse if the queue has pending jobs) and breaks the "user types question, stream starts in < 1s" goal; (b) Single shared queue for ask + enrichment with priority — same latency issue, plus BullMQ priority doesn't preempt in-flight; (c) Two independent budgets (Ask gets its own Claude account) — single-tenant single-user, no second account; doubles rate-limit cost; (d) Pessimistic mutex on the entire Claude subprocess — serializes Ask and enrichment unnecessarily; Claude Max can handle concurrent calls within the rate-limit envelope.
+**Status:** Accepted.
+
+## ADR-0040 — Citation wire format: `<cite doc-id="cuid">snippet</cite>` parsed by a streaming state machine
+
+**Context:** Phase 8 Ask Brain must produce citations that the client can render _inline_ in the assistant's prose — clicking a citation jumps to `/documents/:id?highlight=<snippet>`. Three serialization options exist for Claude → server → client:
+
+1. **Inline XML tags in the prose** — Claude emits `the user prefers <cite doc-id="cmd123">strict typing</cite> over loose duck typing`. Server parses tags out of the text-delta stream, strips them, replaces with numeric citation markers `[1]`, and emits a separate `event: citation` SSE frame with the metadata.
+2. **JSON envelope around prose** — Claude returns a structured JSON object `{ prose, citations: [...] }`. Loses streaming UX (can't render until the whole envelope arrives) unless we add per-field stream parsing.
+3. **Markdown footnote syntax `[^1]` + `[^1]: source` blocks at the end** — Streamable, but the footnote definitions only arrive after the prose, so the client has to defer chip rendering or rerender after stream-end; also requires markdown-footnote support in the renderer.
+
+**Decision:** Option 1 — inline XML tags. Server parses the text-delta stream via a small state machine in `apps/api/src/modules/search/citation-parser.ts` (exported back to `packages/claude-runner` if reused elsewhere). The state machine is _not_ a regex over the whole buffer — it processes characters one at a time, tracks states `text | tag-open | attr-name | attr-value | inner | tag-close`, and survives `<cite ` being split across two `stream_event` frames. Snippet length capped per Q26 (model self-truncates to 120 chars; server defensively truncates to 200 in the SSE frame; full snippet preserved in `Message.citations` JSON).
+
+**Wire frames emitted to client:**
+
+- `event: token data: { delta: '...' }` — text-delta chunks with `<cite>` tags **stripped** and replaced by the literal `[N]` marker, where `N` is the ord assigned in citation-emission order.
+- `event: citation data: { ord: 1, docId: 'cuid', snippet: '...', chunkId?: 'cuid' }` — emitted at the moment the parser closes a `<cite>` tag. Always emitted _after_ the `token` frame that contained the tag (so the client has the `[N]` marker in the buffer before the chip metadata arrives).
+
+**Validation rules** (server-side):
+
+- `doc-id` must be a syntactically valid cuid (`^c[a-z0-9]{24,}$`); invalid → tag dropped, `[N]` marker not emitted, server logs warning.
+- `doc-id` must resolve to an existing Document (lookup against `DocumentRepository.findById`); not-found → same drop behavior, plus a `system` Message row is appended at conversation save with `role: 'system', contentMd: 'Filtered N invalid citations'` (auditable).
+- Snippet must be non-empty after trim; empty → drop.
+- Nested cites (`<cite ...><cite ...></cite></cite>`) → outer wins, inner content rendered literally minus tags. Logged as a warning.
+
+**CLAUDE.md template change** (per task #8): explicit instruction `Wrap every claim that you ground in a source document in <cite doc-id="<the document's cuid>">verbatim snippet ≤120 chars</cite>. Do not cite the same document twice in adjacent sentences — group claims. Never invent doc-ids.`.
+
+**Alternatives considered:** see Context. JSON envelope rejected because the streaming UX is non-negotiable per TZ §7.2 ("Streaming ответ через SSE"). Markdown footnotes rejected because footnote definitions land after the prose, breaking the streaming-chip UX.
+**Status:** Accepted.
+
+## ADR-0039 — Ask Brain conversation persistence: Postgres `Conversation` + `Message` models
+
+**Context:** TZ §7.2 says "история диалогов" — Ask Brain shows a conversations sidebar and lets users reopen past sessions. Three storage options: (a) ephemeral Redis (TTL'd), (b) Postgres normalized (`Conversation` 1-to-many `Message`), (c) single Postgres row per conversation with a `messages: Json[]` column. Conversations are also used for the **save-as-synthesis** flow which references the final assistant message (so we need a stable id for it).
+**Decision:** Postgres, normalized. Two new models:
+
+```prisma
+model Conversation {
+  id                    String   @id @default(cuid())
+  adminUserId           String
+  title                 String
+  synthesisDocumentId   String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  adminUser             AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  synthesisDocument     Document? @relation(fields: [synthesisDocumentId], references: [id], onDelete: SetNull)
+  messages              Message[]
+
+  @@index([adminUserId, createdAt(sort: Desc)])
+  @@index([adminUserId, updatedAt(sort: Desc)])
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String
+  role            MessageRole
+  contentMd       String       @db.Text
+  citations       Json         @default("[]")
+  tokensIn        Int?
+  tokensOut       Int?
+  durationMs      Int?
+  dumbMode        Boolean      @default(false)
+  aborted         Boolean      @default(false)
+  metadata        Json?
+  createdAt       DateTime     @default(now())
+
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+```
+
+Conversations are scoped to the single admin user (single-tenant — future multi-tenancy in Phase 10+ becomes a one-line FK swap). Title auto-generated from first user query (Q30). `synthesisDocumentId` set when the user clicks "Save as synthesis" — back-reference enables the conversation sidebar to show a "Saved as <doc title>" badge. `Message.citations` is `Json` (array of `{ord, docId, snippet, chunkId?, offsetStart, offsetEnd}`) — denormalized for read speed; we never query _by_ citation, only render.
+
+REST surface (per task #5): no POST endpoint — Conversation is created lazily by the first `/search/ask` call without a `conversationId` in the body, returned in the `meta` SSE frame. PATCH for title rename, DELETE cascade-removes messages and clears `Conversation` row (`synthesisDocumentId` SetNull keeps the saved synthesis Document intact). Cascade on AdminUser deletion is moot in single-tenant but keeps the FK clean.
+
+**Migrating data later:** if Phase 10 introduces multi-tenant or `TENANT_ID`, the column is added next to `adminUserId` with default backfill. Phase 8 doesn't pre-emptively add a tenant column (YAGNI).
+**Alternatives:** (a) Redis ephemeral — TZ explicitly says "история диалогов" (long-term); user expectation matches ChatGPT/Claude.ai where conversations persist; (b) Single-row `messages: Json[]` — easier write, but slower partial reads (always load the whole thread to render the last N messages), and `Message.id` becomes synthetic so save-synthesis loses the FK; (c) Append-only event-log table with projections — over-engineered for a single-user single-tenant Q&A flow.
+**Status:** Accepted.
+
+---
+
 ## ADR-0038 — Keyboard shortcuts in /inbox: `react-hotkeys-hook` with scoped contexts
 
 **Context:** Phase 7 wires j/k/a/r/e/V/Esc/⌘+Enter on `/inbox`. The page must distinguish "list focus" (j/k navigate) from "edit mode focus" (typing into a textarea — letters must reach the input, not trigger actions). Existing ⌘K palette uses raw `addEventListener` (`apps/web/src/components/global-cmdk.tsx:52-61`). Adding more raw listeners across the app risks double-handling and stale-closure bugs.
