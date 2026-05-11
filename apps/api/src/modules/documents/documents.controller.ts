@@ -95,7 +95,9 @@ export class DocumentsController {
 
   @Get(':id/chunks')
   @RequiredScope('read_only')
-  @ApiOperation({ summary: 'List the document chunks (empty until Phase 2 chunker lands)' })
+  @ApiOperation({
+    summary: 'List the document chunks (chunkIndex asc) written by the ingestion chunker',
+  })
   chunks(@Param('id') id: string) {
     return this.documents.getChunks(id);
   }

@@ -46,6 +46,16 @@ export class ImportsController {
     return this.imports.findOne(id);
   }
 
+  @Get(':id/documents')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'List documents produced by this import job (matched via Document.metadata.__import.jobId)',
+  })
+  listDocuments(@Param('id') id: string) {
+    return this.imports.listDocuments(id);
+  }
+
   @Post()
   @RequiredScope('mcp')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024 * 1024 } }))

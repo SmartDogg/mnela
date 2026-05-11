@@ -47,9 +47,9 @@ export function LiveImportView({ id }: LiveImportViewProps): JSX.Element {
     },
   });
 
-  // The documents endpoint is not part of the API yet (Phase 4 wire format,
-  // see QUESTIONS.md #15) — we still mount the query so that socket
-  // cacheSync writes have a known cache key, and we tolerate 404s silently.
+  // GET /imports/:id/documents returns docs the worker produced for this import.
+  // Live updates land via Socket.io cacheSync (per ADR-0023); this query just
+  // seeds the cache on first mount and after reloads.
   const documentsQuery = useQuery({
     queryKey: ['imports', id, 'documents'],
     queryFn: async () => {

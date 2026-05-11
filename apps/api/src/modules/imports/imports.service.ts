@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { JobRepository } from '@mnela/db';
+import { JobRepository, PrismaService } from '@mnela/db';
 import type { Job, Prisma } from '@prisma/client';
 
 import { loadEnv } from '../../env.js';
@@ -39,6 +39,7 @@ export class ImportsService {
     private readonly jobs: JobRepository,
     private readonly jobsService: JobsService,
     private readonly queue: QueueService,
+    private readonly prisma: PrismaService,
   ) {
     const env = loadEnv();
     this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
@@ -124,5 +125,22 @@ export class ImportsService {
     await this.findOne(id);
     await this.queue.cancel(id);
     return this.jobsService.cancel(id);
+  }
+
+  async listDocuments(
+    id: string,
+  ): Promise<{ id: string; title: string; status: string; chunkCount?: number }[]> {
+    await this.findOne(id);
+    const rows = await this.prisma.active().document.findMany({
+      where: { metadata: { path: ['__import', 'jobId'], equals: id } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, title: true, status: true, _count: { select: { chunks: true } } },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      chunkCount: r._count.chunks,
+    }));
   }
 }

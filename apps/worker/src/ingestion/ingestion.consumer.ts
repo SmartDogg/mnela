@@ -197,6 +197,20 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     const language = detectLanguage(doc.rawText);
     const tokenCount = doc.rawText ? countTokens(doc.rawText) : 0;
     const status: DocumentStatus = doc.rawText.trim().length > 0 ? 'parsed' : 'raw';
+    // Stamp the originating import Job id + batch id into metadata so the
+    // /imports/:id/documents endpoint (Phase 4 wire format) and any reverse
+    // navigation from a Document back to its import can resolve without a
+    // separate join table. Stored under `__import` to avoid colliding with
+    // parser-emitted metadata keys.
+    const parserMeta = (doc.metadata ?? {}) as Record<string, unknown>;
+    const enrichedMeta: Record<string, unknown> = {
+      ...parserMeta,
+      __import: {
+        jobId: dbJobId,
+        batchId: job.importBatchId ?? null,
+        origin: job.origin,
+      },
+    };
     const input: CreateDocumentInput = {
       source: doc.source as SourceType,
       sourceId: doc.sourceId ?? null,
@@ -207,7 +221,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       language,
       type: doc.type ?? null,
       status,
-      metadata: (doc.metadata ?? {}) as Prisma.InputJsonValue,
+      metadata: enrichedMeta as Prisma.InputJsonValue,
     };
 
     const created = await this.documents.create(input);
