@@ -4,6 +4,91 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0046 — Audio attachment streaming: Range-aware Express handler on `GET /documents/:id/attachment`
+
+**Context:** Phase 9 adds an audio player to `/documents/:id`. The web client uses native `<audio controls preload="metadata" src="/_api/documents/:id/attachment">`. The element issues a `HEAD` (or `GET` with `Range: bytes=0-`) to read duration, then partial `Range` requests when the user seeks. Without proper `206 Partial Content` support, seek silently breaks in Chrome/Safari for files > a few MB. The codebase had no binary-streaming pattern yet (recon: no `createReadStream`, `StreamableFile`, or `Range`/`Content-Range` usage outside `apps/api/src/modules/search/search.controller.ts` SSE writes).
+
+**Decision:** Implement Range parsing inline in the controller method (≈30 LOC):
+
+1. Resolve `Document` by `:id`, verify `type === 'audio'` (or any future binary type), load its single `Attachment` row, resolve filesystem path inside `${MNELA_DATA_DIR}/attachments/`.
+2. `stat` for `byteSize`; set `Accept-Ranges: bytes`, `Content-Type: attachment.mimeType`, `Content-Disposition: inline; filename="..."`.
+3. Parse `Range: bytes=START-END?` header. Missing → `200 OK` with full body, `Content-Length: byteSize`, `fs.createReadStream(path)`. Present → clamp `END` to `byteSize - 1`, emit `206 Partial Content`, `Content-Range: bytes START-END/byteSize`, `Content-Length: END-START+1`, `createReadStream(path, { start, end })`.
+4. Malformed Range → `416 Range Not Satisfiable` with `Content-Range: bytes */byteSize`.
+5. Auth via the existing session+bearer guard pipeline (every other documents route uses the same). No `@RequiredScope('admin')` — single-tenant; logged-in user owns everything.
+
+Implementation lives in `apps/api/src/modules/documents/documents.controller.ts`, uses Express `Response` via `@Res({ passthrough: false })` exactly like `search.controller.ts` does for SSE — keeps the pattern consistent across binary/streaming endpoints. `@nestjs/common`'s `StreamableFile` is rejected because it does not natively support `Range` in NestJS 10 — it sets `Content-Length` and writes the full body, breaking seek.
+
+**Alternatives:** (a) `StreamableFile` for the no-Range path + manual handler only for Range — duplicate code paths, marginal benefit; (b) Serve attachments behind Caddy `file_server` in production — works prod-only, dev (`pnpm dev`) loses the route; (c) Generate signed short-lived URLs to a separate static handler — extra surface area for one binary type.
+
+**Status:** Accepted.
+
+## ADR-0045 — Whisper container: build whisper.cpp server from source, ggml-base model, language-locked at boot
+
+**Context:** Phase 9 needs a transcription engine reachable by HTTP from `apps/worker`. The TZ §3.1 names `whisper.cpp HTTP API` — implies a self-built container, not OpenAI's API or a managed service. whisper.cpp ships a built-in HTTP server (`examples/server`) since v1.5.x; building from source gives us version pinning and CPU-only operation (Mnela's target VPS has no GPU). Three model tiers exist: `ggml-tiny` (~75MB), `ggml-base` (~140MB), `ggml-small` (~466MB), `ggml-medium` (~1.5GB). The user is bilingual RU/EN; `ggml-base` multilingual is acceptable for short voice memos on a $5 VPS.
+
+**Decision:** Multi-stage `infra/docker/Dockerfile.whisper`. Stage 1 (`builder`, `debian:bookworm-slim`): apt-install `build-essential cmake git ca-certificates curl`; `git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /src`; `cmake -B build -DWHISPER_BUILD_SERVER=ON`; `cmake --build build --target whisper-server -j$(nproc)`; `curl -L https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${MODEL}.bin -o /models/ggml-${MODEL}.bin`. Stage 2 (`runtime`, `debian:bookworm-slim`): apt-install `libgomp1 ca-certificates`; copy `whisper-server` + `/models`. `ENTRYPOINT ["/usr/local/bin/whisper-server","-m","/models/ggml-${MODEL}.bin","--host","0.0.0.0","--port","8080","--language","${LANGUAGE}"]`. Build ARGs `MODEL=base`, `LANGUAGE=ru` (defaults match TZ §14 `MNELA_TRANSCRIPTION_LANGUAGE=ru`).
+
+`infra/docker/docker-compose.optional.yml` exposes the service as `whisper`, attached to the default compose network. `profiles: [optional]` so plain `docker compose up` does not start it. Healthcheck `wget -qO- http://localhost:8080/ || exit 1`, `start_period: 30s` (whisper-server cold-loads the model).
+
+Env knobs:
+
+- `MNELA_TRANSCRIPTION=enabled|disabled` (TZ §14) — gates the worker's enqueue path and the boot probe.
+- `MNELA_TRANSCRIPTION_LANGUAGE=ru` (TZ §14) — passed to whisper-server via Dockerfile ARG, also passed per-request as `language` form field for override safety.
+- `MNELA_WHISPER_MODEL=base|small|medium` (new) — Dockerfile ARG default, overridable when the operator rebuilds the image.
+- `WHISPER_URL=http://whisper:8080` (new) — worker + api read this. Default uses compose service-DNS.
+
+Model swap is rebuild-only (Dockerfile downloads at build time, not runtime). Acceptable for an optional module — operators flip the env, rerun `docker compose build whisper`, restart.
+
+**Alternatives:** (a) Public prebuilt image (e.g., `ggerganov/whisper.cpp:latest` if it exists) — supply-chain risk + opaque versioning; (b) Pin model in a sidecar volume + runtime download — startup-time download bloats `up` and surfaces network failure as a healthcheck flap; (c) Use the Python `whisper`/`faster-whisper` server — heavier image (~1GB base), slower CPU inference, doesn't match TZ wording; (d) Ship `ggml-tiny` to fit lowest-end VPS — too noisy for Russian, TZ user's primary language; (e) Default `ggml-small` — 3× slower on CPU, breaks the "$5 VPS" promise. Memory: `ggml-base` resident set ≈250 MB during inference, well under 1 GB.
+
+**Status:** Accepted.
+
+## ADR-0044 — `transcription` BullMQ queue: dedicated, concurrency-1, parallel to `enrichment`
+
+**Context:** Phase 9 routes audio uploads through whisper.cpp asynchronously. The existing queues (`ingestion / enrichment / indexing / maintenance`) don't fit: ingestion already finished its work (Document+Attachment row written), enrichment is Claude's domain (single shared rate limit, slot-lock per ADR-0041), and indexing is for FTS rebuilds. Folding transcription into `ingestion` would couple file-parse concurrency (4) to whisper's natural single-call serialization. Folding into `enrichment` would force whisper jobs through Claude's rate-limit gate (per ADR-0029) which has no relation to whisper availability.
+
+**Decision:** New BullMQ queue `transcription`, concurrency-1 (single whisper container, sequential to keep its memory bounded), retry `attempts: 3` with exponential backoff `1000ms` (mirrors enrichment per ADR-0027). Job payload:
+
+```ts
+interface TranscribeAudioJob {
+  dbJobId: string; // FK to Job(type='transcribe_audio')
+  documentId: string;
+}
+```
+
+Job-name string `'transcribe_audio'` matches the Prisma enum value (new in this phase).
+
+Consumer flow (in `apps/worker/src/transcription/transcription.consumer.ts`):
+
+1. Read `mnela:whisper:status` — if `available === false`, throw so BullMQ retries; after `attempts` exhausted, the Job row lands `status='failed'` with `reason='whisper-down'`.
+2. Load `Document(type='audio')` + its `Attachment`. If `Document.status !== 'raw'` and the trigger came from `/admin/transcribe-pending`, skip (idempotent).
+3. Call `whisperClient.transcribe({ filePath, language: env.MNELA_TRANSCRIPTION_LANGUAGE })`.
+4. In one `runInTx`: write `Document.rawText`, `Document.language`, `Document.metadata.transcription = { engine, model, durationSec, segments? }`, set `Document.status = 'parsed'`, run the existing chunker, persist `DocumentChunk` rows.
+5. After commit: `publishEvent('document.transcribed', { jobId, documentId, language, durationSec })` AND `publishEvent('document.parsed', { jobId, documentId })` (so Phase 5+'s `setQueryData` listener and the Phase-4 live-graph wire format see the same shape they already understand).
+6. Call shared `maybeEnqueueEnrichment(documentId)` (extracted from `ingestion.consumer.ts` to `apps/worker/src/shared/enrichment-enqueue.ts`). The `mnela:claude:status` gate decides — Dumb Mode keeps the document at `status='parsed'`, searchable via FTS per ADR-0014.
+
+Worker imports `@mnela/queue` and registers `new Queue<TranscribeAudioJob>('transcription', ...)` next to its existing `ingestion`/`enrichment` queue handles. Concurrency 1 is enforced on the BullMQ `Worker` constructor.
+
+**Alternatives:** (a) Reuse `ingestion` queue with a new job-name variant — couples concurrency to file-parse fan-out; whisper would spawn 4 concurrent jobs, swamp the container; (b) Reuse `enrichment` queue — forces a Claude availability check on a non-Claude job, drift from ADR-0029's invariant ("one signal per subsystem"); (c) Per-document direct HTTP call from `ingestion.consumer` (no queue) — no retry, no rate observation, no operator visibility in `/admin/jobs`; whisper outages would surface as ingest failures rather than recoverable retries.
+
+**Status:** Accepted.
+
+## ADR-0043 — Transcription owner: `apps/worker` extension, not orchestrator or a new app
+
+**Context:** Phase 9 needs to put whisper.cpp HTTP calls somewhere. Three candidates: (a) worker — already owns ingestion follow-ups (parse → attachment → enqueue enrichment); (b) orchestrator — already owns "external AI availability" semantics (`mnela:claude:status`, slot-lock per ADR-0041, retry-with-backoff); (c) new `apps/transcriber` for clean separation. Whisper differs from Claude on three load-bearing axes: it is HTTP-only (no subprocess lifecycle), it has no rate-limit budget (just container memory), and it does not contend with Claude for any resource. The orchestrator's bespoke machinery (Claude binary discovery, stream-json frame parsing, BullMQ pause/resume on rate-limit windows) buys nothing for an HTTP call.
+
+**Decision:** Worker owns transcription. New `apps/worker/src/transcription/` module: `transcription.module.ts`, `transcription.consumer.ts`, `whisper-status.boot.ts`, `whisper-status.service.ts`. Registered alongside the existing `ingestion` module in `apps/worker/src/worker.module.ts`. Worker is already a NestJS application context (per ADR-0016) — DI for Prisma, Redis, repositories, BullMQ workers is in place; adding one more consumer is free.
+
+`mnela:whisper:status` lives in `packages/queue/src/whisper-status.ts` mirroring `claude-status.ts` exactly (same `read/write` helpers, same JSON shape, same "no TTL, last writer wins" semantics per ADR-0029). Boot probe runs `whisperClient.health()` on worker `OnModuleInit` when `env.MNELA_TRANSCRIPTION === 'enabled'`; otherwise writes `{ available: false, reason: 'not-enabled' }` and skips. Status is consumed by:
+
+- `apps/worker/src/shared/enrichment-enqueue.ts` `maybeEnqueueTranscription(documentId)` — the enqueue gate.
+- `apps/api/src/modules/system/whisper.service.ts` — `GET /system/whisper-status` route handler.
+- (Future) `apps/web` setup wizard — surfaces "needs `--profile optional`" hint when `available === false && reason === 'not-enabled'`.
+
+**Alternatives:** (a) `apps/orchestrator` — drags whisper into a module whose entire mental model is "single concurrent Claude subprocess with rate-limit." Adds shared state (`peekSlot()` would lie about whisper). Wrong place; (b) `apps/transcriber` — a whole NestJS app for a single consumer and a 30-line HTTP client. The repository already has six apps; the marginal cost of another deployment unit (Dockerfile, compose service, healthcheck, env, log channel) is real and the benefit is zero for single-tenant.
+
+**Status:** Accepted.
+
 ## ADR-0042 — SSE transport: NestJS streamable response, explicit headers, server-side flush per frame
 
 **Context:** Phase 8's `POST /search/ask` needs to stream tokens + citations + final result over a long-lived HTTP response. NestJS ships `@Sse()` which returns an `Observable<MessageEvent>` and assumes a `GET` route — Ask is `POST` (the user query goes in the body, can't fit in query string for non-trivial questions). The web client also can't use the native `EventSource` (which is GET-only — see Q33), so it uses `fetch` + `ReadableStream` parsing. Headers must defeat any intermediate buffering (Next.js `rewrites()`, Caddy reverse proxy in Phase 10) so the user sees tokens as they arrive, not in one final dump.
