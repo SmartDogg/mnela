@@ -142,8 +142,8 @@ export class EntityRepository {
     const rows = await prisma.$queryRaw<{ entityId: string; cnt: bigint }[]>`
       SELECT de."entityId", COUNT(DISTINCT de."documentId")::bigint AS cnt
       FROM "DocumentEntity" de
-      JOIN "_DocumentToProject" dp ON dp."A" = de."documentId"
-      JOIN "Project" p ON p.id = dp."B"
+      JOIN "DocumentProject" dp ON dp."documentId" = de."documentId"
+      JOIN "Project" p ON p.id = dp."projectId"
       JOIN "Entity" e ON e.id = de."entityId"
       WHERE p.slug = ${projectSlug}
         AND e."mergedIntoId" IS NULL
