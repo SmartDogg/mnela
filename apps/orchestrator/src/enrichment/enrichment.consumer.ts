@@ -49,25 +49,30 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async handleJob(bullJob: BullJob<EnrichmentJob>): Promise<unknown> {
     const data = bullJob.data;
-    if (!data.documentId) {
-      this.logger.warn(`enrichment job ${bullJob.id} has no documentId — skipping`);
+    const isProjectContext = !data.documentId && Boolean(data.projectSlug);
+    if (!data.documentId && !data.projectSlug) {
+      this.logger.warn(
+        `enrichment job ${bullJob.id} has neither documentId nor projectSlug — skipping`,
+      );
       return { status: 'skipped' };
     }
 
+    const jobType = isProjectContext ? 'refresh_project_context' : 'enrich_document';
     await publishEvent(this.redis.client, {
       type: 'job.started',
-      payload: {
-        jobId: data.dbJobId,
-        jobType: 'enrich_document',
-        startedAt: new Date().toISOString(),
-      },
+      payload: { jobId: data.dbJobId, jobType, startedAt: new Date().toISOString() },
     });
 
     try {
-      const outcome = await this.pipeline.run({
-        dbJobId: data.dbJobId,
-        documentId: data.documentId,
-      });
+      const outcome = isProjectContext
+        ? await this.pipeline.runProjectContext({
+            dbJobId: data.dbJobId,
+            projectSlug: data.projectSlug!,
+          })
+        : await this.pipeline.run({
+            dbJobId: data.dbJobId,
+            documentId: data.documentId!,
+          });
 
       if (outcome.status === 'skipped' && outcome.reason?.startsWith('slot-held-by-')) {
         // ADR-0041: yield the Claude slot to Ask Brain; re-queue this job

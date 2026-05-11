@@ -7,11 +7,16 @@ import { ClaudeStatusService } from '../claude-status/claude-status.service.js';
 import { loadEnv, mcpConfigPath, vaultDir } from '../env.js';
 import { RateLimitService } from '../rate-limit/rate-limit.service.js';
 import { RedisService } from '../redis.service.js';
-import { enrichmentPromptFor } from './prompts.js';
+import { enrichmentPromptFor, projectContextRefreshPromptFor } from './prompts.js';
 
 export interface EnrichmentInput {
   dbJobId: string;
   documentId: string;
+}
+
+export interface ProjectContextRefreshInput {
+  dbJobId: string;
+  projectSlug: string;
 }
 
 export interface EnrichmentOutcome {
@@ -156,6 +161,113 @@ export class EnrichmentPipeline {
       addedEntities: summary.addedEntitiesCount,
       addedEdges: summary.addedEdgesCount,
       droppedLowConfidence: summary.droppedLowConfidence,
+    };
+  }
+
+  /**
+   * Project context refresh — Claude reads mnela_get_project_context and
+   * writes a fresh contextMd back via mnela_update_project_context. Shares
+   * the same Claude availability + rate-limit + slot gates as document
+   * enrichment so both task families respect the single Max budget.
+   */
+  async runProjectContext(input: ProjectContextRefreshInput): Promise<EnrichmentOutcome> {
+    const env = loadEnv();
+    const status = await this.claudeStatus.get();
+    if (!status.available) {
+      this.logger.debug(
+        `skip project ${input.projectSlug}: claude unavailable (${status.reason ?? '?'})`,
+      );
+      return {
+        status: 'skipped',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: status.reason ?? 'unavailable',
+      };
+    }
+    if (await this.rateLimit.isPaused()) {
+      return {
+        status: 'rate-limited',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: 'queue-paused',
+      };
+    }
+    const slot = await peekSlot(this.redis.client);
+    if (slot && slot.owner !== 'enrichment') {
+      return {
+        status: 'skipped',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: `slot-held-by-${slot.owner}`,
+      };
+    }
+
+    const result = await runClaude({
+      prompt: projectContextRefreshPromptFor(input.projectSlug),
+      mcpConfig: mcpConfigPath(env),
+      addDirs: [vaultDir(env)],
+      bin: env.MNELA_CLAUDE_BIN,
+      timeoutMs: env.MNELA_CLAUDE_TIMEOUT_MS,
+      outputFormat: 'stream-json',
+      env: {
+        DATABASE_URL: env.DATABASE_URL,
+        REDIS_URL: env.REDIS_URL,
+        MNELA_DATA_DIR: env.MNELA_DATA_DIR,
+        MNELA_LOG_LEVEL: env.MNELA_LOG_LEVEL,
+      },
+    });
+
+    if (result.rateLimitHit) {
+      await this.rateLimit.pause(result.rateLimitHit.resetAt);
+      await this.claudeStatus.set({
+        available: false,
+        reason: 'rate-limit',
+        checkedAt: new Date().toISOString(),
+        ...(result.rateLimitHit.resetAt
+          ? { resetAt: result.rateLimitHit.resetAt.toISOString() }
+          : {}),
+      });
+      return {
+        status: 'rate-limited',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: 'rate-limit',
+      };
+    }
+    if (result.authError) {
+      await this.claudeStatus.set({
+        available: false,
+        reason: result.authError === 'invalid-key' ? 'no-binary' : 'not-logged-in',
+        checkedAt: new Date().toISOString(),
+      });
+      return {
+        status: 'auth-error',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: result.authError,
+      };
+    }
+    if (result.exitCode !== 0 || result.timedOut) {
+      return {
+        status: 'failed',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: result.timedOut ? 'timeout' : `exit ${result.exitCode}`,
+      };
+    }
+
+    this.logger.log(`refreshed project context: ${input.projectSlug}`);
+    return {
+      status: 'enriched',
+      addedEntities: 0,
+      addedEdges: 0,
+      droppedLowConfidence: 0,
     };
   }
 }
