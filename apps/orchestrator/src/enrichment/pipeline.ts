@@ -1,6 +1,6 @@
 import { runClaude } from '@mnela/claude-runner';
 import { DocumentRepository } from '@mnela/db';
-import { publishEvent } from '@mnela/queue';
+import { peekSlot, publishEvent } from '@mnela/queue';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ClaudeStatusService } from '../claude-status/claude-status.service.js';
@@ -55,6 +55,18 @@ export class EnrichmentPipeline {
         addedEdges: 0,
         droppedLowConfidence: 0,
         reason: 'queue-paused',
+      };
+    }
+
+    const slot = await peekSlot(this.redis.client);
+    if (slot && slot.owner !== 'enrichment') {
+      this.logger.debug(`yielding to ${slot.owner} slot for ${input.documentId}`);
+      return {
+        status: 'skipped',
+        addedEntities: 0,
+        addedEdges: 0,
+        droppedLowConfidence: 0,
+        reason: `slot-held-by-${slot.owner}`,
       };
     }
 

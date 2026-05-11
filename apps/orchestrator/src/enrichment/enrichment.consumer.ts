@@ -1,6 +1,6 @@
 import { type EnrichmentJob, createQueueConnection, publishEvent, QUEUE_NAMES } from '@mnela/queue';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { Worker, type Job as BullJob } from 'bullmq';
+import { DelayedError, Worker, type Job as BullJob } from 'bullmq';
 import type { Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
@@ -69,6 +69,14 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
         documentId: data.documentId,
       });
 
+      if (outcome.status === 'skipped' && outcome.reason?.startsWith('slot-held-by-')) {
+        // ADR-0041: yield the Claude slot to Ask Brain; re-queue this job
+        // 30s later. moveToDelayed + DelayedError tells BullMQ this isn't
+        // a failure and shouldn't consume an attempts counter.
+        await bullJob.moveToDelayed(Date.now() + 30_000, bullJob.token ?? '');
+        throw new DelayedError(`yielded to ${outcome.reason}`);
+      }
+
       await publishEvent(this.redis.client, {
         type: 'job.completed',
         payload: {
@@ -78,15 +86,9 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // Surface a non-retryable error if the pipeline detected rate-limit /
-      // auth-error so BullMQ doesn't retry against a paused queue. The
-      // RateLimitService already paused; the next job will simply not run.
-      if (outcome.status === 'rate-limited' || outcome.status === 'auth-error') {
-        return outcome;
-      }
-
       return outcome;
     } catch (err) {
+      if (err instanceof DelayedError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       await publishEvent(this.redis.client, {
         type: 'job.failed',
