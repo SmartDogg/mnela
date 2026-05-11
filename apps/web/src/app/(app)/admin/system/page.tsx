@@ -104,7 +104,11 @@ export default function AdminSystemPage(): JSX.Element {
                   {config.data?.map((entry) => (
                     <TableRow key={entry.key}>
                       <TableCell className="font-mono text-xs">{entry.key}</TableCell>
-                      <TableCell className="font-mono text-xs">{entry.value}</TableCell>
+                      <TableCell className="font-mono text-xs">
+                        {typeof entry.value === 'string'
+                          ? entry.value
+                          : JSON.stringify(entry.value)}
+                      </TableCell>
                       <TableCell className="text-right text-xs text-muted-foreground">
                         {formatDate(entry.updatedAt)}
                       </TableCell>
