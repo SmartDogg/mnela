@@ -67,7 +67,7 @@ export interface McpToolContext {
   >;
   entities: Pick<
     EntityRepository,
-    'findById' | 'findByNormalized' | 'create' | 'findByNameWithJoins'
+    'findById' | 'findByNormalized' | 'create' | 'findByNameWithJoins' | 'listTopForProject'
   >;
   edges: Pick<EdgeRepository, 'create' | 'neighborhood'>;
   documentEntities: Pick<DocumentEntityRepository, 'upsert'>;

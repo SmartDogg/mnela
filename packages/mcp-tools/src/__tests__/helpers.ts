@@ -206,6 +206,11 @@ export function buildMockCtx(
         }
         return null;
       }),
+      listTopForProject: vi.fn(async (_projectSlug: string, _limit?: number) => {
+        // Mock: seed via the `entities` map; tests that want a curated ordering
+        // can override on the bag itself before calling the tool.
+        return Array.from(entities.values()).filter((e) => e.mergedIntoId === null);
+      }),
     },
     edges: {
       create: vi.fn(async (input): Promise<Edge> => {

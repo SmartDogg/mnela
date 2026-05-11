@@ -133,6 +133,33 @@ export class EntityRepository {
   }
 
   /**
+   * Top entities that co-occur in documents tagged to a given project, ordered
+   * by document count. Used by `mnela_get_project_context` (TZ §5) so callers
+   * see who/what shows up in this project's body of work.
+   */
+  async listTopForProject(projectSlug: string, limit = 50): Promise<Entity[]> {
+    const prisma = this.getPrisma();
+    const rows = await prisma.$queryRaw<{ entityId: string; cnt: bigint }[]>`
+      SELECT de."entityId", COUNT(DISTINCT de."documentId")::bigint AS cnt
+      FROM "DocumentEntity" de
+      JOIN "_DocumentToProject" dp ON dp."A" = de."documentId"
+      JOIN "Project" p ON p.id = dp."B"
+      JOIN "Entity" e ON e.id = de."entityId"
+      WHERE p.slug = ${projectSlug}
+        AND e."mergedIntoId" IS NULL
+      GROUP BY de."entityId"
+      ORDER BY cnt DESC, de."entityId"
+      LIMIT ${limit}
+    `;
+    if (rows.length === 0) return [];
+    const entityIds = rows.map((r) => r.entityId);
+    const entities = await prisma.entity.findMany({ where: { id: { in: entityIds } } });
+    // Preserve the count-ordered sequence the SQL returned.
+    const byId = new Map(entities.map((e) => [e.id, e]));
+    return entityIds.map((id) => byId.get(id)).filter((e): e is Entity => !!e);
+  }
+
+  /**
    * Merge `sourceId` into `targetId`: repoints DocumentEntity rows + edges,
    * deletes self-loops created by the repoint, deduplicates edges that would
    * collide on `(fromId, toId, relationType)` (keeping the higher-confidence

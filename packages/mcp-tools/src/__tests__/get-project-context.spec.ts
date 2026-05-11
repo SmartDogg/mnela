@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { getProjectContext } from '../tools/get-project-context.js';
-import { buildMockCtx, makeProject } from './helpers.js';
+import { buildMockCtx, makeProject, seedEntity } from './helpers.js';
 
 describe('getProjectContext', () => {
   it('returns project, decisions, and openQuestions parsed from metadata', async () => {
@@ -28,8 +28,21 @@ describe('getProjectContext', () => {
     expect(out.project.slug).toBe('mnela');
     expect(out.decisions).toHaveLength(1);
     expect(out.openQuestions).toEqual(['why?', 'when?']);
-    // Phase 6 always returns empty entities.
     expect(out.entities).toEqual([]);
+  });
+
+  it('returns aggregated entities surfaced by the project (Phase 7)', async () => {
+    const project = makeProject({ slug: 'mnela', name: 'Mnela' });
+    const alpha = seedEntity('Alpha', 'concept');
+    const beta = seedEntity('Beta', 'technology');
+    const bag = buildMockCtx({ projects: [project], entities: [alpha, beta] });
+    const out = await getProjectContext({ slug: 'mnela' }, bag.ctx);
+    expect(out.entities.map((e) => e.name).sort()).toEqual(['Alpha', 'Beta']);
+    expect(out.entities[0]).toMatchObject({
+      id: expect.any(String),
+      type: expect.stringMatching(/^(concept|technology)$/),
+      aliases: expect.any(Array),
+    });
   });
 
   it('throws when the project is missing', async () => {

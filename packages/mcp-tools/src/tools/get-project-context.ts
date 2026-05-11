@@ -1,8 +1,9 @@
-import type { Decision, Document, Project } from '@prisma/client';
+import type { Decision, Document, Entity, Project } from '@prisma/client';
 
 import type { McpToolContext } from '../context.js';
 import {
   type DecisionOut,
+  type EntityOutFull,
   type GetProjectContextInput,
   GetProjectContextInputSchema,
   type GetProjectContextOutput,
@@ -42,6 +43,17 @@ function summarizeDocument(d: Document): {
   return { id: d.id, title: d.title, type: d.type, createdAt: d.createdAt.toISOString() };
 }
 
+function serializeEntity(e: Entity): EntityOutFull {
+  return {
+    id: e.id,
+    name: e.name,
+    type: e.type,
+    description: e.description,
+    aliases: e.aliases,
+    createdAt: e.createdAt.toISOString(),
+  };
+}
+
 function extractOpenQuestions(project: Project): string[] {
   const meta = project.metadata;
   if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return [];
@@ -57,17 +69,17 @@ export async function getProjectContext(
   const project = await ctx.projects.findBySlug(input.slug);
   if (!project) throw new Error(`project not found: ${input.slug}`);
 
-  const [docsPage, decisionsPage] = await Promise.all([
+  const [docsPage, decisionsPage, topEntities] = await Promise.all([
     ctx.documents.list({ projectSlug: project.slug }, { page: 1, limit: 20 }),
     ctx.decisions.list({ projectSlug: project.slug }, { page: 1, limit: 50 }),
+    ctx.entities.listTopForProject(project.slug, 50),
   ]);
 
   return {
     project: serializeProject(project),
     recentDocuments: docsPage.items.map(summarizeDocument),
     decisions: decisionsPage.items.map(serializeDecision),
-    // Phase 6 returns []; Phase 7 will tally project→entity via DocumentEntity joins.
-    entities: [],
+    entities: topEntities.map(serializeEntity),
     openQuestions: extractOpenQuestions(project),
   };
 }
