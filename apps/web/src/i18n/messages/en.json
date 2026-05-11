@@ -92,7 +92,8 @@
       "title": "Optional modules",
       "description": "Modules run as additional containers and need extra resources. You can toggle these later.",
       "voice": "Voice transcription (whisper)",
-      "voiceDescription": "Run whisper.cpp container for audio uploads."
+      "voiceDescription": "Run whisper.cpp container for audio uploads.",
+      "voiceWarning": "Needs the optional compose profile: `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.optional.yml --profile optional up -d whisper`. Without it audio uploads still work — they stay at status='raw' and you can backfill via POST /system/transcribe-pending later."
     },
     "import": {
       "title": "Import your existing knowledge",
@@ -174,7 +175,19 @@
     "edit": "Edit",
     "save": "Save",
     "saving": "Saving…",
-    "saved": "Saved"
+    "saved": "Saved",
+    "audio": {
+      "player": "Audio player",
+      "transcript": "Transcript",
+      "transcriptEmpty": "No transcript yet. Click Re-transcribe once whisper is reachable.",
+      "retranscribe": "Re-transcribe",
+      "retranscribeStarted": "Transcription enqueued (job {jobId}…)",
+      "whisperUnavailable": "Whisper container is not reachable. Start it with the optional compose profile.",
+      "awaitingTranscription": "This recording has not been transcribed yet. Enable whisper or run /system/transcribe-pending.",
+      "language": "Language",
+      "duration": "Duration",
+      "model": "Model"
+    }
   },
   "projects": {
     "title": "Projects",

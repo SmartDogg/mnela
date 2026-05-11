@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Save } from 'lucide-react';
+import { AudioLines, Loader2, RotateCw, Save } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -18,11 +18,44 @@ import { api, ApiError } from '@/lib/api/client';
 import type { DocumentDetail } from '@/lib/api/types';
 import { formatBytes, formatDate } from '@/lib/utils';
 
+interface TranscriptionMeta {
+  engine?: string;
+  model?: string;
+  language?: string;
+  durationSec?: number;
+  completedAt?: string;
+}
+
+function readTranscriptionMeta(metadata: Record<string, unknown>): TranscriptionMeta | null {
+  const t = metadata['transcription'];
+  if (!t || typeof t !== 'object' || Array.isArray(t)) return null;
+  const obj = t as Record<string, unknown>;
+  return {
+    engine: typeof obj['engine'] === 'string' ? obj['engine'] : undefined,
+    model: typeof obj['model'] === 'string' ? obj['model'] : undefined,
+    language: typeof obj['language'] === 'string' ? obj['language'] : undefined,
+    durationSec: typeof obj['durationSec'] === 'number' ? obj['durationSec'] : undefined,
+    completedAt: typeof obj['completedAt'] === 'string' ? obj['completedAt'] : undefined,
+  };
+}
+
+function formatDuration(sec: number | undefined): string {
+  if (sec === undefined) return '—';
+  const total = Math.round(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 export function DocumentDetailView({ document }: { document: DocumentDetail }): JSX.Element {
   const t = useTranslations('documentDetail');
   const queryClient = useQueryClient();
   const [title, setTitle] = useState(document.title);
   const [contentMd, setContentMd] = useState(document.contentMd);
+
+  const isAudio = document.type === 'audio';
+  const transcription = readTranscriptionMeta(document.metadata);
+  const audioSrc = isAudio ? `/_api/documents/${encodeURIComponent(document.id)}/attachment` : null;
 
   const updateMutation = useMutation({
     mutationFn: (body: Partial<{ title: string; contentMd: string }>) =>
@@ -34,6 +67,22 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
     },
     onError: (err) => {
       toast.error(err instanceof ApiError ? err.message : 'Failed to save');
+    },
+  });
+
+  const retranscribeMutation = useMutation({
+    mutationFn: () =>
+      api.post<{ jobId: string }>(`/documents/${encodeURIComponent(document.id)}/retranscribe`, {}),
+    onSuccess: (res) => {
+      toast.success(t('audio.retranscribeStarted', { jobId: res.jobId.slice(0, 8) }));
+      queryClient.invalidateQueries({ queryKey: ['document', document.id] });
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 503) {
+        toast.error(t('audio.whisperUnavailable'));
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.message : 'Failed to re-transcribe');
     },
   });
 
@@ -60,11 +109,58 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
           </p>
         </div>
 
-        <Tabs defaultValue="rendered" className="px-8 py-4">
+        {isAudio && audioSrc && (
+          <div className="space-y-3 border-b bg-muted/20 px-8 py-5">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+              <AudioLines className="h-3.5 w-3.5" />
+              {t('audio.player')}
+            </div>
+            <audio controls preload="metadata" src={audioSrc} className="w-full">
+              <track kind="captions" />
+            </audio>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              {transcription?.language && (
+                <span>
+                  {t('audio.language')}: <strong>{transcription.language}</strong>
+                </span>
+              )}
+              {transcription?.durationSec !== undefined && (
+                <span>
+                  {t('audio.duration')}: {formatDuration(transcription.durationSec)}
+                </span>
+              )}
+              {transcription?.model && (
+                <span>
+                  {t('audio.model')}: {transcription.model}
+                </span>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => retranscribeMutation.mutate()}
+                disabled={retranscribeMutation.isPending}
+              >
+                {retranscribeMutation.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <RotateCw />
+                )}
+                {t('audio.retranscribe')}
+              </Button>
+            </div>
+            {document.status === 'raw' && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {t('audio.awaitingTranscription')}
+              </p>
+            )}
+          </div>
+        )}
+
+        <Tabs defaultValue={isAudio && document.rawText ? 'raw' : 'rendered'} className="px-8 py-4">
           <div className="flex items-center justify-between gap-3">
             <TabsList>
               <TabsTrigger value="rendered">{t('rendered')}</TabsTrigger>
-              <TabsTrigger value="raw">{t('raw')}</TabsTrigger>
+              <TabsTrigger value="raw">{isAudio ? t('audio.transcript') : t('raw')}</TabsTrigger>
             </TabsList>
             <Button
               size="sm"
@@ -85,9 +181,15 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
             />
           </TabsContent>
           <TabsContent value="raw">
-            <pre className="max-h-[60vh] overflow-auto rounded-md border bg-muted/40 p-4 font-mono text-xs scrollbar-thin">
-              {document.rawText}
-            </pre>
+            {isAudio && document.rawText.length === 0 ? (
+              <p className="rounded-md border bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+                {t('audio.transcriptEmpty')}
+              </p>
+            ) : (
+              <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 font-mono text-xs leading-relaxed scrollbar-thin">
+                {document.rawText}
+              </pre>
+            )}
           </TabsContent>
         </Tabs>
       </div>

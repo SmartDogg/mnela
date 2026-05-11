@@ -92,7 +92,8 @@
       "title": "Опциональные модули",
       "description": "Модули запускаются в дополнительных контейнерах и требуют ресурсов. Можно переключить позже.",
       "voice": "Транскрипция голоса (whisper)",
-      "voiceDescription": "Запустить контейнер whisper.cpp для аудио."
+      "voiceDescription": "Запустить контейнер whisper.cpp для аудио.",
+      "voiceWarning": "Нужен optional-профиль compose: `docker compose -f infra/docker/docker-compose.yml -f infra/docker/docker-compose.optional.yml --profile optional up -d whisper`. Без него аудио загружается, но остаётся в status='raw'; затем можно догнать через POST /system/transcribe-pending."
     },
     "import": {
       "title": "Импортируйте существующие знания",
@@ -174,7 +175,19 @@
     "edit": "Изменить",
     "save": "Сохранить",
     "saving": "Сохранение…",
-    "saved": "Сохранено"
+    "saved": "Сохранено",
+    "audio": {
+      "player": "Аудиоплеер",
+      "transcript": "Транскрипт",
+      "transcriptEmpty": "Транскрипта пока нет. Нажмите Re-transcribe когда whisper доступен.",
+      "retranscribe": "Перетранскрибировать",
+      "retranscribeStarted": "Транскрипция поставлена в очередь (задача {jobId}…)",
+      "whisperUnavailable": "Контейнер whisper недоступен. Запустите его через optional профиль compose.",
+      "awaitingTranscription": "Запись ещё не транскрибирована. Включите whisper или запустите /system/transcribe-pending.",
+      "language": "Язык",
+      "duration": "Длительность",
+      "model": "Модель"
+    }
   },
   "projects": {
     "title": "Проекты",

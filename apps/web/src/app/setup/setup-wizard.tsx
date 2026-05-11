@@ -65,6 +65,16 @@ export function SetupWizard(): JSX.Element {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed'),
   });
 
+  const persistVoiceMutation = useMutation({
+    mutationFn: () =>
+      api.patch<{ key: string; value: string }>('/system/config', {
+        key: 'transcription_enabled',
+        value: voiceEnabled ? 'enabled' : 'disabled',
+      }),
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : 'Failed to save voice setting'),
+  });
+
   const next = (): void => {
     const idx = STEP_ORDER.indexOf(step);
     const nxt = STEP_ORDER[idx + 1];
@@ -272,12 +282,26 @@ claude login`}
                 <p className="text-xs text-muted-foreground">{t('modules.voiceDescription')}</p>
               </div>
             </label>
+            {voiceEnabled && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {t('modules.voiceWarning')}
+              </p>
+            )}
           </CardContent>
           <Footer>
             <Button variant="outline" onClick={back}>
               Back
             </Button>
-            <Button onClick={next}>
+            <Button
+              onClick={() =>
+                persistVoiceMutation.mutate(undefined, {
+                  onSuccess: () => next(),
+                  onSettled: () => undefined,
+                })
+              }
+              disabled={persistVoiceMutation.isPending}
+            >
+              {persistVoiceMutation.isPending && <Loader2 className="animate-spin" />}
               Next <ChevronRight />
             </Button>
           </Footer>
