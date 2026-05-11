@@ -175,12 +175,16 @@ describe('golden path (async ingestion contract)', () => {
     expect(audit?.actor).toBe('admin:admin');
   });
 
-  it('returns 503 for /search/ask (Phase 5)', async () => {
-    await request(app.getHttpServer())
+  it('returns text/event-stream from /search/ask (Phase 8)', async () => {
+    // Phase 1 stubbed 503; Phase 8 turns this into an SSE pipe.
+    // Without Claude configured the response falls back to Dumb Mode FTS-only.
+    const res = await request(app.getHttpServer())
       .post('/api/v1/search/ask')
       .set('Cookie', cookie)
-      .send({ question: 'who am i?' })
-      .expect(503);
+      .set('Accept', 'text/event-stream')
+      .send({ query: 'who am i?' });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/event-stream/);
   });
 
   it('forbids a read_only token from POST /documents/upload', async () => {
