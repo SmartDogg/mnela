@@ -345,6 +345,7 @@
       "aliases": "Псевдонимы",
       "actions": "Действия",
       "setCenter": "Сделать центром",
+      "mergeInto": "Слить в…",
       "projects": "Проекты",
       "emptyProjects": "Нет связей с проектами.",
       "documents": "Недавние документы",
@@ -431,14 +432,20 @@
     "title": "Inbox",
     "subtitle": "Подсказки на ревью (слияние сущностей, новые связи).",
     "empty": "Пусто. Подсказки появляются, когда Claude обогащает документы.",
+    "emptyHint": "Расширьте диапазон дат или сбросьте фильтры выше.",
+    "loadError": "Не удалось загрузить inbox",
+    "retry": "Повторить",
     "accept": "Принять",
     "reject": "Отклонить",
+    "edit": "Редактировать",
+    "cancel": "Отмена",
+    "save": "Сохранить",
     "accepted": "Подсказка принята",
     "rejected": "Подсказка отклонена",
+    "edited": "Отредактировано и принято",
     "actionFailed": "Не удалось выполнить действие",
     "viewEvidence": "Открыть документ-источник",
     "noEvidence": "Документ-источник не указан",
-    "phase7Note": "Полный diff и массовые действия — Phase 7.",
     "confidence": {
       "high": "высокая",
       "mid": "средняя",
@@ -449,7 +456,139 @@
       "entityMergeSuggestion": "слияние",
       "duplicateDetection": "дубль",
       "enrichmentFailed": "ошибка обогащения",
-      "conflictingDecision": "конфликт"
+      "conflictingDecision": "конфликт",
+      "description": {
+        "linkSuggestion": "Claude предлагает связь между двумя сущностями. Посмотрите тип связи и контекст перед принятием.",
+        "entityMergeSuggestion": "Две сущности выглядят как одно и то же. Слияние свернёт источник в цель.",
+        "duplicateDetection": "Два документа содержат похожее содержимое. Отметьте, какой считать каноническим.",
+        "enrichmentFailed": "Обогащение документа упало. Перезапустите или отклоните.",
+        "conflictingDecision": "Новое решение противоречит существующему. Выберите, какое остаётся."
+      }
+    },
+    "filters": {
+      "title": "Фильтры",
+      "type": "Тип",
+      "status": "Статус",
+      "project": "Проект",
+      "dateRange": "Период",
+      "clear": "Сбросить фильтры",
+      "allTypes": "Все типы",
+      "allProjects": "Все проекты",
+      "status_pending": "На ревью",
+      "status_accepted": "Принятые",
+      "status_rejected": "Отклонённые",
+      "range_today": "Сегодня",
+      "range_7d": "7 дней",
+      "range_30d": "30 дней",
+      "range_all": "Всё время"
+    },
+    "bulk": {
+      "selected": "{count, plural, one {выбрано #} few {выбрано #} other {выбрано #}}",
+      "selectAll": "Выбрать все",
+      "clearSelection": "Снять выделение",
+      "acceptAll": "Принять выбранные",
+      "rejectAll": "Отклонить выбранные",
+      "successAll": "Принято {accepted} из {total}",
+      "partial": "Принято {accepted}, не удалось {failed}",
+      "successRejectAll": "Отклонено {accepted} из {total}",
+      "partialReject": "Отклонено {accepted}, не удалось {failed}",
+      "allFailed": "Все элементы не удалось обработать",
+      "confirmReject": "Отклонить {count} элементов? Это нельзя отменить одним кликом."
+    },
+    "diff": {
+      "before": "Было",
+      "after": "Станет",
+      "from": "Откуда",
+      "to": "Куда",
+      "relation": "Связь",
+      "confidence": "Уверенность",
+      "evidence": "Источник",
+      "noEvidence": "Документ-источник больше не доступен",
+      "sharedNeighbors": "{count} общих соседей",
+      "sharedDocuments": "{count} общих документов",
+      "openFullMerge": "Открыть полное слияние",
+      "openDocument": "Открыть документ",
+      "retryEnrichment": "Повторить обогащение",
+      "lastError": "Последняя ошибка",
+      "attempts": "попыток: {count}"
+    },
+    "edit": {
+      "title": "Редактировать перед принятием",
+      "submit": "Сохранить и принять",
+      "fieldRequired": "Обязательное",
+      "relationType": "Тип связи",
+      "relationTypePlaceholder": "например related_to, depends_on",
+      "confidence": "Уверенность",
+      "noteOnMerge": "Чтобы изменить целевую сущность, откройте полный режим слияния."
+    },
+    "keyboard": {
+      "title": "Горячие клавиши",
+      "help": "Нажмите ?, чтобы показать список",
+      "list": "Список inbox",
+      "j": "Следующий элемент",
+      "k": "Предыдущий элемент",
+      "a": "Принять выделенный",
+      "r": "Отклонить выделенный",
+      "e": "Редактировать выделенный",
+      "V": "Открыть источник",
+      "esc": "Снять выделение / закрыть диалог",
+      "cmdEnter": "Подтвердить правку / submit",
+      "questionMark": "Показать этот оверлей",
+      "close": "Закрыть"
+    }
+  },
+  "entityMerge": {
+    "title": "Слияние сущности",
+    "description": "Свернуть одну сущность в другую. Упоминания в документах и связи переезжают на целевую. Петли и дубликаты связей удаляются.",
+    "sourceLabel": "Источник (исчезнет)",
+    "targetLabel": "Цель (останется)",
+    "searchTarget": "Найти целевую сущность…",
+    "searchEmpty": "Совпадений нет.",
+    "preview": {
+      "title": "Предпросмотр последствий",
+      "run": "Предпросмотр",
+      "documentLinks": "Упоминаний переезжает",
+      "edgeRepoints": "Связей переезжает",
+      "edgeDedupes": "Удалено дубликатов связей",
+      "selfLoops": "Удалено петель",
+      "ready": "Цифры готовы — проверьте и подтвердите."
+    },
+    "confirm": "Подтвердить слияние",
+    "cancel": "Отмена",
+    "success": "{sourceName} слита в {targetName}",
+    "error": {
+      "selfMerge": "Нельзя слить сущность саму в себя",
+      "alreadyMerged": "Источник уже слит",
+      "targetMerged": "Цель сама слита",
+      "generic": "Слияние не удалось"
+    }
+  },
+  "edgeEditor": {
+    "title": "Редактировать связь",
+    "description": "Поменяйте тип связи или статус. Удаление снимает связь полностью.",
+    "fields": {
+      "fromEntity": "От",
+      "toEntity": "К",
+      "relationType": "Тип связи",
+      "relationTypePlaceholder": "например related_to",
+      "confidence": "Уверенность",
+      "status": "Статус"
+    },
+    "status": {
+      "auto_confirmed": "Подтверждена",
+      "needs_review": "На ревью",
+      "manual": "Вручную",
+      "rejected": "Отклонена"
+    },
+    "save": "Сохранить",
+    "delete": "Удалить связь",
+    "deleteConfirm": "Удалить связь? Нажмите ещё раз для подтверждения.",
+    "success": {
+      "updated": "Связь обновлена",
+      "deleted": "Связь удалена"
+    },
+    "error": {
+      "generic": "Не удалось обновить связь"
     }
   },
   "system": {

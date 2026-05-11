@@ -345,6 +345,7 @@
       "aliases": "Aliases",
       "actions": "Actions",
       "setCenter": "Center on this entity",
+      "mergeInto": "Merge into…",
       "projects": "Projects",
       "emptyProjects": "No project links.",
       "documents": "Recent documents",
@@ -431,14 +432,20 @@
     "title": "Inbox",
     "subtitle": "Items waiting for review (entity merges, edge suggestions).",
     "empty": "Nothing to review. Suggestions arrive when Claude enriches your documents.",
+    "emptyHint": "Try a wider date range or clear the filters above.",
+    "loadError": "Couldn't load inbox",
+    "retry": "Retry",
     "accept": "Accept",
     "reject": "Reject",
+    "edit": "Edit",
+    "cancel": "Cancel",
+    "save": "Save",
     "accepted": "Suggestion accepted",
     "rejected": "Suggestion rejected",
+    "edited": "Edited and accepted",
     "actionFailed": "Action failed",
     "viewEvidence": "View source document",
     "noEvidence": "No source document attached",
-    "phase7Note": "Full diff view and bulk actions land in Phase 7.",
     "confidence": {
       "high": "high",
       "mid": "mid",
@@ -449,7 +456,139 @@
       "entityMergeSuggestion": "merge",
       "duplicateDetection": "duplicate",
       "enrichmentFailed": "enrichment failed",
-      "conflictingDecision": "conflict"
+      "conflictingDecision": "conflict",
+      "description": {
+        "linkSuggestion": "Claude proposed a connection between two entities. Review the relation and evidence before accepting.",
+        "entityMergeSuggestion": "Two entities look like the same thing. Merge folds the source into the target.",
+        "duplicateDetection": "Two documents share content. Mark which is canonical.",
+        "enrichmentFailed": "Enrichment for this document failed. Retry or dismiss.",
+        "conflictingDecision": "A new decision contradicts an existing one. Pick which stands."
+      }
+    },
+    "filters": {
+      "title": "Filters",
+      "type": "Type",
+      "status": "Status",
+      "project": "Project",
+      "dateRange": "Date range",
+      "clear": "Clear filters",
+      "allTypes": "All types",
+      "allProjects": "All projects",
+      "status_pending": "Pending",
+      "status_accepted": "Accepted",
+      "status_rejected": "Rejected",
+      "range_today": "Today",
+      "range_7d": "7 days",
+      "range_30d": "30 days",
+      "range_all": "All time"
+    },
+    "bulk": {
+      "selected": "{count, plural, one {# selected} other {# selected}}",
+      "selectAll": "Select all",
+      "clearSelection": "Clear selection",
+      "acceptAll": "Accept selected",
+      "rejectAll": "Reject selected",
+      "successAll": "Accepted {accepted} of {total}",
+      "partial": "Accepted {accepted}, {failed} failed",
+      "successRejectAll": "Rejected {accepted} of {total}",
+      "partialReject": "Rejected {accepted}, {failed} failed",
+      "allFailed": "All items failed",
+      "confirmReject": "Reject {count} item(s)? This can't be undone in a single click."
+    },
+    "diff": {
+      "before": "Before",
+      "after": "After",
+      "from": "From",
+      "to": "To",
+      "relation": "Relation",
+      "confidence": "Confidence",
+      "evidence": "Evidence",
+      "noEvidence": "Source document is no longer available",
+      "sharedNeighbors": "{count} shared neighbors",
+      "sharedDocuments": "{count} shared documents",
+      "openFullMerge": "Open full merge view",
+      "openDocument": "Open document",
+      "retryEnrichment": "Retry enrichment",
+      "lastError": "Last error",
+      "attempts": "{count} attempts"
+    },
+    "edit": {
+      "title": "Edit before accept",
+      "submit": "Save and accept",
+      "fieldRequired": "Required",
+      "relationType": "Relation",
+      "relationTypePlaceholder": "e.g. related_to, depends_on",
+      "confidence": "Confidence",
+      "noteOnMerge": "Switch to the full merge view to change the target entity."
+    },
+    "keyboard": {
+      "title": "Keyboard shortcuts",
+      "help": "Press ? to show shortcuts",
+      "list": "Inbox list",
+      "j": "Next item",
+      "k": "Previous item",
+      "a": "Accept focused",
+      "r": "Reject focused",
+      "e": "Edit focused",
+      "V": "View evidence",
+      "esc": "Clear selection / close dialog",
+      "cmdEnter": "Submit edit / confirm",
+      "questionMark": "Show this overlay",
+      "close": "Close"
+    }
+  },
+  "entityMerge": {
+    "title": "Merge entity",
+    "description": "Fold one entity into another. Document mentions and edges repoint to the target. Self-loops and duplicate edges are removed.",
+    "sourceLabel": "Source (will be merged away)",
+    "targetLabel": "Target (will remain)",
+    "searchTarget": "Search for target entity…",
+    "searchEmpty": "No entities match.",
+    "preview": {
+      "title": "Preview impact",
+      "run": "Preview",
+      "documentLinks": "Document mentions repointed",
+      "edgeRepoints": "Edges repointed",
+      "edgeDedupes": "Duplicate edges removed",
+      "selfLoops": "Self-loops cleaned",
+      "ready": "Preview ready — review counts and confirm."
+    },
+    "confirm": "Confirm merge",
+    "cancel": "Cancel",
+    "success": "Merged {sourceName} into {targetName}",
+    "error": {
+      "selfMerge": "Cannot merge an entity into itself",
+      "alreadyMerged": "Source entity is already merged",
+      "targetMerged": "Target entity is itself merged",
+      "generic": "Merge failed"
+    }
+  },
+  "edgeEditor": {
+    "title": "Edit edge",
+    "description": "Change the relation type or status. Deletion removes the link entirely.",
+    "fields": {
+      "fromEntity": "From",
+      "toEntity": "To",
+      "relationType": "Relation type",
+      "relationTypePlaceholder": "e.g. related_to",
+      "confidence": "Confidence",
+      "status": "Status"
+    },
+    "status": {
+      "auto_confirmed": "Auto-confirmed",
+      "needs_review": "Needs review",
+      "manual": "Manual",
+      "rejected": "Rejected"
+    },
+    "save": "Save changes",
+    "delete": "Delete edge",
+    "deleteConfirm": "Delete this edge? Click again to confirm.",
+    "success": {
+      "updated": "Edge updated",
+      "deleted": "Edge deleted"
+    },
+    "error": {
+      "generic": "Couldn't update the edge"
     }
   },
   "system": {
