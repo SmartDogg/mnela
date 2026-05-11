@@ -113,12 +113,12 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Inbox supports accept/reject/edit; entity merge UI works; edge editing works; keyboard shortcuts wired; empty/loading/error states polished.
 
-- [ ] Inbox UI with diff-style preview, bulk actions, filters
-- [ ] Entity merge flow
-- [ ] Edge editing
-- [ ] Search highlights
-- [ ] Polished empty/loading/error states
-- [ ] Keyboard shortcuts
+- [x] Inbox UI with diff-style preview, bulk actions, filters
+- [x] Entity merge flow
+- [x] Edge editing
+- [x] Search highlights
+- [x] Polished empty/loading/error states
+- [x] Keyboard shortcuts
 
 ## Phase 8 — Ask Brain (TZ §7.2)
 
