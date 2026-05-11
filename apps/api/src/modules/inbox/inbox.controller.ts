@@ -41,6 +41,35 @@ export class InboxController {
     return this.inbox.findById(id);
   }
 
+  // Static `bulk/*` routes MUST be declared before `:id/*` routes — NestJS/Express match
+  // in registration order, and `POST /inbox/bulk/accept` would otherwise be captured by
+  // `POST /inbox/:id/accept` with id='bulk' and fall through to a 404.
+  @Post('bulk/accept')
+  @RequiredScope('mcp')
+  @ApiOperation({ summary: 'Bulk accept inbox items (per-item tx, partial-success report)' })
+  async bulkAccept(
+    @Body() body: BulkInboxDto,
+    @CurrentPrincipal() principal: Principal | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<BulkInboxResult> {
+    const result = await this.inbox.acceptMany(body.ids, principal);
+    this.setBulkStatus(res, result);
+    return result;
+  }
+
+  @Post('bulk/reject')
+  @RequiredScope('mcp')
+  @ApiOperation({ summary: 'Bulk reject inbox items (per-item tx, partial-success report)' })
+  async bulkReject(
+    @Body() body: BulkInboxDto,
+    @CurrentPrincipal() principal: Principal | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<BulkInboxResult> {
+    const result = await this.inbox.rejectMany(body.ids, principal);
+    this.setBulkStatus(res, result);
+    return result;
+  }
+
   @Post(':id/accept')
   @RequiredScope('mcp')
   @Audit({ action: 'inbox.accept', targetType: 'InboxItem', targetIdParam: 'id' })
@@ -70,32 +99,6 @@ export class InboxController {
     @CurrentPrincipal() principal: Principal | undefined,
   ) {
     return this.inbox.edit(id, body.payload, principal);
-  }
-
-  @Post('bulk/accept')
-  @RequiredScope('mcp')
-  @ApiOperation({ summary: 'Bulk accept inbox items (per-item tx, partial-success report)' })
-  async bulkAccept(
-    @Body() body: BulkInboxDto,
-    @CurrentPrincipal() principal: Principal | undefined,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<BulkInboxResult> {
-    const result = await this.inbox.acceptMany(body.ids, principal);
-    this.setBulkStatus(res, result);
-    return result;
-  }
-
-  @Post('bulk/reject')
-  @RequiredScope('mcp')
-  @ApiOperation({ summary: 'Bulk reject inbox items (per-item tx, partial-success report)' })
-  async bulkReject(
-    @Body() body: BulkInboxDto,
-    @CurrentPrincipal() principal: Principal | undefined,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<BulkInboxResult> {
-    const result = await this.inbox.rejectMany(body.ids, principal);
-    this.setBulkStatus(res, result);
-    return result;
   }
 
   private setBulkStatus(res: Response, result: BulkInboxResult): void {
