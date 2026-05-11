@@ -19,7 +19,7 @@ import {
   ProjectRepository,
   type UpdateDocumentInput,
 } from '@mnela/db';
-import { readWhisperStatus } from '@mnela/queue';
+import { readClaudeStatus, readWhisperStatus } from '@mnela/queue';
 import { Prisma } from '@prisma/client';
 import type { Attachment, Document, Job } from '@prisma/client';
 
@@ -193,6 +193,35 @@ export class DocumentsService {
       LIMIT ${limit}
     `);
     return rows.map((r) => ({ id: r.id, title: r.title, similarity: Number(r.similarity) }));
+  }
+
+  async reenrich(id: string): Promise<{ jobId: string }> {
+    const doc = await this.findById(id);
+    if (doc.archivedAt) {
+      throw new ConflictException(`Document ${id} is archived`);
+    }
+    const claude = await readClaudeStatus(this.redis.client);
+    if (!claude.available) {
+      throw new ServiceUnavailableException({
+        title: 'AI Smart Mode disabled',
+        reason: claude.reason ?? 'unknown',
+        hint:
+          claude.reason === 'no-binary'
+            ? 'Install the Claude Code CLI on the server and run `claude login`.'
+            : claude.reason === 'not-logged-in'
+              ? 'Run `claude login` on the server to authenticate the orchestrator.'
+              : claude.reason === 'orchestrator-not-running'
+                ? 'Start the orchestrator app (or wait for the boot probe to finish).'
+                : 'Claude rate limit hit — try again after the window resets.',
+      });
+    }
+    const job = await this.jobs.create({
+      type: 'enrich_document',
+      payload: { documentId: id, reenrich: true },
+      documentId: id,
+    });
+    await this.queue.enqueueEnrichment({ dbJobId: job.id, documentId: id });
+    return { jobId: job.id };
   }
 
   async retranscribe(id: string): Promise<{ jobId: string }> {

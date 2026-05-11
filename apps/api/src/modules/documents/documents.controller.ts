@@ -12,7 +12,6 @@ import {
   Post,
   Query,
   Res,
-  ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -110,12 +109,14 @@ export class DocumentsController {
 
   @Post(':id/reenrich')
   @RequiredScope('admin')
-  @ApiOperation({ summary: 'Re-run enrichment via Claude Code (Phase 5; currently unavailable)' })
-  reenrich(@Param('id') _id: string): never {
-    throw new ServiceUnavailableException({
-      title: 'AI Smart Mode disabled',
-      message: 'Claude Code orchestrator lands in Phase 5',
-    });
+  @Audit({ action: 'document.reenrich', targetType: 'Document', targetIdParam: 'id' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary:
+      'Re-run Claude Code enrichment for this document (gated by mnela:claude:status). Returns 503 in Dumb Mode.',
+  })
+  reenrich(@Param('id') id: string) {
+    return this.documents.reenrich(id);
   }
 
   @Post(':id/retranscribe')

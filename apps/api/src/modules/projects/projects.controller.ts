@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
@@ -70,11 +69,13 @@ export class ProjectsController {
 
   @Post(':slug/refresh-context')
   @RequiredScope('mcp')
-  @ApiOperation({ summary: 'Re-generate context.md via Claude Code (Phase 5; unavailable)' })
-  refreshContext(@Param('slug') _slug: string): never {
-    throw new ServiceUnavailableException({
-      title: 'AI Smart Mode disabled',
-      message: 'Project context refresh requires Claude Code (Phase 5)',
-    });
+  @Audit({ action: 'project.refresh_context', targetType: 'Project', targetIdParam: 'slug' })
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({
+    summary:
+      'Enqueue a refresh of context.md via Claude Code (gated by mnela:claude:status). Returns 503 in Dumb Mode.',
+  })
+  refreshContext(@Param('slug') slug: string) {
+    return this.projects.refreshContext(slug);
   }
 }
