@@ -52,6 +52,11 @@ export class DocumentRepository {
     return this.getPrisma().document.findUnique({ where: { contentHash } });
   }
 
+  findManyByIds(ids: readonly string[]): Promise<Document[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.getPrisma().document.findMany({ where: { id: { in: [...ids] } } });
+  }
+
   async list(filters: DocumentListFilters = {}, opts: PageOptions = {}): Promise<Page<Document>> {
     const params = paginationParams(opts);
     const where: Prisma.DocumentWhereInput = {};
