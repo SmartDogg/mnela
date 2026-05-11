@@ -1,6 +1,12 @@
 import { Redis, type RedisOptions } from 'ioredis';
 
-export const QUEUE_NAMES = ['ingestion', 'enrichment', 'indexing', 'maintenance'] as const;
+export const QUEUE_NAMES = [
+  'ingestion',
+  'enrichment',
+  'indexing',
+  'maintenance',
+  'transcription',
+] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
 let sharedConnection: Redis | undefined;

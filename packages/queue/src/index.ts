@@ -10,10 +10,12 @@ export {
   type EnrichmentJob,
   type IndexingJob,
   type MaintenanceJob,
+  type TranscribeAudioJob,
   type IngestionJobName,
   type EnrichmentJobName,
   type IndexingJobName,
   type MaintenanceJobName,
+  type TranscriptionJobName,
 } from './jobs.js';
 export {
   type MnelaEvent,
@@ -34,6 +36,14 @@ export {
   readClaudeStatus,
   writeClaudeStatus,
 } from './claude-status.js';
+export {
+  type WhisperStatusState,
+  type WhisperUnavailableReason,
+  WHISPER_STATUS_KEY,
+  DEFAULT_WHISPER_STATUS,
+  readWhisperStatus,
+  writeWhisperStatus,
+} from './whisper-status.js';
 export {
   type SlotOwner,
   type SlotState,

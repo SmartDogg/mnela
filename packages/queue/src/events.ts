@@ -46,7 +46,21 @@ export interface DocumentEnrichedEvent {
   type: 'document.enriched';
   payload: { jobId: string; documentId: string; addedEntities: number; addedEdges: number };
 }
-export type DocumentEvent = DocumentCreatedEvent | DocumentParsedEvent | DocumentEnrichedEvent;
+export interface DocumentTranscribedEvent {
+  type: 'document.transcribed';
+  payload: {
+    jobId: string;
+    documentId: string;
+    language: string;
+    durationSec?: number;
+    model?: string;
+  };
+}
+export type DocumentEvent =
+  | DocumentCreatedEvent
+  | DocumentParsedEvent
+  | DocumentEnrichedEvent
+  | DocumentTranscribedEvent;
 
 // Reserved for Phase 4–5: emitted but never consumed yet.
 export interface GraphNodeAddedEvent {
@@ -99,7 +113,11 @@ export interface SystemClaudeStatusChangedEvent {
   type: 'system.claude_status_changed';
   payload: { available: boolean; reason?: string };
 }
-export type SystemEvent = SystemClaudeStatusChangedEvent;
+export interface SystemWhisperStatusChangedEvent {
+  type: 'system.whisper_status_changed';
+  payload: { available: boolean; reason?: string };
+}
+export type SystemEvent = SystemClaudeStatusChangedEvent | SystemWhisperStatusChangedEvent;
 
 export type MnelaEvent = JobEvent | DocumentEvent | GraphEvent | InboxEvent | SystemEvent;
 
