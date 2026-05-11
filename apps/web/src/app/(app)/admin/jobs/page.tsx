@@ -29,12 +29,13 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api/client';
-import type {
-  JobDurationStats,
-  JobErrorRateStats,
-  JobSummary,
-  JobThroughputStats,
-  Paginated,
+import {
+  jobLastActivityAt,
+  type JobDurationStats,
+  type JobErrorRateStats,
+  type JobSummary,
+  type JobThroughputStats,
+  type Paginated,
 } from '@/lib/api/types';
 import { cn, relativeTime } from '@/lib/utils';
 
@@ -383,7 +384,7 @@ function FailedJobsTile({
                   {(job.error ?? '').slice(0, 200) || '—'}
                 </TableCell>
                 <TableCell className="text-right text-[11px] text-muted-foreground">
-                  {relativeTime(job.completedAt ?? job.updatedAt)}
+                  {relativeTime(jobLastActivityAt(job))}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button

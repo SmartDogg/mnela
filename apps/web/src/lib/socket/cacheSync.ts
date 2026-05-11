@@ -102,40 +102,35 @@ function mergeJob(old: JobSummary | undefined, event: JobMutationEvent): JobSumm
       id: event.payload.jobId,
       type: event.payload.jobType as JobSummary['type'],
       status: 'queued',
+      priority: 50,
       payload: {},
-      progress: 0,
-      total: null,
+      result: null,
       error: null,
+      documentId: null,
+      attempts: 0,
+      maxAttempts: 3,
       createdAt: event.payload.createdAt,
-      updatedAt: event.payload.createdAt,
       startedAt: null,
       completedAt: null,
+      costEstimate: null,
     };
   }
   if (!old) return old;
   switch (event.type) {
     case 'job.started':
-      return {
-        ...old,
-        status: 'running',
-        startedAt: event.payload.startedAt,
-        updatedAt: event.payload.startedAt,
-      };
+      return { ...old, status: 'running', startedAt: event.payload.startedAt };
     case 'job.progress':
-      return { ...old, progress: event.payload.progress };
+      // Progress is a live-only quantity (BullMQ runtime, not DB Job row).
+      // Consumers read it directly off the event stream via useLiveEvents.
+      return old;
     case 'job.completed':
-      return {
-        ...old,
-        status: 'completed',
-        completedAt: event.payload.completedAt,
-        updatedAt: event.payload.completedAt,
-      };
+      return { ...old, status: 'completed', completedAt: event.payload.completedAt };
     case 'job.failed':
       return {
         ...old,
         status: 'failed',
         error: event.payload.error,
-        updatedAt: event.payload.failedAt,
+        completedAt: event.payload.failedAt,
       };
   }
 }

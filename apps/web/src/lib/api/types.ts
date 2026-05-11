@@ -111,18 +111,32 @@ export type JobStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed'
 
 export type JobType = 'ingest_file' | 'enrich_document' | 'index_chunks' | 'maintenance';
 
+// Mirrors what GET /jobs/:id and /jobs return. Earlier the web invented
+// progress/total/updatedAt fields that the API never emits — DB Job rows
+// don't carry BullMQ progress (live UI gets that via Socket.io job.progress
+// events) and there is no updatedAt column. Pick a sensible "last activity"
+// timestamp via the helper exported below.
 export interface JobSummary {
   id: string;
   type: JobType;
   status: JobStatus;
+  priority: number;
   payload: Record<string, unknown>;
-  progress: number;
-  total: number | null;
+  result: Record<string, unknown> | null;
   error: string | null;
+  documentId: string | null;
+  attempts: number;
+  maxAttempts: number;
   createdAt: string;
-  updatedAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  costEstimate: number | null;
+}
+
+export function jobLastActivityAt(
+  job: Pick<JobSummary, 'createdAt' | 'startedAt' | 'completedAt'>,
+): string {
+  return job.completedAt ?? job.startedAt ?? job.createdAt;
 }
 
 export interface JobStats {

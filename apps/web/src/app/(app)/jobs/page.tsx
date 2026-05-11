@@ -18,7 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/client';
-import type { JobSummary, Paginated } from '@/lib/api/types';
+import { jobLastActivityAt, type JobSummary, type Paginated } from '@/lib/api/types';
 import { relativeTime } from '@/lib/utils';
 
 export default function JobsPage(): JSX.Element {
@@ -51,8 +51,8 @@ export default function JobsPage(): JSX.Element {
               <TableRow>
                 <TableHead>Type</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Progress</TableHead>
-                <TableHead className="text-right">Updated</TableHead>
+                <TableHead>Attempts</TableHead>
+                <TableHead className="text-right">Last activity</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -80,11 +80,11 @@ export default function JobsPage(): JSX.Element {
                     <JobStatusBadge status={job.status} />
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {job.progress}
-                    {job.total ? ` / ${job.total}` : ''}
+                    {job.attempts}
+                    {` / ${job.maxAttempts}`}
                   </TableCell>
                   <TableCell className="text-right text-xs text-muted-foreground">
-                    {relativeTime(job.updatedAt)}
+                    {relativeTime(jobLastActivityAt(job))}
                   </TableCell>
                 </TableRow>
               ))}

@@ -67,16 +67,38 @@ export function LiveImportView({ id }: LiveImportViewProps): JSX.Element {
 
   const showFallbackBanner = useFallbackBanner(live.status);
 
+  // BullMQ progress lives in live events, not the DB Job row. Derive processed
+  // from the documents the worker has already persisted (authoritative for
+  // count). The latest job.progress event carries a percentage in
+  // payload.progress; we surface it directly when present so ProgressHeader
+  // can compute ETA from the percent + elapsed.
+  const latestProgressPct = useMemo<number | null>(() => {
+    for (let i = live.events.length - 1; i >= 0; i -= 1) {
+      const ev = live.events[i]?.event;
+      if (ev?.type === 'job.progress') {
+        const pct = (ev.payload as { progress?: number }).progress;
+        return typeof pct === 'number' ? pct : null;
+      }
+    }
+    return null;
+  }, [live.events]);
+
   const counts = useMemo<ProgressCounts>(() => {
     const failed = documents.filter((d) => d.status === 'failed').length;
     const skipped = documents.filter((d) => d.status === 'archived').length;
     return {
-      processed: jobQuery.data?.progress ?? 0,
-      total: jobQuery.data?.total ?? null,
+      processed: documents.length,
+      total:
+        latestProgressPct !== null && documents.length > 0
+          ? Math.max(
+              documents.length,
+              Math.round((documents.length * 100) / Math.max(latestProgressPct, 1)),
+            )
+          : null,
       failed,
       skipped,
     };
-  }, [documents, jobQuery.data?.progress, jobQuery.data?.total]);
+  }, [documents, latestProgressPct]);
 
   // Tick once a second so ETA reflects elapsed time without waiting for
   // the next event.

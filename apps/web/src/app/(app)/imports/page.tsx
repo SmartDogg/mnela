@@ -86,8 +86,21 @@ export default function ImportsPage(): JSX.Element {
                       <JobStatusBadge status={job.status} />
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
-                      {job.progress}
-                      {job.total ? ` / ${job.total}` : ''}
+                      {(() => {
+                        const docIds = Array.isArray(
+                          (job.result as { documentIds?: unknown } | null)?.documentIds,
+                        )
+                          ? ((job.result as { documentIds: unknown[] }).documentIds
+                              .length as number)
+                          : null;
+                        const duplicates =
+                          typeof (job.result as { duplicates?: unknown } | null)?.duplicates ===
+                          'number'
+                            ? ((job.result as { duplicates: number }).duplicates as number)
+                            : 0;
+                        if (docIds === null) return '—';
+                        return duplicates > 0 ? `${docIds} (${duplicates} dup)` : String(docIds);
+                      })()}
                     </TableCell>
                     <TableCell className="text-right text-xs text-muted-foreground">
                       {relativeTime(job.createdAt)}
