@@ -49,6 +49,14 @@ export interface ParseContext {
   origin: ParsedSource;
   /** Working directory for parsers that need to extract temp files. */
   workdir: string;
+  /**
+   * Absolute path to the input on disk. Set whenever the input was streamed
+   * to disk (every real upload after the streaming rewrite). Parsers that
+   * deal with multi-GB ZIPs (chatgpt/claude) MUST use this for entry reads
+   * instead of the `buf` parameter; the buffer is then a small head sample
+   * for magic-byte / format detection only.
+   */
+  inputPath?: string;
 }
 
 export interface Parser {

@@ -1,5 +1,5 @@
 import { type ParseContext, type ParsedDocument, type Parser } from '../parser.js';
-import { readZipEntries } from '../zip.js';
+import { readZipEntries, readZipEntriesFromFile, type ZipEntry } from '../zip.js';
 
 interface ChatGPTConversation {
   id?: string;
@@ -47,13 +47,19 @@ async function loadConversations(buf: Buffer, ctx: ParseContext): Promise<ChatGP
     if (Array.isArray(parsed)) return parsed as ChatGPTConversation[];
     return [];
   }
-  // Otherwise it's the ZIP — find conversations.json inside.
-  const entries = await readZipEntries(buf);
+  const entries = await loadZipEntries(buf, ctx);
   const target = entries.find((e) => e.fileName.toLowerCase().endsWith('conversations.json'));
   if (!target) return [];
   const data = await target.read();
   const parsed: unknown = JSON.parse(data.toString('utf-8'));
   return Array.isArray(parsed) ? (parsed as ChatGPTConversation[]) : [];
+}
+
+async function loadZipEntries(buf: Buffer, ctx: ParseContext): Promise<ZipEntry[]> {
+  // Prefer path-based open: a 1.4 GB export buffered into RAM is the OOM we
+  // are trying to avoid. `buf` may be just a small head sample for detection.
+  if (ctx.inputPath) return readZipEntriesFromFile(ctx.inputPath);
+  return readZipEntries(buf);
 }
 
 function renderConversation(conv: ChatGPTConversation, ctx: ParseContext): ParsedDocument {

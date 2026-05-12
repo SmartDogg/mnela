@@ -1,5 +1,5 @@
 import { type ParseContext, type ParsedDocument, type Parser } from '../parser.js';
-import { readZipEntries, type ZipEntry } from '../zip.js';
+import { readZipEntries, readZipEntriesFromFile, type ZipEntry } from '../zip.js';
 
 /**
  * Claude.ai data-export ZIP. Layout (verified against a real export):
@@ -78,7 +78,9 @@ export const claudeParser: Parser = {
     return false;
   },
   async parse(buf: Buffer, ctx: ParseContext): Promise<ParsedDocument[]> {
-    const entries = await readZipEntries(buf);
+    const entries = ctx.inputPath
+      ? await readZipEntriesFromFile(ctx.inputPath)
+      : await readZipEntries(buf);
     const docs: ParsedDocument[] = [];
 
     docs.push(...(await parseChats(entries, ctx, 'design_chats/')));

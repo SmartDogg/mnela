@@ -11,7 +11,7 @@ import { jsonParser } from './parsers/json.js';
 import { mdParser } from './parsers/md.js';
 import { pdfParser } from './parsers/pdf.js';
 import { txtParser } from './parsers/txt.js';
-import { readZipEntries } from './zip.js';
+import { readZipEntries, readZipEntriesFromFile } from './zip.js';
 
 const STANDARD_PARSERS: Parser[] = [
   mdParser,
@@ -43,7 +43,7 @@ export interface ResolvedParser {
 export async function resolveParser(buf: Buffer, ctx: ParseContext): Promise<ResolvedParser> {
   // ZIP archives are checked first — uploads come in as .zip, not as the inner json.
   if (isZip(ctx, buf)) {
-    const flavor = await detectZipFlavor(buf);
+    const flavor = await detectZipFlavor(buf, ctx);
     if (flavor === 'chatgpt') return { parser: chatgptParser, matchedBy: 'archive-peek' };
     if (flavor === 'claude') return { parser: claudeParser, matchedBy: 'archive-peek' };
   }
@@ -81,9 +81,17 @@ function isZip(ctx: ParseContext, buf: Buffer): boolean {
   );
 }
 
-async function detectZipFlavor(buf: Buffer): Promise<'chatgpt' | 'claude' | 'unknown'> {
+async function detectZipFlavor(
+  buf: Buffer,
+  ctx: ParseContext,
+): Promise<'chatgpt' | 'claude' | 'unknown'> {
   try {
-    const entries = await readZipEntries(buf);
+    // Prefer path-based open so we don't materialize a 1.4 GB archive in RAM
+    // just to peek at the entry list. Buffer path stays for tests and for
+    // in-memory inputs (when no inputPath is set).
+    const entries = ctx.inputPath
+      ? await readZipEntriesFromFile(ctx.inputPath)
+      : await readZipEntries(buf);
     const names = entries.map((e) => e.fileName);
     const hasChatgpt = names.some((n) => /(^|\/)conversations\.json$/.test(n));
     const hasUserJson = names.some((n) => n === 'user.json' || n === 'chat.html');

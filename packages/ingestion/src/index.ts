@@ -9,7 +9,7 @@ export { countTokens } from './tokenizer.js';
 export { chunkText, type Chunk, type ChunkOptions } from './chunker.js';
 export { detectLanguage } from './language.js';
 export { sha256Hex, namespaceHash } from './content-hash.js';
-export { readZipEntries, type ZipEntry } from './zip.js';
+export { readZipEntries, readZipEntriesFromFile, type ZipEntry } from './zip.js';
 export { resolveParser, type ResolvedParser } from './registry.js';
 export {
   createWhisperClient,
