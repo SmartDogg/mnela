@@ -1,4 +1,5 @@
 import {
+  AttachmentRepository,
   DocumentEntityRepository,
   DocumentRepository,
   EdgeRepository,
@@ -6,6 +7,7 @@ import {
   InboxRepository,
   JobRepository,
   PrismaService,
+  SystemConfigRepository,
 } from '@mnela/db';
 import { Global, Module, type Provider } from '@nestjs/common';
 
@@ -18,6 +20,8 @@ const REPO_CLASSES = [
   EdgeRepository,
   InboxRepository,
   JobRepository,
+  AttachmentRepository,
+  SystemConfigRepository,
 ] as const satisfies readonly RepoCtor[];
 
 const providers: Provider[] = REPO_CLASSES.map((Ctor) => ({

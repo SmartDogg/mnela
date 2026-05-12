@@ -1,5 +1,12 @@
 import { runClaude } from '@mnela/claude-runner';
-import { DocumentRepository } from '@mnela/db';
+import {
+  AttachmentRepository,
+  DocumentEntityRepository,
+  DocumentRepository,
+  EntityRepository,
+  SystemConfigRepository,
+  normalizeEntityName,
+} from '@mnela/db';
 import { peekSlot, publishEvent } from '@mnela/queue';
 import { Injectable, Logger } from '@nestjs/common';
 
@@ -7,6 +14,12 @@ import { ClaudeStatusService } from '../claude-status/claude-status.service.js';
 import { loadEnv, mcpConfigPath, vaultDir } from '../env.js';
 import { RateLimitService } from '../rate-limit/rate-limit.service.js';
 import { RedisService } from '../redis.service.js';
+import { anthropicApiImageBackend } from './image-analysis/anthropic-api-backend.js';
+import {
+  type ImageAnalysisBackend,
+  type ImageAnalysisInput as BackendInput,
+} from './image-analysis/backend.js';
+import { claudeCodeImageBackend } from './image-analysis/claude-code-backend.js';
 import { enrichmentPromptFor, projectContextRefreshPromptFor } from './prompts.js';
 
 export interface EnrichmentInput {
@@ -29,15 +42,24 @@ export interface EnrichmentOutcome {
 
 const STRUCTURED_RE = /\{[\s\S]*"addedEntitiesCount"[\s\S]*\}/;
 
+export interface ImageAnalysisInput {
+  dbJobId: string;
+  attachmentId: string;
+}
+
 @Injectable()
 export class EnrichmentPipeline {
   private readonly logger = new Logger(EnrichmentPipeline.name);
 
   constructor(
     private readonly documents: DocumentRepository,
+    private readonly attachments: AttachmentRepository,
+    private readonly entities: EntityRepository,
+    private readonly documentEntities: DocumentEntityRepository,
     private readonly redis: RedisService,
     private readonly claudeStatus: ClaudeStatusService,
     private readonly rateLimit: RateLimitService,
+    private readonly systemConfig: SystemConfigRepository,
   ) {}
 
   async run(input: EnrichmentInput): Promise<EnrichmentOutcome> {
@@ -270,6 +292,148 @@ export class EnrichmentPipeline {
       droppedLowConfidence: 0,
     };
   }
+
+  /**
+   * Vision pipeline for an image Attachment. Routes through the SystemConfig-
+   * selected backend, parses the structured output, and writes
+   * Attachment.description / ocrText / analyzedAt + entity links on the
+   * companion Document(type=image). Status mapping mirrors `run`:
+   * `enriched`/`skipped` → DB Job completed; everything else → failed.
+   */
+  async runImageAnalysis(input: ImageAnalysisInput): Promise<EnrichmentOutcome> {
+    const enabled = await this.getConfig<boolean>('attachments.imageAnalysisEnabled', true);
+    if (!enabled) {
+      return zeroOutcome('skipped', 'image-analysis-disabled');
+    }
+
+    const status = await this.claudeStatus.get();
+    if (!status.available) {
+      return zeroOutcome('skipped', status.reason ?? 'unavailable');
+    }
+    if (await this.rateLimit.isPaused()) {
+      return zeroOutcome('rate-limited', 'queue-paused');
+    }
+    const slot = await peekSlot(this.redis.client);
+    if (slot && slot.owner !== 'enrichment') {
+      return zeroOutcome('skipped', `slot-held-by-${slot.owner}`);
+    }
+
+    const attachment = await this.attachments.findById(input.attachmentId);
+    if (!attachment) {
+      return zeroOutcome('failed', `attachment ${input.attachmentId} not found`);
+    }
+    if (!attachment.mimeType.startsWith('image/')) {
+      return zeroOutcome('skipped', `not an image (${attachment.mimeType})`);
+    }
+
+    const backendName = await this.getConfig<'claude-code' | 'anthropic-api'>(
+      'attachments.imageAnalysisBackend',
+      'claude-code',
+    );
+    const model = await this.getConfig<'opus' | 'sonnet' | 'haiku'>(
+      'attachments.imageAnalysisModel',
+      'sonnet',
+    );
+    const backend: ImageAnalysisBackend =
+      backendName === 'anthropic-api' ? anthropicApiImageBackend : claudeCodeImageBackend;
+
+    const backendInput: BackendInput = {
+      attachmentPath: attachment.path,
+      mimeType: attachment.mimeType,
+      documentId: attachment.linkedDocumentId ?? '',
+      model,
+    };
+
+    const result = await backend.analyze(backendInput);
+    if (result.status === 'unavailable') {
+      return zeroOutcome('skipped', `${backend.name}: ${result.reason}`);
+    }
+    if (result.status === 'failed') {
+      return zeroOutcome('failed', `${backend.name}: ${result.reason}`);
+    }
+
+    const { output } = result;
+    await this.attachments.setAnalysis(input.attachmentId, {
+      description: output.description,
+      ocrText: output.ocrText,
+    });
+
+    let addedEntities = 0;
+    let droppedLowConfidence = 0;
+    if (attachment.linkedDocumentId) {
+      // Flip the image Document from raw -> enriched and seed its body so the
+      // /documents detail page and search both surface the description.
+      await this.documents.update(attachment.linkedDocumentId, {
+        rawText: output.description,
+        cleanText: output.description,
+        status: 'enriched',
+      });
+
+      for (const entity of output.entities) {
+        if (entity.confidence < 0.5) {
+          droppedLowConfidence += 1;
+          continue;
+        }
+        const normalized = normalizeEntityName(entity.name);
+        const existing = await this.entities.findByNormalized(normalized, entity.type);
+        const entityId =
+          existing?.id ??
+          (
+            await this.entities.create({
+              name: entity.name,
+              normalizedName: normalized,
+              type: entity.type,
+              ...(entity.aliases?.length ? { aliases: entity.aliases } : {}),
+            })
+          ).id;
+        if (!existing) {
+          await publishEvent(this.redis.client, {
+            type: 'graph.node_added',
+            payload: { entity: { id: entityId, name: entity.name, type: entity.type } },
+          });
+          addedEntities += 1;
+        }
+        await this.documentEntities.upsert(attachment.linkedDocumentId, entityId, 1);
+      }
+    }
+
+    await publishEvent(this.redis.client, {
+      type: 'document.enriched',
+      payload: {
+        jobId: input.dbJobId,
+        documentId: attachment.linkedDocumentId ?? input.attachmentId,
+        addedEntities,
+        addedEdges: 0,
+      },
+    });
+
+    this.logger.log(
+      `analyzed image ${input.attachmentId} via ${backend.name}: +${addedEntities} entities, -${droppedLowConfidence} dropped`,
+    );
+
+    return {
+      status: 'enriched',
+      addedEntities,
+      addedEdges: 0,
+      droppedLowConfidence,
+    };
+  }
+
+  private async getConfig<T>(key: string, fallback: T): Promise<T> {
+    const row = await this.systemConfig.get(key);
+    if (!row || row.value === null || row.value === undefined) return fallback;
+    return row.value as T;
+  }
+}
+
+function zeroOutcome(status: EnrichmentOutcome['status'], reason: string): EnrichmentOutcome {
+  return {
+    status,
+    addedEntities: 0,
+    addedEdges: 0,
+    droppedLowConfidence: 0,
+    reason,
+  };
 }
 
 interface StructuredSummary {

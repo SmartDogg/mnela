@@ -53,15 +53,20 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async handleJob(bullJob: BullJob<EnrichmentJob>): Promise<unknown> {
     const data = bullJob.data;
-    const isProjectContext = !data.documentId && Boolean(data.projectSlug);
-    if (!data.documentId && !data.projectSlug) {
+    const isImageAnalysis = Boolean(data.attachmentId);
+    const isProjectContext = !isImageAnalysis && !data.documentId && Boolean(data.projectSlug);
+    if (!isImageAnalysis && !data.documentId && !data.projectSlug) {
       this.logger.warn(
-        `enrichment job ${bullJob.id} has neither documentId nor projectSlug — skipping`,
+        `enrichment job ${bullJob.id} has no documentId/projectSlug/attachmentId — skipping`,
       );
       return { status: 'skipped' };
     }
 
-    const jobType = isProjectContext ? 'refresh_project_context' : 'enrich_document';
+    const jobType = isImageAnalysis
+      ? 'analyze_attachment'
+      : isProjectContext
+        ? 'refresh_project_context'
+        : 'enrich_document';
     // Sync DB Job → 'running' before doing anything else. Mirrors the worker's
     // markRunning pattern; without this the row stays at status='queued',
     // attempts=0, startedAt=null forever after enrichment runs (live UI then
@@ -73,15 +78,20 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      const outcome = isProjectContext
-        ? await this.pipeline.runProjectContext({
+      const outcome = isImageAnalysis
+        ? await this.pipeline.runImageAnalysis({
             dbJobId: data.dbJobId,
-            projectSlug: data.projectSlug!,
+            attachmentId: data.attachmentId!,
           })
-        : await this.pipeline.run({
-            dbJobId: data.dbJobId,
-            documentId: data.documentId!,
-          });
+        : isProjectContext
+          ? await this.pipeline.runProjectContext({
+              dbJobId: data.dbJobId,
+              projectSlug: data.projectSlug!,
+            })
+          : await this.pipeline.run({
+              dbJobId: data.dbJobId,
+              documentId: data.documentId!,
+            });
 
       if (outcome.status === 'skipped' && outcome.reason?.startsWith('slot-held-by-')) {
         // ADR-0041: yield the Claude slot to Ask Brain; re-queue this job

@@ -73,9 +73,13 @@ function makePipeline(overrides: PipelineDeps = {}) {
   };
   const pipeline = new EnrichmentPipeline(
     documents as never,
+    {} as never, // attachments — not exercised by existing tests
+    {} as never, // entities
+    {} as never, // documentEntities
     redis as never,
     claudeStatus as never,
     rateLimit as never,
+    { get: vi.fn(async () => null) } as never, // systemConfig
   );
   return { pipeline, documents, claudeStatus, rateLimit };
 }

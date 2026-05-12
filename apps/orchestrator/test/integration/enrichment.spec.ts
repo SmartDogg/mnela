@@ -133,9 +133,13 @@ function buildPipeline() {
   Object.defineProperty(rateLimit, 'pause', { value: vi.fn(async () => undefined) });
   return new EnrichmentPipeline(
     new DocumentRepository(() => prisma),
+    {} as never, // attachments — image-analysis path is not exercised by these tests
+    {} as never, // entities
+    {} as never, // documentEntities
     { client: redis } as never,
     claudeStatus,
     rateLimit as never,
+    { get: vi.fn(async () => null) } as never, // systemConfig
   );
 }
 
