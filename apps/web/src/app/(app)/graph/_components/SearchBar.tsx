@@ -1,10 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api/client';
 import type { Paginated } from '@/lib/api/types';
@@ -23,12 +24,22 @@ interface SearchBarProps {
   onPickCenter: (entityId: string) => void;
   /** Pre-fill text — useful for showing the current center name. */
   placeholder?: string;
+  /**
+   * When set, the bar renders the picked entity as a leading chip with a
+   * clear button. Backspace on an empty input also clears the chip. The
+   * parent owns the actual center state — this is presentation only.
+   */
+  centerLabel?: string;
+  /** Called when the user removes the chip (clears center). */
+  onClearCenter?: () => void;
 }
 
 export function SearchBar({
   onMatchInGraph,
   onPickCenter,
   placeholder,
+  centerLabel,
+  onClearCenter,
 }: SearchBarProps): JSX.Element {
   const t = useTranslations('graph');
   const [text, setText] = useState('');
@@ -63,14 +74,55 @@ export function SearchBar({
 
   const results = query.data?.items ?? [];
 
+  function pickCenter(id: string): void {
+    onPickCenter(id);
+    // Picking a result switches modes from "filter highlight" to "navigation".
+    // Clear the typed text so the highlight doesn't linger on the new graph.
+    setText('');
+    onMatchInGraph('');
+    setOpen(false);
+  }
+
   return (
     <div ref={containerRef} className="relative w-full max-w-md">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <Input
+      <div
+        className={cn(
+          'relative flex h-8 items-center gap-1.5 rounded-md border bg-background pl-2.5 pr-2.5',
+          'focus-within:ring-1 focus-within:ring-ring',
+        )}
+      >
+        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        {centerLabel && (
+          <Badge
+            variant="secondary"
+            className="flex shrink-0 items-center gap-1 px-1.5 py-0.5 font-mono text-[11px]"
+          >
+            <span className="max-w-[10rem] truncate" title={centerLabel}>
+              {centerLabel}
+            </span>
+            {onClearCenter && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClearCenter();
+                  setText('');
+                  onMatchInGraph('');
+                }}
+                className="-mr-0.5 ml-0.5 rounded hover:bg-background/50"
+                aria-label={t('search.clearCenter')}
+                title={t('search.clearCenter')}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            )}
+          </Badge>
+        )}
+        <input
           value={text}
-          placeholder={placeholder ?? t('search.placeholder')}
-          className="h-8 pl-8 text-sm"
+          placeholder={
+            centerLabel ? t('search.replaceCenter') : (placeholder ?? t('search.placeholder'))
+          }
+          className="h-full flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             const next = e.target.value;
@@ -79,18 +131,28 @@ export function SearchBar({
             onMatchInGraph(next.trim());
           }}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Escape') {
+              setOpen(false);
+              setText('');
+              onMatchInGraph('');
+            }
             if (e.key === 'Enter' && results.length > 0) {
               const first = results[0];
-              if (first) {
-                onPickCenter(first.id);
-                setOpen(false);
-              }
+              if (first) pickCenter(first.id);
+            }
+            // Gmail-style chip removal: Backspace on empty input drops center.
+            if (
+              e.key === 'Backspace' &&
+              text === '' &&
+              centerLabel !== undefined &&
+              onClearCenter
+            ) {
+              onClearCenter();
             }
           }}
         />
         {query.isFetching && (
-          <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
         )}
       </div>
       {open && enabled && (
@@ -108,8 +170,7 @@ export function SearchBar({
               onMouseDown={(e) => {
                 // Prevent input blur from closing the popover before click.
                 e.preventDefault();
-                onPickCenter(row.id);
-                setOpen(false);
+                pickCenter(row.id);
               }}
               className={cn(
                 'flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
@@ -122,6 +183,11 @@ export function SearchBar({
               </span>
             </button>
           ))}
+          {results.length > 0 && (
+            <div className="border-t mt-1 px-2 py-1 text-[10px] text-muted-foreground">
+              {t('search.hint')}
+            </div>
+          )}
         </div>
       )}
     </div>

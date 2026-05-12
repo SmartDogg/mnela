@@ -30,7 +30,16 @@ export interface GraphFilters {
   confidence: number;
   /** When false, includes needs_review edges (no extra API filter; UI hint). */
   confirmedOnly: boolean;
+  /**
+   * Overview density cap: how many of the top-degree entities to fetch on
+   * /graph/overview. `0` is "no cap" (server still applies GRAPH_MAX_NODES).
+   * Only meaningful while `center === ''`.
+   */
+  overviewLimit: number;
 }
+
+/** Hand-picked density presets shown in the sidebar as a segmented control. */
+export const OVERVIEW_LIMIT_PRESETS: readonly number[] = [50, 200, 500, 1000, 0] as const;
 
 export const DEFAULT_FILTERS: GraphFilters = {
   center: '',
@@ -42,6 +51,7 @@ export const DEFAULT_FILTERS: GraphFilters = {
   to: null,
   confidence: 0,
   confirmedOnly: true,
+  overviewLimit: 200,
 };
 
 function isEntityType(value: string): value is EntityType {
@@ -97,6 +107,10 @@ export function filtersFromSearchParams(
   const confirmedOnly =
     confirmedOnlyRaw === null ? DEFAULT_FILTERS.confirmedOnly : confirmedOnlyRaw !== 'false';
 
+  const limitRaw = params.get('limit');
+  const overviewLimit =
+    limitRaw !== null ? clampLimit(Number(limitRaw)) : DEFAULT_FILTERS.overviewLimit;
+
   return {
     center,
     depth,
@@ -107,7 +121,15 @@ export function filtersFromSearchParams(
     to: to && to.length > 0 ? to : null,
     confidence,
     confirmedOnly,
+    overviewLimit,
   };
+}
+
+function clampLimit(n: number): number {
+  if (Number.isNaN(n) || n < 0) return DEFAULT_FILTERS.overviewLimit;
+  // Server-side hard cap is 500 in the existing dto.ts, but the overview
+  // endpoint independently honors a higher ceiling. `0` = unlimited.
+  return Math.min(10_000, Math.round(n));
 }
 
 function recordToParams(input: Record<string, string | string[] | undefined>): URLSearchParams {
@@ -138,6 +160,9 @@ export function filtersToSearchParams(filters: GraphFilters): URLSearchParams {
   }
   if (filters.confirmedOnly !== DEFAULT_FILTERS.confirmedOnly) {
     params.set('confirmedOnly', String(filters.confirmedOnly));
+  }
+  if (filters.overviewLimit !== DEFAULT_FILTERS.overviewLimit) {
+    params.set('limit', String(filters.overviewLimit));
   }
   return params;
 }

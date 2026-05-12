@@ -379,13 +379,22 @@
     "subtitle": "Силовой граф сущностей и связей.",
     "stats": "{nodes} узлов · {edges} рёбер",
     "overviewStats": "Обзор · {nodes} узлов · {edges} рёбер",
-    "truncated": "Показано {returned} из {total} узлов — уточните фильтры.",
+    "truncated": "Показано {returned} из {total} узлов",
+    "showMore": "Показать {next}",
+    "showAll": "Показать все",
     "search": {
       "placeholder": "Поиск сущностей…",
-      "pickCenter": "Перейти к сущности…",
+      "pickCenter": "Текст — подсветка · Enter — переход",
       "replaceCenter": "Поиск или смена центра…",
       "loading": "Поиск…",
-      "empty": "Ничего не найдено."
+      "empty": "Ничего не найдено.",
+      "hint": "Enter — переход · Esc — сбросить",
+      "clearCenter": "Назад к обзору"
+    },
+    "breadcrumb": {
+      "label": "Навигация по графу",
+      "overview": "Обзор",
+      "clear": "Назад к обзору"
     },
     "overview": {
       "badge": "Обзор",
@@ -397,6 +406,9 @@
     "filters": {
       "title": "Фильтры",
       "reset": "Сбросить",
+      "density": "Плотность обзора",
+      "densityAll": "Все",
+      "densityAllWarn": "Загрузка всех узлов может быть медленной на больших графах.",
       "depth": "Глубина",
       "entityTypes": "Типы сущностей",
       "relations": "Типы связей",
@@ -413,7 +425,20 @@
     },
     "actions": {
       "reheat": "Перезапустить раскладку",
-      "fit": "Вместить в экран"
+      "fit": "Вместить в экран",
+      "newEntity": "Новая сущность"
+    },
+    "create": {
+      "title": "Новая сущность",
+      "subtitle": "Добавьте узел в свой мозг. Если такое имя + тип уже есть — вы перейдёте на ту сущность.",
+      "name": "Название",
+      "namePlaceholder": "напр. Postgres FTS",
+      "type": "Тип",
+      "description": "Описание",
+      "descriptionPlaceholder": "Что это за сущность? (опционально)",
+      "submit": "Создать",
+      "creating": "Создаём…",
+      "cancel": "Отмена"
     },
     "entityPanel": {
       "close": "Закрыть",
@@ -425,7 +450,11 @@
       "projects": "Проекты",
       "emptyProjects": "Нет связей с проектами.",
       "documents": "Недавние документы",
-      "emptyDocuments": "Нет связанных документов."
+      "emptyDocuments": "Нет связанных документов.",
+      "emptyDescription": "Описания пока нет — нажмите карандаш чтобы добавить.",
+      "emptyAliases": "Псевдонимов пока нет.",
+      "renameHint": "Двойной клик — переименовать",
+      "renameAria": "Переименовать сущность"
     }
   },
   "admin": {

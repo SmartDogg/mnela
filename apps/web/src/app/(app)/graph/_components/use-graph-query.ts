@@ -133,14 +133,15 @@ export function useGraphQuery(filters: GraphFilters): UseGraphQueryResult {
   // Always enabled now: an empty center kicks off the overview ("zero-state")
   // query so the page is never blank on first paint.
   const overviewMode = apiQuery === null;
-  const overviewLimit = 200;
 
   // Two stable query keys — one for overview, one for neighborhood. We do
   // NOT include client-only filter fields (types, relations, confidence,
   // confirmedOnly) in the key so toggling them doesn't trigger a refetch.
+  // overviewLimit IS included because changing it changes which subgraph
+  // the server returns.
   const query = useQuery({
     queryKey: overviewMode
-      ? (['graph', 'overview', overviewLimit] as const)
+      ? (['graph', 'overview', filters.overviewLimit] as const)
       : ([
           'graph',
           apiQuery.center,
@@ -154,7 +155,7 @@ export function useGraphQuery(filters: GraphFilters): UseGraphQueryResult {
     queryFn: async (): Promise<GraphSnapshot> => {
       if (overviewMode) {
         const response = await api.get<GraphApiResponse>('/graph/overview', {
-          query: { limit: overviewLimit },
+          query: { limit: filters.overviewLimit },
         });
         // confirmedOnly is applied client-side too; keep adapt neutral.
         return adapt(response, false);

@@ -1,12 +1,13 @@
 'use client';
 
 import type { Edge as GraphEdge, Entity as GraphEntity } from '@mnela/ui';
-import { Activity, Loader2, Maximize2 } from 'lucide-react';
+import { Activity, ChevronRight, Home, Loader2, Maximize2, Plus, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { EdgeEditorDialog, type EdgeEditorTarget } from '@/components/edge-editor-dialog';
+import { EntityCreateDialog } from '@/components/entity-create-dialog';
 import { Button } from '@/components/ui/button';
 import { EntityPanel } from './_components/EntityPanel';
 import { FilterSidebar } from './_components/FilterSidebar';
@@ -34,6 +35,7 @@ export default function GraphPage(): JSX.Element {
   // Live search text — feeds the canvas's highlight overlay every keystroke
   // without going through React Query, so typing is instant.
   const [searchText, setSearchText] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const graphRef = useRef<GraphViewHandle | null>(null);
 
   // Sync filter changes back to the URL without remounting the page. We
@@ -56,6 +58,8 @@ export default function GraphPage(): JSX.Element {
 
   const handleNodeClick = useCallback((entity: GraphEntity) => {
     setSelectedEntity(entity);
+    // Bring the picked node into view so the overlay panel doesn't hide it.
+    graphRef.current?.centerOn(entity.id);
   }, []);
 
   const handleEdgeClick = useCallback((edge: GraphEdge) => {
@@ -78,6 +82,17 @@ export default function GraphPage(): JSX.Element {
   const handleSetCenter = useCallback((entityId: string) => {
     setFilters((prev) => ({ ...prev, center: entityId }));
     setSelectedEntity(null);
+    // Picking a center is the "navigate" intent — drop any active search
+    // highlight that was the "filter" intent. They share the same input but
+    // are conceptually different actions; this is what makes the dual-purpose
+    // search bar coherent for the user.
+    setSearchText('');
+  }, []);
+
+  const handleBackToOverview = useCallback(() => {
+    setFilters((prev) => ({ ...prev, center: '' }));
+    setSelectedEntity(null);
+    setSearchText('');
   }, []);
 
   const handleMatchInGraph = useCallback(
@@ -100,6 +115,17 @@ export default function GraphPage(): JSX.Element {
 
   const truncated = stats?.truncated === true;
   const isOverview = !filters.center;
+  // Friendly label for the centered entity — pulled from the loaded nodes if
+  // possible, otherwise from the selectedEntity (clicked node) or the raw id
+  // as a last resort. Lets the chip and breadcrumb update before the data
+  // for the new center has finished loading.
+  const centerLabel = useMemo(() => {
+    if (!filters.center) return undefined;
+    const match = nodes.find((n) => n.id === filters.center);
+    if (match) return match.name;
+    if (selectedEntity?.id === filters.center) return selectedEntity.name;
+    return filters.center.slice(0, 10) + '…';
+  }, [filters.center, nodes, selectedEntity]);
 
   const headerSubtitle = useMemo(() => {
     if (!stats) return t('subtitle');
@@ -124,12 +150,24 @@ export default function GraphPage(): JSX.Element {
           <SearchBar
             onMatchInGraph={handleMatchInGraph}
             onPickCenter={handleSetCenter}
-            placeholder={filters.center ? t('search.replaceCenter') : t('search.pickCenter')}
+            placeholder={t('search.pickCenter')}
+            centerLabel={centerLabel}
+            onClearCenter={handleBackToOverview}
           />
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {graphQuery.isFetching && <Loader2 className="h-3 w-3 animate-spin" aria-hidden />}
           <span className="font-mono tabular-nums">{headerSubtitle}</span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={() => setCreateOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('actions.newEntity')}
+          </Button>
           <div className="inline-flex items-center rounded-md border bg-background p-0.5">
             <Button
               type="button"
@@ -157,12 +195,56 @@ export default function GraphPage(): JSX.Element {
         </div>
       </div>
 
+      {/*
+        Neighborhood-mode breadcrumb. Acts as both orientation ("you are
+        looking at X's neighborhood") and a one-click way back to the
+        overview. The chip in the search bar does the same — having both is
+        intentional because users discover the search affordance later.
+      */}
+      {!isOverview && (
+        <nav
+          aria-label={t('breadcrumb.label')}
+          className="flex items-center gap-1.5 border-b bg-background/60 px-4 py-1.5 text-xs"
+        >
+          <button
+            type="button"
+            onClick={handleBackToOverview}
+            className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Home className="h-3 w-3" aria-hidden />
+            {t('breadcrumb.overview')}
+          </button>
+          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" aria-hidden />
+          <span className="truncate text-foreground" title={centerLabel}>
+            {centerLabel ?? '…'}
+          </span>
+          <button
+            type="button"
+            onClick={handleBackToOverview}
+            className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label={t('breadcrumb.clear')}
+            title={t('breadcrumb.clear')}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </nav>
+      )}
+
       <div className="flex flex-1 overflow-hidden">
         <FilterSidebar filters={filters} onChange={setFilters} onReset={reset} />
 
         <div className="relative flex flex-1 flex-col">
           {truncated && stats && (
-            <TruncatedBanner returnedNodes={stats.returnedNodes} totalNodes={stats.totalNodes} />
+            <TruncatedBanner
+              returnedNodes={stats.returnedNodes}
+              totalNodes={stats.totalNodes}
+              currentLimit={isOverview ? filters.overviewLimit : undefined}
+              onShowMore={
+                isOverview
+                  ? (next) => setFilters((prev) => ({ ...prev, overviewLimit: next }))
+                  : undefined
+              }
+            />
           )}
           <div className="relative flex-1">
             {graphQuery.error !== null && graphQuery.error !== undefined && (
@@ -186,18 +268,23 @@ export default function GraphPage(): JSX.Element {
                 </div>
               </div>
             )}
+            {/*
+              EntityPanel is rendered as an absolute overlay *inside* the
+              canvas container so it floats above the graph instead of
+              consuming flex width. This makes page-level horizontal scroll
+              structurally impossible regardless of the panel's content.
+            */}
+            {selectedEntity && (
+              <EntityPanel
+                entityId={selectedEntity.id}
+                initialName={selectedEntity.name}
+                initialType={selectedEntity.type}
+                onClose={() => setSelectedEntity(null)}
+                onSetCenter={handleSetCenter}
+              />
+            )}
           </div>
         </div>
-
-        {selectedEntity && (
-          <EntityPanel
-            entityId={selectedEntity.id}
-            initialName={selectedEntity.name}
-            initialType={selectedEntity.type}
-            onClose={() => setSelectedEntity(null)}
-            onSetCenter={handleSetCenter}
-          />
-        )}
       </div>
       {selectedEdge && (
         <EdgeEditorDialog
@@ -210,6 +297,14 @@ export default function GraphPage(): JSX.Element {
           toName={nodes.find((n) => n.id === selectedEdge.toId)?.name}
         />
       )}
+      <EntityCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        // Land on the newly-created entity so the user can immediately start
+        // editing/connecting it. Skipped on "reused" (already-existing) only
+        // would feel like nothing happened — better to jump there too.
+        onCreated={(id) => handleSetCenter(id)}
+      />
     </div>
   );
 }

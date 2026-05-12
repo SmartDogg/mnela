@@ -379,13 +379,22 @@
     "subtitle": "Force-directed view across entities and edges.",
     "stats": "{nodes} nodes · {edges} edges",
     "overviewStats": "Overview · {nodes} nodes · {edges} edges",
-    "truncated": "Showing {returned} of {total} nodes — narrow filters to see all.",
+    "truncated": "Showing {returned} of {total} nodes",
+    "showMore": "Show {next}",
+    "showAll": "Show all",
     "search": {
       "placeholder": "Search entities…",
-      "pickCenter": "Jump to an entity…",
-      "replaceCenter": "Search or change center…",
+      "pickCenter": "Search to highlight · Enter to jump",
+      "replaceCenter": "Type to highlight or jump…",
       "loading": "Searching…",
-      "empty": "No matches."
+      "empty": "No matches.",
+      "hint": "Enter to navigate · Esc to clear",
+      "clearCenter": "Back to overview"
+    },
+    "breadcrumb": {
+      "label": "Graph navigation",
+      "overview": "Overview",
+      "clear": "Back to overview"
     },
     "overview": {
       "badge": "Overview",
@@ -397,6 +406,9 @@
     "filters": {
       "title": "Filters",
       "reset": "Reset",
+      "density": "Overview density",
+      "densityAll": "All",
+      "densityAllWarn": "Loading all nodes may be slow on larger graphs.",
       "depth": "Depth",
       "entityTypes": "Entity types",
       "relations": "Relation types",
@@ -413,7 +425,20 @@
     },
     "actions": {
       "reheat": "Re-heat layout",
-      "fit": "Fit to screen"
+      "fit": "Fit to screen",
+      "newEntity": "New entity"
+    },
+    "create": {
+      "title": "New entity",
+      "subtitle": "Add a node to your brain. If one with the same name + type already exists, you'll jump to it.",
+      "name": "Name",
+      "namePlaceholder": "e.g. Postgres FTS",
+      "type": "Type",
+      "description": "Description",
+      "descriptionPlaceholder": "What is this entity? (optional)",
+      "submit": "Create",
+      "creating": "Creating…",
+      "cancel": "Cancel"
     },
     "entityPanel": {
       "close": "Close",
@@ -425,7 +450,11 @@
       "projects": "Projects",
       "emptyProjects": "No project links.",
       "documents": "Recent documents",
-      "emptyDocuments": "No linked documents."
+      "emptyDocuments": "No linked documents.",
+      "emptyDescription": "No description yet — click the pencil to add one.",
+      "emptyAliases": "No aliases yet.",
+      "renameHint": "Double-click to rename",
+      "renameAria": "Rename entity"
     }
   },
   "admin": {

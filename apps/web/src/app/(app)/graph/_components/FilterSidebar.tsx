@@ -13,12 +13,22 @@ import { api } from '@/lib/api/client';
 import type { Paginated, ProjectSummary } from '@/lib/api/types';
 import { cn } from '@/lib/utils';
 
-import { ENTITY_TYPES, type EntityType, type GraphFilters } from './filterState';
+import {
+  ENTITY_TYPES,
+  OVERVIEW_LIMIT_PRESETS,
+  type EntityType,
+  type GraphFilters,
+} from './filterState';
 
 interface FilterSidebarProps {
   filters: GraphFilters;
   onChange: (next: GraphFilters) => void;
   onReset: () => void;
+}
+
+interface Facet {
+  value: string;
+  count: number;
 }
 
 export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps): JSX.Element {
@@ -31,11 +41,34 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
   });
   const projects = projectsQuery.data?.items ?? [];
 
-  function toggleType(type: EntityType): void {
-    const has = filters.types.includes(type);
+  // Discover which entity types actually exist in the user's DB. Falls back
+  // to the static enum when the call fails (offline / fresh install).
+  const entityTypesQuery = useQuery({
+    queryKey: ['graph', 'entity-types'],
+    queryFn: () => api.get<Facet[]>('/graph/entity-types'),
+    staleTime: 60_000,
+  });
+  const entityTypes: Facet[] =
+    entityTypesQuery.data && entityTypesQuery.data.length > 0
+      ? entityTypesQuery.data
+      : ENTITY_TYPES.map((value) => ({ value, count: 0 }));
+
+  // Same for relation types — there's no enum to fall back on so the empty
+  // array is the natural "no suggestions yet" state.
+  const relationTypesQuery = useQuery({
+    queryKey: ['graph', 'relation-types'],
+    queryFn: () => api.get<Facet[]>('/graph/relation-types'),
+    staleTime: 60_000,
+  });
+  const relationFacets: Facet[] = relationTypesQuery.data ?? [];
+
+  function toggleType(type: string): void {
+    const has = filters.types.includes(type as EntityType);
     onChange({
       ...filters,
-      types: has ? filters.types.filter((t2) => t2 !== type) : [...filters.types, type],
+      types: has
+        ? filters.types.filter((t2) => t2 !== type)
+        : [...filters.types, type as EntityType],
     });
   }
 
@@ -68,6 +101,46 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
       </div>
       <ScrollArea className="flex-1">
         <div className="space-y-5 px-3 pb-6">
+          {/*
+            Overview density only matters in zero-state mode (no center).
+            Hidden in neighborhood mode where `depth` already bounds the
+            visible subgraph.
+          */}
+          {!filters.center && (
+            <Section label={t('density')}>
+              <div
+                role="radiogroup"
+                aria-label={t('density')}
+                className="inline-flex w-full items-center rounded-md border bg-background p-0.5"
+              >
+                {OVERVIEW_LIMIT_PRESETS.map((preset) => {
+                  const active = filters.overviewLimit === preset;
+                  const label = preset === 0 ? t('densityAll') : String(preset);
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => onChange({ ...filters, overviewLimit: preset })}
+                      className={cn(
+                        'flex-1 rounded-sm px-1 py-0.5 text-[11px] font-medium transition-colors',
+                        active
+                          ? 'bg-accent text-accent-foreground'
+                          : 'text-muted-foreground hover:bg-accent/50',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              {filters.overviewLimit === 0 && (
+                <p className="mt-1 text-[10px] text-amber-300/80">{t('densityAllWarn')}</p>
+              )}
+            </Section>
+          )}
+
           <Section label={t('depth')}>
             <div className="flex items-center gap-2">
               <Slider
@@ -86,13 +159,13 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
 
           <Section label={t('entityTypes')}>
             <div className="grid grid-cols-2 gap-1">
-              {ENTITY_TYPES.map((type) => {
-                const checked = filters.types.includes(type);
+              {entityTypes.map(({ value, count }) => {
+                const checked = filters.types.includes(value as EntityType);
                 return (
                   <label
-                    key={type}
+                    key={value}
                     className={cn(
-                      'flex cursor-pointer items-center gap-1.5 rounded-sm border px-2 py-1 text-xs',
+                      'flex cursor-pointer items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-xs',
                       checked
                         ? 'border-primary bg-primary/10 text-foreground'
                         : 'border-input text-muted-foreground hover:bg-accent/50',
@@ -101,10 +174,15 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggleType(type)}
+                      onChange={() => toggleType(value)}
                       className="sr-only"
                     />
-                    <span className="font-mono">{type}</span>
+                    <span className="font-mono">{value}</span>
+                    {count > 0 && (
+                      <span className="font-mono text-[10px] tabular-nums text-muted-foreground/70">
+                        {count}
+                      </span>
+                    )}
                   </label>
                 );
               })}
@@ -115,6 +193,7 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
             <Input
               value={relationsText}
               placeholder="mentions, uses, depends-on"
+              list="relation-type-suggestions"
               className="h-8 font-mono text-xs"
               onChange={(e) => setRelationsText(e.target.value)}
               onBlur={(e) => commitRelations(e.target.value)}
@@ -122,7 +201,34 @@ export function FilterSidebar({ filters, onChange, onReset }: FilterSidebarProps
                 if (e.key === 'Enter') commitRelations(e.currentTarget.value);
               }}
             />
+            {/*
+              Native <datalist> drives the autocomplete. Lightweight, works
+              with the existing free-form comma-separated convention, and
+              shows the user which relation types actually exist in their DB.
+            */}
+            <datalist id="relation-type-suggestions">
+              {relationFacets.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.value} ({f.count})
+                </option>
+              ))}
+            </datalist>
             <p className="mt-1 text-[11px] text-muted-foreground">{t('relationsHint')}</p>
+            {relationFacets.length > 0 && filters.relations.length === 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {relationFacets.slice(0, 6).map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => onChange({ ...filters, relations: [f.value] })}
+                    className="rounded-sm border border-input bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                    title={`${f.count} edges`}
+                  >
+                    {f.value}
+                  </button>
+                ))}
+              </div>
+            )}
           </Section>
 
           <Section label={t('project')}>

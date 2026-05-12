@@ -47,6 +47,9 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
       title: t('dashboard'),
       items: [
         { href: '/', label: t('dashboard'), icon: LayoutDashboard },
+        // Graph is the centre of the brain — promote it to top-level next
+        // to dashboard/search/ask so it's never more than one click away.
+        { href: '/graph', label: t('graph'), icon: GitBranch },
         { href: '/search', label: t('search'), icon: Search },
         { href: '/ask', label: t('ask'), icon: MessageCircleQuestion },
       ],
@@ -58,7 +61,6 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
         { href: '/projects', label: t('projects'), icon: Boxes },
         { href: '/decisions', label: t('decisions'), icon: ListChecks },
         { href: '/daily', label: t('daily'), icon: CalendarDays },
-        { href: '/graph', label: t('graph'), icon: GitBranch, comingSoon: true },
         { href: '/inbox', label: t('inbox'), icon: InboxIcon },
       ],
     },

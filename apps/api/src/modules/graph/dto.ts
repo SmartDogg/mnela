@@ -47,7 +47,9 @@ export const GraphQuerySchema = z.object({
 export class GraphQuery extends createZodDto(GraphQuerySchema) {}
 
 export const GraphOverviewQuerySchema = z.object({
-  limit: z.coerce.number().int().positive().max(GRAPH_MAX_NODES).optional(),
+  // `0` is allowed and means "no client-side cap" — the server still enforces
+  // GRAPH_MAX_NODES as a hard ceiling. Default is applied in the service.
+  limit: z.coerce.number().int().min(0).max(GRAPH_MAX_NODES).optional(),
   minDegree: z.coerce.number().int().positive().optional(),
   types: z.union([EntityTypeEnum, z.array(EntityTypeEnum)]).optional(),
 });
@@ -78,6 +80,15 @@ export const UpdateEntitySchema = z
   });
 
 export class UpdateEntityDto extends createZodDto(UpdateEntitySchema) {}
+
+export const CreateEntitySchema = z.object({
+  name: z.string().min(1).max(300),
+  type: EntityTypeEnum,
+  description: z.string().nullable().optional(),
+  aliases: z.array(z.string().min(1)).optional(),
+});
+
+export class CreateEntityDto extends createZodDto(CreateEntitySchema) {}
 
 export const MergeEntitiesSchema = z.object({
   sourceId: z.string().min(1),

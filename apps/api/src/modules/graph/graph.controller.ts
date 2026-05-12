@@ -16,6 +16,7 @@ import type { EntityType } from '@prisma/client';
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
 import {
+  CreateEntityDto,
   GraphOverviewQuery,
   GraphQuery,
   ListEdgesQuery,
@@ -74,6 +75,24 @@ export class GraphController {
     });
   }
 
+  @Get('entity-types')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary: 'Distinct Entity.type values present in the DB, with usage counts',
+  })
+  entityTypeFacets() {
+    return this.graph.listEntityTypeFacets();
+  }
+
+  @Get('relation-types')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary: 'Distinct Edge.relationType values present in the DB, with usage counts',
+  })
+  relationTypeFacets() {
+    return this.graph.listRelationTypeFacets();
+  }
+
   @Get('entities')
   @RequiredScope('read_only')
   @ApiOperation({ summary: 'List entities with optional fuzzy name filter' })
@@ -96,6 +115,22 @@ export class GraphController {
   @Audit({ action: 'entity.update', targetType: 'Entity', targetIdParam: 'id' })
   updateEntity(@Param('id') id: string, @Body() body: UpdateEntityDto) {
     return this.graph.updateEntity(id, body);
+  }
+
+  @Post('entities')
+  @RequiredScope('mcp')
+  @Audit({ action: 'entity.create', targetType: 'Entity' })
+  @ApiOperation({
+    summary:
+      'Create a new entity manually (find-or-create: returns the existing one if name+type collides)',
+  })
+  createEntity(@Body() body: CreateEntityDto) {
+    return this.graph.createEntity({
+      name: body.name,
+      type: body.type,
+      description: body.description ?? null,
+      aliases: body.aliases ?? [],
+    });
   }
 
   @Post('entities/merge')

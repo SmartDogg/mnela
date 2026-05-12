@@ -76,6 +76,13 @@ export interface OverviewOptions {
   types?: EntityType[];
 }
 
+export interface FacetRow {
+  /** The value (entity type or relation type). */
+  value: string;
+  /** How many entities/edges use that value. */
+  count: number;
+}
+
 @Injectable()
 export class GraphService {
   constructor(
@@ -200,7 +207,11 @@ export class GraphService {
    * the same banner as a regular neighborhood query.
    */
   async overview(options: OverviewOptions = {}): Promise<CytoscapeGraph> {
-    const limit = Math.min(options.limit ?? 80, GRAPH_MAX_NODES);
+    // `0` is the "unlimited" sentinel from the client. The hard ceiling stays
+    // GRAPH_MAX_NODES regardless — the limit is also the SQL `LIMIT` clause,
+    // so we MUST send a real number.
+    const requested = options.limit === 0 ? GRAPH_MAX_NODES : (options.limit ?? 80);
+    const limit = Math.min(requested, GRAPH_MAX_NODES);
     const minDegree = Math.max(1, options.minDegree ?? 1);
     const typeFilter = options.types && options.types.length > 0 ? options.types : null;
     const prisma = this.prisma.active();
@@ -295,6 +306,41 @@ export class GraphService {
     };
   }
 
+  /**
+   * Distinct entity types actually present in the DB, with usage counts.
+   * Lets the filter sidebar render real choices rather than the hard-coded
+   * Prisma enum — empty types disappear, popular ones surface first.
+   */
+  async listEntityTypeFacets(): Promise<FacetRow[]> {
+    const prisma = this.prisma.active();
+    const rows = await prisma.$queryRaw<{ type: string; count: bigint }[]>`
+      SELECT type::text AS type, COUNT(*)::bigint AS count
+      FROM "Entity"
+      WHERE "mergedIntoId" IS NULL
+      GROUP BY type
+      ORDER BY count DESC, type ASC
+    `;
+    return rows.map((r) => ({ value: r.type, count: Number(r.count) }));
+  }
+
+  /**
+   * Distinct relation types actually present in the DB, with usage counts.
+   * Edge.relationType is a free-form string — there's no enum to enumerate,
+   * so we have to ask the DB.
+   */
+  async listRelationTypeFacets(): Promise<FacetRow[]> {
+    const prisma = this.prisma.active();
+    const rows = await prisma.$queryRaw<{ relationType: string; count: bigint }[]>`
+      SELECT "relationType", COUNT(*)::bigint AS count
+      FROM "Edge"
+      WHERE status IN ('auto_confirmed', 'manual')
+      GROUP BY "relationType"
+      ORDER BY count DESC, "relationType" ASC
+      LIMIT 200
+    `;
+    return rows.map((r) => ({ value: r.relationType, count: Number(r.count) }));
+  }
+
   listEntities(
     filters: { q?: string; type?: EntityType; includeMerged?: boolean },
     page?: number,
@@ -307,6 +353,39 @@ export class GraphService {
     const e = await this.entities.findById(id);
     if (!e) throw new NotFoundException(`Entity ${id} not found`);
     return e;
+  }
+
+  /**
+   * Create a new entity manually from the graph UI. If an entity with the
+   * same normalized name + type already exists, return it instead of erroring
+   * — this is the same "find-or-create" semantics that the ingestion
+   * pipeline uses, so the UX of clicking "+ New entity" with a name that's
+   * already in the graph is "we just jumped you to it" not "you made a dupe".
+   */
+  async createEntity(input: {
+    name: string;
+    type: EntityType;
+    description?: string | null;
+    aliases?: string[];
+  }): Promise<{ entity: Entity; reused: boolean }> {
+    const normalizedName = normalizeEntityName(input.name);
+    if (normalizedName.length === 0) {
+      throw new BadRequestException('Entity name must contain non-whitespace characters');
+    }
+    const existing = await this.entities.findByNormalized(normalizedName, input.type);
+    if (existing) return { entity: existing, reused: true };
+    const created = await this.entities.create({
+      name: input.name,
+      normalizedName,
+      type: input.type,
+      description: input.description ?? null,
+      aliases: input.aliases ?? [],
+    });
+    await publishEvent(this.redis.client, {
+      type: 'graph.node_added',
+      payload: { entity: { id: created.id, name: created.name, type: created.type } },
+    });
+    return { entity: created, reused: false };
   }
 
   async updateEntity(id: string, patch: UpdateEntityInput): Promise<Entity> {
