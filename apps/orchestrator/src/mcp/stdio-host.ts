@@ -12,6 +12,7 @@
 import 'reflect-metadata';
 
 import {
+  AttachmentRepository,
   AuditLogRepository,
   DailyNoteRepository,
   DecisionRepository,
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
   const decisions = new DecisionRepository(() => prisma);
   const daily = new DailyNoteRepository(() => prisma);
   const jobs = new JobRepository(() => prisma);
+  const attachments = new AttachmentRepository(() => prisma);
   const search = new HybridSearchAdapter(() => prisma);
 
   const principal: Principal = {
@@ -65,6 +67,7 @@ async function main(): Promise<void> {
 
   const ctx: McpToolContext = {
     documents,
+    attachments,
     entities,
     edges,
     documentEntities,

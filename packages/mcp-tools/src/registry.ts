@@ -20,6 +20,10 @@ import { RECENT_ACTIVITY_TOOL, recentActivity } from './tools/recent-activity.js
 import { SAVE_DECISION_TOOL, saveDecision } from './tools/save-decision.js';
 import { SAVE_NOTE_TOOL, saveNote } from './tools/save-note.js';
 import { SEARCH_TOOL, search } from './tools/search.js';
+import {
+  SET_ATTACHMENT_ANALYSIS_TOOL,
+  setAttachmentAnalysis,
+} from './tools/set-attachment-analysis.js';
 import { TRAVERSE_GRAPH_TOOL, traverseGraph } from './tools/traverse-graph.js';
 import { TRIGGER_ENRICHMENT_TOOL, triggerEnrichment } from './tools/trigger-enrichment.js';
 import {
@@ -83,6 +87,10 @@ export const PHASE_5_TOOLS: readonly ToolDefinition<unknown, unknown>[] = [
   defineTool(TRIGGER_ENRICHMENT_TOOL, triggerEnrichment) as ToolDefinition<unknown, unknown>,
   defineTool(REBUILD_INDEX_TOOL, rebuildIndex) as ToolDefinition<unknown, unknown>,
   defineTool(EXPORT_VAULT_TOOL, exportVault) as ToolDefinition<unknown, unknown>,
+  defineTool(SET_ATTACHMENT_ANALYSIS_TOOL, setAttachmentAnalysis) as ToolDefinition<
+    unknown,
+    unknown
+  >,
 ];
 
 export function findTool(name: string): ToolDefinition<unknown, unknown> | undefined {

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AttachmentRepository,
   AuditLogRepository,
   DailyNoteRepository,
   DecisionRepository,
@@ -38,6 +39,7 @@ export class ToolsService {
     private readonly daily: DailyNoteRepository,
     private readonly jobs: JobRepository,
     private readonly audit: AuditLogRepository,
+    private readonly attachments: AttachmentRepository,
   ) {
     this.searchAdapter = new HybridSearchAdapter(() => this.prisma.active());
   }
@@ -82,6 +84,7 @@ export class ToolsService {
 
     return {
       documents: this.documents,
+      attachments: this.attachments,
       entities: this.entities,
       edges: this.edges,
       documentEntities: this.documentEntities,

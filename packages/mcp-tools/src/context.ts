@@ -1,4 +1,5 @@
 import type {
+  AttachmentRepository,
   AuditLogRepository,
   DailyNoteRepository,
   DecisionRepository,
@@ -65,6 +66,7 @@ export interface McpToolContext {
     DocumentRepository,
     'findById' | 'getChunks' | 'list' | 'create' | 'update' | 'setProjects' | 'findByContentHash'
   >;
+  attachments: Pick<AttachmentRepository, 'findById' | 'setAnalysis' | 'listForDocument'>;
   entities: Pick<
     EntityRepository,
     'findById' | 'findByNormalized' | 'create' | 'findByNameWithJoins' | 'listTopForProject'

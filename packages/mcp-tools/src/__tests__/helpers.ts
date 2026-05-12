@@ -182,6 +182,11 @@ export function buildMockCtx(
         return null;
       }),
     },
+    attachments: {
+      findById: vi.fn(async () => null),
+      setAnalysis: vi.fn(async () => ({}) as never),
+      listForDocument: vi.fn(async () => []),
+    },
     entities: {
       findById: vi.fn(async (id: string) => entities.get(id) ?? null),
       findByNormalized: vi.fn(

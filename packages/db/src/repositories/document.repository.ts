@@ -35,6 +35,8 @@ export interface UpdateDocumentInput {
   archived?: boolean;
   status?: DocumentStatus;
   metadata?: Prisma.InputJsonValue;
+  rawText?: string;
+  cleanText?: string | null;
 }
 
 export class DocumentRepository {
@@ -101,6 +103,8 @@ export class DocumentRepository {
     if (patch.type !== undefined) data.type = patch.type;
     if (patch.status !== undefined) data.status = patch.status;
     if (patch.metadata !== undefined) data.metadata = patch.metadata;
+    if (patch.rawText !== undefined) data.rawText = patch.rawText;
+    if (patch.cleanText !== undefined) data.cleanText = patch.cleanText;
     if (patch.archived === true) {
       data.archivedAt = new Date();
       data.status = 'archived';

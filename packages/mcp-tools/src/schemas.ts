@@ -16,6 +16,42 @@ export const EntityTypeSchema = z.enum(ENTITY_TYPES);
 
 const ConfidenceSchema = z.number().min(0).max(1);
 
+/**
+ * Vision pipeline output — written by the orchestrator after Claude finishes
+ * describing an image attachment. `entities` are the same shape as
+ * `mnela_add_entities` so the tool can reuse the existing extraction path.
+ */
+export const SetAttachmentAnalysisInputSchema = z.object({
+  attachmentId: z.string().min(1),
+  /** Human-readable description, 1-3 paragraphs. Plain text. */
+  description: z.string().min(1).max(8_000),
+  /** Optional OCR'd text (signs, captions, charts). Null when there's nothing to read. */
+  ocrText: z.string().max(20_000).nullable().optional(),
+  /** Entities visible in the image to upsert + link to the image Document. */
+  entities: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(200),
+        type: z.enum(ENTITY_TYPES),
+        confidence: ConfidenceSchema,
+        aliases: z.array(z.string()).optional(),
+      }),
+    )
+    .max(50)
+    .optional(),
+});
+export type SetAttachmentAnalysisInput = z.infer<typeof SetAttachmentAnalysisInputSchema>;
+
+export const SetAttachmentAnalysisOutputSchema = z.object({
+  attachmentId: z.string(),
+  /** ID of the companion Document(type=image), null if the Attachment had no linked doc yet. */
+  linkedDocumentId: z.string().nullable(),
+  addedEntities: z.number().int().nonnegative(),
+  mergedEntities: z.number().int().nonnegative(),
+  droppedLowConfidence: z.number().int().nonnegative(),
+});
+export type SetAttachmentAnalysisOutput = z.infer<typeof SetAttachmentAnalysisOutputSchema>;
+
 export const GetDocumentInputSchema = z.object({
   id: z.string().min(1),
 });

@@ -33,4 +33,24 @@ export class AttachmentRepository {
       orderBy: { createdAt: 'asc' },
     });
   }
+
+  /**
+   * Persist vision-analysis output for an image attachment: description,
+   * extracted OCR text, and the analyzedAt timestamp. The companion image
+   * Document keeps its own status track — this only writes Attachment
+   * fields. Returns the updated row.
+   */
+  async setAnalysis(
+    id: string,
+    patch: { description?: string | null; ocrText?: string | null },
+  ): Promise<Attachment> {
+    return this.getPrisma().attachment.update({
+      where: { id },
+      data: {
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.ocrText !== undefined ? { ocrText: patch.ocrText } : {}),
+        analyzedAt: new Date(),
+      },
+    });
+  }
 }
