@@ -21,6 +21,7 @@ import type { Response } from 'express';
 
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
+import { incomingUploadStorage } from '../imports/upload.config.js';
 import { DocumentsService } from './documents.service.js';
 import { ListDocumentsQuery, RelatedQuery, UpdateDocumentDto } from './dto.js';
 
@@ -58,18 +59,23 @@ export class DocumentsController {
 
   @Post('upload')
   @RequiredScope('mcp')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 100 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: incomingUploadStorage,
+      limits: { fileSize: 100 * 1024 * 1024 },
+    }),
+  )
   @Audit({ action: 'document.upload', targetType: 'Job' })
   @ApiOperation({
     summary:
-      'Upload any supported file. Returns a Job; the worker parses asynchronously. Subscribe to /live for progress or poll /jobs/:id.',
+      'Upload any supported file. Streams to disk, returns a Job; the worker parses asynchronously. Subscribe to /live for progress or poll /jobs/:id.',
   })
   upload(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) {
       throw new BadRequestException('Missing file field "file"');
     }
     return this.documents.upload({
-      buffer: file.buffer,
+      path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,

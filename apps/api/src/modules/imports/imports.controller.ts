@@ -18,6 +18,7 @@ import { z } from 'zod';
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
 import { ImportsService } from './imports.service.js';
+import { MULTER_RAW_CEILING_BYTES, incomingUploadStorage } from './upload.config.js';
 
 const PaginationSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
@@ -58,16 +59,21 @@ export class ImportsController {
 
   @Post()
   @RequiredScope('mcp')
-  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1024 * 1024 * 1024 } }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: incomingUploadStorage,
+      limits: { fileSize: MULTER_RAW_CEILING_BYTES },
+    }),
+  )
   @Audit({ action: 'import.create', targetType: 'Job' })
   @ApiOperation({
     summary:
-      'Upload an export ZIP/file. Phase-1 persists it and creates a Job; processing lands in Phase 2.',
+      'Upload an export ZIP/file. The body is streamed to disk; ImportsService enforces SystemConfig `imports.maxBytes`.',
   })
   upload(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) throw new BadRequestException('Missing file field "file"');
     return this.imports.createFromUpload({
-      buffer: file.buffer,
+      path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,

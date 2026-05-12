@@ -3,6 +3,8 @@ import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 
+import { sha256File } from '../imports/upload.config.js';
+
 import {
   ConflictException,
   Injectable,
@@ -30,7 +32,8 @@ import { RedisService } from '../../redis.service.js';
 const PHASE2_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB; ZIP imports go through /imports.
 
 export interface UploadFileInput {
-  buffer: Buffer;
+  /** Absolute path where Multer streamed the upload. */
+  path: string;
   originalname: string;
   mimetype: string;
   size: number;
@@ -84,21 +87,33 @@ export class DocumentsService {
    * Socket.io /live) for completion.
    */
   async upload(file: UploadFileInput): Promise<UploadAccepted> {
-    if (!file.buffer || file.size === 0) {
+    if (file.size === 0) {
+      await fs.unlink(file.path).catch(() => undefined);
       throw new UnsupportedMediaTypeException('Empty file');
     }
     if (file.size > PHASE2_MAX_UPLOAD_BYTES) {
+      await fs.unlink(file.path).catch(() => undefined);
       throw new UnsupportedMediaTypeException(
         `File too large: ${file.size} bytes (max ${PHASE2_MAX_UPLOAD_BYTES})`,
       );
     }
 
     const importBatchId = crypto.randomUUID();
-    const contentHash = sha256Hex(file.buffer);
+    const contentHash = await sha256File(file.path);
     await fs.mkdir(this.uploadsDir, { recursive: true });
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uploadPath = path.join(this.uploadsDir, `${importBatchId}-${safeName}`);
-    await fs.writeFile(uploadPath, file.buffer);
+    try {
+      await fs.rename(file.path, uploadPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EXDEV') {
+        await fs.copyFile(file.path, uploadPath);
+        await fs.unlink(file.path).catch(() => undefined);
+      } else {
+        throw err;
+      }
+    }
 
     const job = await this.jobs.create({
       type: 'ingest_file',
@@ -391,8 +406,4 @@ function parseRangeHeader(
   const end = endRaw === '' ? lastByte : Math.min(Number.parseInt(endRaw, 10), lastByte);
   if (!Number.isFinite(end) || end < start) return null;
   return { start, end };
-}
-
-function sha256Hex(input: Buffer): string {
-  return crypto.createHash('sha256').update(input).digest('hex');
 }

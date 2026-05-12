@@ -9,9 +9,11 @@ import type { Job, Prisma } from '@prisma/client';
 import { loadEnv } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
+import { sha256File } from './upload.config.js';
 
 export interface ImportFileInput {
-  buffer: Buffer;
+  /** Absolute path where Multer streamed the upload (in uploads/.incoming/). */
+  path: string;
   originalname: string;
   mimetype: string;
   size: number;
@@ -29,7 +31,9 @@ interface ImportPayload {
   status: 'received' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 }
 
-const MAX_IMPORT_BYTES = 1024 * 1024 * 1024; // 1 GB
+// Default ceiling until the SystemConfig-backed limit (`imports.maxBytes`) is
+// wired up. Replaced in Task #5.
+const DEFAULT_MAX_IMPORT_BYTES = 5 * 1024 * 1024 * 1024; // 5 GiB
 
 @Injectable()
 export class ImportsService {
@@ -46,20 +50,34 @@ export class ImportsService {
   }
 
   async createFromUpload(file: ImportFileInput): Promise<Job> {
-    if (!file.buffer || file.size === 0) {
+    if (file.size === 0) {
+      await fs.unlink(file.path).catch(() => undefined);
       throw new BadRequestException('Empty file');
     }
-    if (file.size > MAX_IMPORT_BYTES) {
+    if (file.size > DEFAULT_MAX_IMPORT_BYTES) {
+      await fs.unlink(file.path).catch(() => undefined);
       throw new BadRequestException(
-        `Import too large: ${file.size} bytes (max ${MAX_IMPORT_BYTES})`,
+        `Import too large: ${file.size} bytes (max ${DEFAULT_MAX_IMPORT_BYTES})`,
       );
     }
+
     const importBatchId = crypto.randomUUID();
-    const contentHash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+    const contentHash = await sha256File(file.path);
     await fs.mkdir(this.uploadsDir, { recursive: true });
     const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
     const uploadPath = path.join(this.uploadsDir, `${importBatchId}-${safeName}`);
-    await fs.writeFile(uploadPath, file.buffer);
+    // Atomic on same-fs (typical dev/prod). For cross-fs, fall back to copy+unlink.
+    try {
+      await fs.rename(file.path, uploadPath);
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'EXDEV') {
+        await fs.copyFile(file.path, uploadPath);
+        await fs.unlink(file.path).catch(() => undefined);
+      } else {
+        throw err;
+      }
+    }
 
     const payload: ImportPayload = {
       importBatchId,
