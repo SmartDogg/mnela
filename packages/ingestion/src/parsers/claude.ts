@@ -1,4 +1,12 @@
-import { type ParseContext, type ParsedDocument, type Parser } from '../parser.js';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
+import {
+  type ParseContext,
+  type ParsedAttachment,
+  type ParsedDocument,
+  type Parser,
+} from '../parser.js';
 import { readZipEntries, readZipEntriesFromFile, type ZipEntry } from '../zip.js';
 
 /**
@@ -81,10 +89,17 @@ export const claudeParser: Parser = {
     const entries = ctx.inputPath
       ? await readZipEntriesFromFile(ctx.inputPath)
       : await readZipEntries(buf);
-    const docs: ParsedDocument[] = [];
 
-    docs.push(...(await parseChats(entries, ctx, 'design_chats/')));
-    docs.push(...(await parseChats(entries, ctx, 'conversations.json')));
+    // Build a filename → entry map for binary attachments. Claude.ai ships
+    // attachments next to the JSON, often under `attachments/<chatUuid>/<name>`
+    // or `files/<id>-<name>`. Match by trailing basename plus the chat uuid
+    // when available so we don't accidentally cross-link.
+    const binaryIndex = indexBinaryEntries(entries);
+    await fs.mkdir(ctx.workdir, { recursive: true });
+
+    const docs: ParsedDocument[] = [];
+    docs.push(...(await parseChats(entries, ctx, 'design_chats/', binaryIndex)));
+    docs.push(...(await parseChats(entries, ctx, 'conversations.json', binaryIndex)));
     docs.push(...(await parseProjects(entries, ctx)));
     docs.push(...(await parseMemories(entries, ctx)));
 
@@ -92,10 +107,102 @@ export const claudeParser: Parser = {
   },
 };
 
+const BINARY_EXT_RE = /\.(png|jpe?g|webp|gif|heic|heif|pdf|mp3|mp4|wav|m4a|zip|csv|xlsx?|docx?)$/i;
+
+function indexBinaryEntries(entries: ZipEntry[]): BinaryIndex {
+  const byBaseName = new Map<string, ZipEntry[]>();
+  const byPath = new Map<string, ZipEntry>();
+  for (const entry of entries) {
+    const base = path.basename(entry.fileName);
+    if (!BINARY_EXT_RE.test(base)) continue;
+    byPath.set(entry.fileName, entry);
+    const list = byBaseName.get(base) ?? [];
+    list.push(entry);
+    byBaseName.set(base, list);
+  }
+  return { byBaseName, byPath };
+}
+
+interface BinaryIndex {
+  byBaseName: Map<string, ZipEntry[]>;
+  byPath: Map<string, ZipEntry>;
+}
+
+function findBinaryEntry(
+  index: BinaryIndex,
+  name: string,
+  chatUuid?: string,
+): ZipEntry | undefined {
+  // First try an explicit nested path (`attachments/<chatUuid>/<name>`).
+  if (chatUuid) {
+    for (const prefix of [`attachments/${chatUuid}/`, `files/${chatUuid}/`]) {
+      const direct = index.byPath.get(`${prefix}${name}`);
+      if (direct) return direct;
+    }
+  }
+  const candidates = index.byBaseName.get(path.basename(name));
+  if (!candidates || candidates.length === 0) return undefined;
+  if (chatUuid) {
+    const scoped = candidates.find((c) => c.fileName.includes(chatUuid));
+    if (scoped) return scoped;
+  }
+  return candidates[0];
+}
+
+async function extractBinaryAttachment(
+  entry: ZipEntry,
+  ctx: ParseContext,
+  chatUuid: string | undefined,
+): Promise<ParsedAttachment> {
+  const baseName = path.basename(entry.fileName);
+  const safe = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const destPath = path.join(ctx.workdir, `${chatUuid ?? 'claude'}-${safe}`);
+  await entry.streamTo(destPath);
+  return {
+    filename: baseName,
+    mimeType: guessMime(baseName),
+    tempPath: destPath,
+    size: entry.size,
+    metadata: { sourceZipEntry: entry.fileName, chatUuid },
+  };
+}
+
+function guessMime(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  switch (ext) {
+    case '.png':
+      return 'image/png';
+    case '.jpg':
+    case '.jpeg':
+      return 'image/jpeg';
+    case '.webp':
+      return 'image/webp';
+    case '.gif':
+      return 'image/gif';
+    case '.pdf':
+      return 'application/pdf';
+    case '.mp3':
+      return 'audio/mpeg';
+    case '.wav':
+      return 'audio/wav';
+    case '.m4a':
+      return 'audio/mp4';
+    case '.mp4':
+      return 'video/mp4';
+    case '.docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case '.xlsx':
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 async function parseChats(
   entries: ZipEntry[],
   ctx: ParseContext,
   prefix: string,
+  binaryIndex: BinaryIndex,
 ): Promise<ParsedDocument[]> {
   const matches = entries.filter((e) =>
     prefix.endsWith('/')
@@ -112,7 +219,50 @@ async function parseChats(
     for (const chat of chats) {
       const messages = chat?.messages ?? chat?.chat_messages;
       if (!chat || !Array.isArray(messages)) continue;
-      out.push(renderChat(chat, messages, ctx));
+      const attachments = await collectChatAttachments(chat, messages, binaryIndex, ctx);
+      out.push(renderChat(chat, messages, ctx, attachments));
+    }
+  }
+  return out;
+}
+
+/**
+ * Walk a chat's message tree and pull out every non-text attachment whose
+ * filename matches a binary entry in the ZIP. The text-only attachments are
+ * still rendered as `[attachment: name]` markers + their `extracted_content`
+ * inline (renderMessageBody hasn't changed), so this only adds binary files
+ * — no double-counting.
+ */
+async function collectChatAttachments(
+  chat: ClaudeChat,
+  messages: ClaudeMessage[],
+  binaryIndex: BinaryIndex,
+  ctx: ParseContext,
+): Promise<ParsedAttachment[]> {
+  const seen = new Set<string>();
+  const out: ParsedAttachment[] = [];
+  for (const m of messages) {
+    const names: string[] = [];
+    if (Array.isArray(m.attachments)) {
+      for (const a of m.attachments) if (a.name) names.push(a.name);
+    }
+    if (Array.isArray(m.files)) {
+      for (const f of m.files) if (f.file_name) names.push(f.file_name);
+    }
+    const innerAtts =
+      m.content && !Array.isArray(m.content) && typeof m.content === 'object'
+        ? (m.content as ClaudeMessageContent).attachments
+        : undefined;
+    if (Array.isArray(innerAtts)) {
+      for (const a of innerAtts) if (a.name) names.push(a.name);
+    }
+    for (const name of names) {
+      const key = `${chat.uuid}::${name}`;
+      if (seen.has(key)) continue;
+      const entry = findBinaryEntry(binaryIndex, name, chat.uuid);
+      if (!entry) continue;
+      seen.add(key);
+      out.push(await extractBinaryAttachment(entry, ctx, chat.uuid));
     }
   }
   return out;
@@ -122,6 +272,7 @@ function renderChat(
   chat: ClaudeChat,
   messages: ClaudeMessage[],
   ctx: ParseContext,
+  attachments: ParsedAttachment[] = [],
 ): ParsedDocument {
   const lines: string[] = [];
   for (const m of messages) {
@@ -149,7 +300,9 @@ function renderChat(
       createdAt: chat.created_at,
       updatedAt: chat.updated_at,
       messageCount: messages.length,
+      attachmentCount: attachments.length,
     },
+    attachments: attachments.length > 0 ? attachments : undefined,
   };
 }
 
