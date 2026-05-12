@@ -107,6 +107,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
   private async handleJob(bullJob: BullJob<IngestFileJob>): Promise<{
     documentIds: string[];
     duplicates: number;
+    updated: number;
   }> {
     const data = bullJob.data;
     const { dbJobId } = data;
@@ -127,6 +128,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       await fs.mkdir(baseAttachments, { recursive: true });
       const documentIds: string[] = [];
       let duplicates = 0;
+      let updated = 0;
       let processed = 0;
 
       // Streaming sink: parsers that handle huge inputs (chatgpt account
@@ -137,10 +139,14 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       // logic is identical, just a different delivery channel.
       const persistOne = async (doc: ParsedDocument): Promise<void> => {
         const result = await this.persistDocument(doc, data);
-        if (result.duplicate) {
+        if (result.action === 'duplicate') {
           duplicates += 1;
         } else {
+          // Both "created" and "updated" land in documentIds so the import's
+          // file list shows everything this run touched — the user re-imports
+          // a monthly archive to see "my latest stuff", not to debug history.
           documentIds.push(result.documentId);
+          if (result.action === 'updated') updated += 1;
         }
         processed += 1;
         // Progress is unknown for streaming parsers (total isn't computable
@@ -151,7 +157,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         await this.publishProgress(
           dbJobId,
           pct,
-          `${processed} parsed (${duplicates} duplicates so far)`,
+          `${processed} parsed (${duplicates} unchanged, ${updated} updated)`,
         );
       };
 
@@ -194,7 +200,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
       await fs.rm(ctx.workdir, { recursive: true, force: true }).catch(() => undefined);
 
-      const result = { documentIds, duplicates };
+      const result = { documentIds, duplicates, updated };
       await this.markCompleted(dbJobId, result);
       await bullJob.updateProgress(100);
       await publishEvent(this.redis.client, {
@@ -216,7 +222,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
   private async persistDocument(
     doc: ParsedDocument,
     job: IngestFileJob,
-  ): Promise<{ documentId: string; duplicate: boolean }> {
+  ): Promise<{ documentId: string; action: 'created' | 'updated' | 'duplicate' }> {
     const { dbJobId } = job;
     // Dedup key:
     //   - With a stable sourceId (ChatGPT/Claude conversation uuid) the hash
@@ -229,9 +235,34 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       : sha256Hex(doc.rawText);
     const contentHash = sha256Hex(seed);
 
-    const existing = await this.documents.findByContentHash(contentHash);
-    if (existing) {
-      return { documentId: existing.id, duplicate: true };
+    // Re-import path: conversation UUIDs (ChatGPT/Claude) are stable across
+    // exports, so a chat that gained new messages since the last upload has
+    // the SAME sourceId but a DIFFERENT contentHash. Look up by that pair
+    // first; if found, either skip (content unchanged) or update in place
+    // (content changed). Without this branch, the old contentHash-only check
+    // would silently create a duplicate Document on every monthly re-export.
+    if (doc.sourceId) {
+      const existingBySource = await this.documents.findBySourceAndSourceId(
+        doc.source as SourceType,
+        doc.sourceId,
+      );
+      if (existingBySource) {
+        if (existingBySource.contentHash === contentHash) {
+          // Same chat, same content — skip silently.
+          return { documentId: existingBySource.id, action: 'duplicate' };
+        }
+        // Same chat, content changed (e.g., new messages). Rewrite body +
+        // chunks atomically and re-enqueue enrichment so entities/edges
+        // catch up to the new text.
+        return this.updateDocumentInPlace(existingBySource.id, doc, contentHash, job);
+      }
+    }
+
+    // No sourceId, or no existing match — fall back to the original hash
+    // dedup so markdown/txt re-uploads still collapse byte-identical files.
+    const existingByHash = await this.documents.findByContentHash(contentHash);
+    if (existingByHash) {
+      return { documentId: existingByHash.id, action: 'duplicate' };
     }
 
     const language = detectLanguage(doc.rawText);
@@ -312,7 +343,84 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       await this.maybeEnqueueTranscription(created.id);
     }
 
-    return { documentId: created.id, duplicate: false };
+    return { documentId: created.id, action: 'created' };
+  }
+
+  /**
+   * Atomic in-place refresh for a re-imported chat whose content changed
+   * since the last upload. Replaces body + chunks transactionally, stamps
+   * the current import job into metadata (so the latest /imports/:id page
+   * shows this doc as "touched by this import"), and re-enqueues enrichment
+   * because old entity/edge extractions are now stale against the new body.
+   */
+  private async updateDocumentInPlace(
+    documentId: string,
+    doc: ParsedDocument,
+    contentHash: string,
+    job: IngestFileJob,
+  ): Promise<{ documentId: string; action: 'updated' }> {
+    const { dbJobId } = job;
+    const language = detectLanguage(doc.rawText);
+    const tokenCount = doc.rawText ? countTokens(doc.rawText) : 0;
+    const status: DocumentStatus = doc.rawText.trim().length > 0 ? 'parsed' : 'raw';
+    const parserMeta = (doc.metadata ?? {}) as Record<string, unknown>;
+    const enrichedMeta: Record<string, unknown> = {
+      ...parserMeta,
+      __import: {
+        jobId: dbJobId,
+        batchId: job.importBatchId ?? null,
+        origin: job.origin,
+      },
+    };
+    const chunks =
+      doc.rawText.trim().length > 0
+        ? chunkText(doc.rawText).map((c) => ({
+            chunkIndex: c.index,
+            text: c.text,
+            tokenCount: c.tokenCount,
+          }))
+        : [];
+
+    const updated = await this.documents.replaceContent(documentId, {
+      rawText: doc.rawText,
+      contentHash,
+      tokenCount,
+      language,
+      title: doc.title,
+      type: doc.type ?? null,
+      status,
+      metadata: enrichedMeta as Prisma.InputJsonValue,
+      chunks,
+    });
+
+    // The web Zustand store + cacheSync handle `document.created` by
+    // upserting by id, so re-emitting refreshes the title / status / chunk
+    // count for any open /imports page without needing a new event type.
+    await publishEvent(this.redis.client, {
+      type: 'document.created',
+      payload: {
+        jobId: dbJobId,
+        documentId: updated.id,
+        status: updated.status,
+        title: updated.title,
+      },
+    });
+    if (chunks.length > 0) {
+      await publishEvent(this.redis.client, {
+        type: 'document.parsed',
+        payload: { jobId: dbJobId, documentId: updated.id, chunkCount: chunks.length },
+      });
+    }
+
+    if (doc.rawText.trim().length > 0) {
+      // Re-enqueue enrichment so the new text gets analysed. The previous
+      // DocumentEntity links survive — Claude will upsert by normalized name,
+      // so genuinely-still-mentioned entities re-attach and new ones land.
+      await this.enrichmentEnqueue.maybeEnqueue(updated.id);
+    }
+
+    this.logger.log(`updated ${updated.id} (${doc.sourceId ?? '?'}) on re-import`);
+    return { documentId: updated.id, action: 'updated' };
   }
 
   private async maybeEnqueueTranscription(documentId: string): Promise<void> {
@@ -563,7 +671,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async markCompleted(
     dbJobId: string,
-    result: { documentIds: string[]; duplicates: number },
+    result: { documentIds: string[]; duplicates: number; updated: number },
   ): Promise<void> {
     await this.prisma.client.job.update({
       where: { id: dbJobId },
