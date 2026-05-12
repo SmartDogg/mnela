@@ -162,6 +162,8 @@
   },
   "documentDetail": {
     "metadata": "Метаданные",
+    "mentionedEntities": "Упомянутые сущности",
+    "openInGraph": "Открыть в графе",
     "chunks": "Чанки",
     "related": "Похожие",
     "raw": "Исходный текст",
@@ -409,6 +411,7 @@
       "includeReview": "С неподтв."
     },
     "layouts": {
+      "fcose": "Силовой ✦ (fcose)",
       "cose": "Силовой (cose)",
       "coseBilkent": "Силовой+ (cose-bilkent)",
       "circular": "Круговой",

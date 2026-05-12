@@ -162,6 +162,8 @@
   },
   "documentDetail": {
     "metadata": "Metadata",
+    "mentionedEntities": "Mentioned entities",
+    "openInGraph": "Open in graph",
     "chunks": "Chunks",
     "related": "Related",
     "raw": "Raw text",
@@ -409,6 +411,7 @@
       "includeReview": "Include review"
     },
     "layouts": {
+      "fcose": "Force ✦ (fcose)",
       "cose": "Force (cose)",
       "coseBilkent": "Force+ (cose-bilkent)",
       "circular": "Circular",

@@ -1,8 +1,9 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AudioLines, Loader2, RotateCw, Save } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
@@ -229,6 +230,8 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
           </CardContent>
         </Card>
 
+        <MentionedEntities documentId={document.id} />
+
         {(() => {
           const importMeta =
             document.metadata && typeof document.metadata === 'object'
@@ -260,5 +263,64 @@ function Field({ label, value }: { label: string; value: React.ReactNode }): JSX
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
       <div className="text-sm">{value}</div>
     </div>
+  );
+}
+
+interface MentionedEntity {
+  entityId: string;
+  name: string;
+  type: string;
+  mentions: number;
+  context: string | null;
+}
+
+function MentionedEntities({ documentId }: { documentId: string }): JSX.Element | null {
+  const t = useTranslations('documentDetail');
+  const query = useQuery({
+    queryKey: ['document', documentId, 'entities'],
+    queryFn: () =>
+      api.get<MentionedEntity[]>(`/documents/${encodeURIComponent(documentId)}/entities`),
+  });
+
+  if (query.isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('mentionedEntities')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const items = query.data ?? [];
+  if (items.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('mentionedEntities')}</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-wrap gap-1.5">
+        {items.map((e) => (
+          <Link
+            key={e.entityId}
+            href={`/graph?center=${encodeURIComponent(e.entityId)}&depth=2`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2 py-0.5 text-[11px] hover:border-primary/50 hover:bg-primary/5"
+            title={t('openInGraph')}
+          >
+            <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">
+              {e.type}
+            </span>
+            <span>{e.name}</span>
+            {e.mentions > 1 && (
+              <span className="text-[10px] text-muted-foreground">·{e.mentions}</span>
+            )}
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

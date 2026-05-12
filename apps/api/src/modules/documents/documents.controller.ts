@@ -102,6 +102,16 @@ export class DocumentsController {
     return this.documents.getChunks(id);
   }
 
+  @Get(':id/entities')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'Entities Claude extracted from this document, ordered by mention count. Use these ids to jump into /graph?center=<entityId>.',
+  })
+  listEntities(@Param('id') id: string) {
+    return this.documents.listEntities(id);
+  }
+
   @Get(':id/related')
   @RequiredScope('read_only')
   @ApiOperation({ summary: 'Find documents with similar titles (trigram similarity)' })

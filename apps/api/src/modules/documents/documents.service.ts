@@ -179,6 +179,36 @@ export class DocumentsService {
     return this.documents.getChunks(id);
   }
 
+  /**
+   * Entities Claude extracted from this document (DocumentEntity rows). The
+   * graph view groups entities into nodes, this endpoint surfaces the
+   * doc → entity side of the same join so /documents/:id can show "mentioned
+   * here, click to jump into the graph". Filtered to non-merged entities.
+   */
+  async listEntities(id: string): Promise<
+    {
+      entityId: string;
+      name: string;
+      type: string;
+      mentions: number;
+      context: string | null;
+    }[]
+  > {
+    await this.findById(id);
+    const rows = await this.prisma.active().documentEntity.findMany({
+      where: { documentId: id, entity: { mergedIntoId: null } },
+      orderBy: [{ mentions: 'desc' }, { entityId: 'asc' }],
+      include: { entity: { select: { id: true, name: true, type: true } } },
+    });
+    return rows.map((r) => ({
+      entityId: r.entity.id,
+      name: r.entity.name,
+      type: r.entity.type,
+      mentions: r.mentions,
+      context: r.context,
+    }));
+  }
+
   async findRelated(
     id: string,
     limit = 10,
