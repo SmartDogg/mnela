@@ -247,9 +247,6 @@ export default function GraphPage(): JSX.Element {
             />
           )}
           <div className="relative flex-1">
-            {graphQuery.error !== null && graphQuery.error !== undefined && (
-              <ErrorState message={errorMessage(graphQuery.error)} />
-            )}
             <GraphView
               ref={graphRef}
               nodes={nodes}
@@ -258,6 +255,9 @@ export default function GraphPage(): JSX.Element {
               onEdgeClick={handleEdgeClick}
               highlightQuery={searchText}
             />
+            {graphQuery.error !== null && graphQuery.error !== undefined && (
+              <ErrorState message={errorMessage(graphQuery.error)} />
+            )}
             {isOverview && stats && stats.returnedNodes > 0 && (
               <div className="pointer-events-none absolute left-4 top-3 max-w-md">
                 <div className="pointer-events-auto rounded-md border border-white/5 bg-black/40 px-2.5 py-1.5 text-[11px] text-white/70 backdrop-blur-md">
@@ -311,11 +311,20 @@ export default function GraphPage(): JSX.Element {
 
 function ErrorState({ message }: { message: string }): JSX.Element {
   const t = useTranslations('graph');
+  // Rendered as an absolute overlay so it floats above the canvas (z-20 sits
+  // above the overview-hint badge at top:3 left:4 but below modal portals).
+  // Previously the error was a normal block sibling of <GraphView>, which
+  // stacked vertically with the canvas — both children claimed `h-full`,
+  // so on a real 400 the error pushed the canvas off-screen instead of
+  // sitting cleanly on top of it.
   return (
-    <div className="flex h-full w-full items-center justify-center bg-[#0a0a0a]">
-      <div className="max-w-sm space-y-2 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-center">
+    <div
+      className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      role="alert"
+    >
+      <div className="pointer-events-auto max-w-sm space-y-2 rounded-md border border-destructive/40 bg-background/95 px-4 py-3 text-center shadow-xl">
         <h2 className="text-sm font-medium text-destructive">{t('error.title')}</h2>
-        <p className="text-xs text-muted-foreground">{message}</p>
+        <p className="break-words text-xs text-muted-foreground">{message}</p>
       </div>
     </div>
   );

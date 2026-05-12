@@ -3,6 +3,7 @@ import type { Edge, Entity, LinkStatus } from '@prisma/client';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { GRAPH_MAX_NODES } from '../../src/modules/graph/dto.js';
 import { buildTestApp } from '../bootstrap.js';
 
 const ADMIN_USERNAME = 'admin';
@@ -239,10 +240,12 @@ describe('GET /graph — validFrom range filter', () => {
 });
 
 describe('GET /graph — hard cap and truncation', () => {
-  it('truncates to 500 nodes when more are reachable, sets stats.truncated=true', async () => {
+  it('truncates to GRAPH_MAX_NODES when more are reachable, sets stats.truncated=true', async () => {
     const hub = await makeEntity('Hub');
-    // Seed 501 leaves connected to the hub via depth=1 — exceeds GRAPH_MAX_NODES=500.
-    const leafCount = 501;
+    // Seed one more leaf than the cap so depth=1 BFS spills past the ceiling.
+    // Using the imported constant keeps this test decoupled from the specific
+    // number — bumping GRAPH_MAX_NODES doesn't require touching the assertion.
+    const leafCount = GRAPH_MAX_NODES + 1;
     const leaves: Entity[] = [];
     for (let i = 0; i < leafCount; i++) {
       leaves.push(await makeEntity(`leaf-${i}`));
@@ -259,13 +262,13 @@ describe('GET /graph — hard cap and truncation', () => {
 
     const body = await getGraph({ center: hub.id, depth: '1' });
     expect(body.stats.truncated).toBe(true);
-    expect(body.nodes.length).toBe(500);
-    expect(body.stats.returnedNodes).toBe(500);
+    expect(body.nodes.length).toBe(GRAPH_MAX_NODES);
+    expect(body.stats.returnedNodes).toBe(GRAPH_MAX_NODES);
     // The dropped node id must not appear in any returned edge.
     const nodeIds = new Set(body.nodes.map((n) => n.data.id));
     for (const e of body.edges) {
       expect(nodeIds.has(e.data.source)).toBe(true);
       expect(nodeIds.has(e.data.target)).toBe(true);
     }
-  }, 120_000);
+  }, 180_000);
 });

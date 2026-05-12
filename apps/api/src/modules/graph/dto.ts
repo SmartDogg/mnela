@@ -16,11 +16,13 @@ const EntityTypeEnum = z.enum([
 
 const LinkStatusEnum = z.enum(['auto_confirmed', 'needs_review', 'manual', 'rejected']);
 
-// Hard caps for the /graph snapshot. Above these the response is truncated and
-// `stats.truncated === true`. Truncation is BFS-traversal-order deterministic
-// (first 500 nodes seen, then edges among them, then capped to 2000).
-export const GRAPH_MAX_NODES = 500;
-export const GRAPH_MAX_EDGES = 2000;
+// Hard caps for the /graph snapshot. Above these the response is truncated
+// and `stats.truncated === true`. The /graph page exposes density presets up
+// to 1000 + "all", so the server cap must be at least that high. 2000 nodes
+// keep react-force-graph-2d snappy on a modern laptop; pushing past that
+// blows up canvas paint time more than it helps the user.
+export const GRAPH_MAX_NODES = 2000;
+export const GRAPH_MAX_EDGES = 5000;
 
 const StringArrayQueryParam = z
   .union([z.string(), z.array(z.string())])
