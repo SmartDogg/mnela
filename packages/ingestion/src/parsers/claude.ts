@@ -14,26 +14,45 @@ import { readZipEntries, type ZipEntry } from '../zip.js';
  * per project doc, plus one for memories.json.
  */
 
+// Claude.ai ships two distinct chat schemas in the same archive:
+//   • design_chats/<uuid>.json — { title, messages: [{ role, content: {...} }] }
+//   • conversations.json       — [{ name, chat_messages: [{ sender, text,
+//                                   content: [{ type:'text', text }] }] }]
+// We accept both shapes here. `messages` ?? `chat_messages`, `title` ?? `name`,
+// and per-message: `role` ?? `sender`, plus a text-block walker that handles
+// `text` (string), `content` (object — old schema), and `content` (array of
+// Anthropic-API content blocks — new schema).
 interface ClaudeChat {
   uuid: string;
   title?: string;
+  name?: string;
   project?: { uuid?: string; name?: string };
   created_at?: string;
   updated_at?: string;
-  messages: ClaudeMessage[];
+  messages?: ClaudeMessage[];
+  chat_messages?: ClaudeMessage[];
 }
 
 interface ClaudeMessage {
   uuid?: string;
   role?: string;
-  content?: ClaudeMessageContent;
+  sender?: string;
+  text?: string;
+  content?: ClaudeMessageContent | ContentBlock[] | string;
+  attachments?: { id?: string; name?: string; type?: string; content?: string }[];
+  files?: { file_name?: string; extracted_content?: string }[];
   created_at?: string;
+}
+
+interface ContentBlock {
+  type?: string;
+  text?: string;
 }
 
 interface ClaudeMessageContent {
   role?: string;
   content?: string | unknown;
-  contentBlocks?: { type: string; text?: string }[];
+  contentBlocks?: ContentBlock[];
   attachments?: { id?: string; name?: string; type?: string; content?: string }[];
   timestamp?: string;
 }
@@ -89,27 +108,31 @@ async function parseChats(
       ? (parsed as ClaudeChat[])
       : [parsed as ClaudeChat];
     for (const chat of chats) {
-      if (!chat || !Array.isArray(chat.messages)) continue;
-      out.push(renderChat(chat, ctx));
+      const messages = chat?.messages ?? chat?.chat_messages;
+      if (!chat || !Array.isArray(messages)) continue;
+      out.push(renderChat(chat, messages, ctx));
     }
   }
   return out;
 }
 
-function renderChat(chat: ClaudeChat, ctx: ParseContext): ParsedDocument {
+function renderChat(
+  chat: ClaudeChat,
+  messages: ClaudeMessage[],
+  ctx: ParseContext,
+): ParsedDocument {
   const lines: string[] = [];
-  for (const m of chat.messages) {
-    const inner = m.content ?? {};
-    const role = m.role ?? inner.role ?? 'unknown';
-    const ts = m.created_at ?? inner.timestamp ?? '';
-    const text = renderMessageBody(inner);
+  for (const m of messages) {
+    const role = m.role ?? m.sender ?? extractInnerRole(m.content) ?? 'unknown';
+    const ts = m.created_at ?? extractInnerTimestamp(m.content) ?? '';
+    const text = renderMessageBody(m);
     if (!text) continue;
     lines.push(`## ${role}${ts ? ` · ${ts}` : ''}`);
     lines.push('');
     lines.push(text);
     lines.push('');
   }
-  const title = chat.title?.trim() || `claude-chat-${chat.uuid.slice(0, 8)}`;
+  const title = chat.title?.trim() || chat.name?.trim() || `claude-chat-${chat.uuid.slice(0, 8)}`;
   return {
     source: 'claude_export',
     sourceId: chat.uuid,
@@ -123,32 +146,86 @@ function renderChat(chat: ClaudeChat, ctx: ParseContext): ParsedDocument {
       projectName: chat.project?.name,
       createdAt: chat.created_at,
       updatedAt: chat.updated_at,
-      messageCount: chat.messages.length,
+      messageCount: messages.length,
     },
   };
 }
 
-function renderMessageBody(inner: ClaudeMessageContent): string {
+function extractInnerRole(content: ClaudeMessage['content']): string | undefined {
+  if (content && !Array.isArray(content) && typeof content === 'object') {
+    return (content as ClaudeMessageContent).role;
+  }
+  return undefined;
+}
+
+function extractInnerTimestamp(content: ClaudeMessage['content']): string | undefined {
+  if (content && !Array.isArray(content) && typeof content === 'object') {
+    return (content as ClaudeMessageContent).timestamp;
+  }
+  return undefined;
+}
+
+function renderMessageBody(m: ClaudeMessage): string {
   const parts: string[] = [];
 
-  if (typeof inner.content === 'string' && inner.content.trim()) {
-    parts.push(inner.content.trim());
+  // Top-level `text` (conversations.json schema — preferred when present).
+  if (typeof m.text === 'string' && m.text.trim()) {
+    parts.push(m.text.trim());
   }
 
-  if (Array.isArray(inner.contentBlocks)) {
-    for (const block of inner.contentBlocks) {
-      if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
-        parts.push(block.text.trim());
+  // `content` may be: string | object (old design_chats schema) | array of
+  // Anthropic-API content blocks (new conversations.json schema).
+  const c = m.content;
+  if (typeof c === 'string' && c.trim()) {
+    parts.push(c.trim());
+  } else if (Array.isArray(c)) {
+    for (const block of c) {
+      if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+        // Skip if identical to top-level m.text (deduplicate).
+        if (block.text.trim() !== m.text?.trim()) parts.push(block.text.trim());
+      }
+    }
+  } else if (c && typeof c === 'object') {
+    const inner = c as ClaudeMessageContent;
+    if (typeof inner.content === 'string' && inner.content.trim()) {
+      parts.push(inner.content.trim());
+    }
+    if (Array.isArray(inner.contentBlocks)) {
+      for (const block of inner.contentBlocks) {
+        if (block.type === 'text' && typeof block.text === 'string' && block.text.trim()) {
+          parts.push(block.text.trim());
+        }
+      }
+    }
+    if (Array.isArray(inner.attachments)) {
+      for (const att of inner.attachments) {
+        const name = att.name ?? att.id ?? 'attachment';
+        parts.push(`[attachment: ${name}]`);
+        if (typeof att.content === 'string' && att.content.trim()) {
+          parts.push(att.content.trim());
+        }
       }
     }
   }
 
-  if (Array.isArray(inner.attachments)) {
-    for (const att of inner.attachments) {
+  // Top-level attachments (conversations.json schema).
+  if (Array.isArray(m.attachments)) {
+    for (const att of m.attachments) {
       const name = att.name ?? att.id ?? 'attachment';
       parts.push(`[attachment: ${name}]`);
       if (typeof att.content === 'string' && att.content.trim()) {
         parts.push(att.content.trim());
+      }
+    }
+  }
+
+  // Top-level files with extracted text (conversations.json schema).
+  if (Array.isArray(m.files)) {
+    for (const f of m.files) {
+      const name = f.file_name ?? 'file';
+      if (typeof f.extracted_content === 'string' && f.extracted_content.trim()) {
+        parts.push(`[file: ${name}]`);
+        parts.push(f.extracted_content.trim());
       }
     }
   }
