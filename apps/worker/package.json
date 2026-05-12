@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "node --watch --enable-source-maps --import @swc-node/register/esm-register src/main.ts",
+    "dev": "node --env-file=../../.env --watch --enable-source-maps --import @swc-node/register/esm-register src/main.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
