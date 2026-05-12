@@ -6,6 +6,13 @@ const apiOrigin = process.env.MNELA_API_ORIGIN ?? 'http://localhost:3000';
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Default middleware client-body limit is 10MB. Imports route accepts
+  // ZIP archives up to 1GB (apps/api FileInterceptor cap) — without this,
+  // /_api/imports truncates the upload mid-stream and the API call dies
+  // with ECONNRESET. See apps/api/src/modules/imports/imports.controller.ts.
+  experimental: {
+    middlewareClientMaxBodySize: '1gb',
+  },
   async rewrites() {
     return [
       {
