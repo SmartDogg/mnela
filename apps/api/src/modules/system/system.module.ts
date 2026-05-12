@@ -11,5 +11,6 @@ import { WhisperService } from './whisper.service.js';
   imports: [DocumentsModule],
   controllers: [HealthController, SystemController],
   providers: [SystemService, ClaudeService, WhisperService],
+  exports: [SystemService],
 })
 export class SystemModule {}

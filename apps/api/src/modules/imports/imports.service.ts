@@ -9,6 +9,7 @@ import type { Job, Prisma } from '@prisma/client';
 import { loadEnv } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
+import { SystemService } from '../system/system.service.js';
 import { sha256File } from './upload.config.js';
 
 export interface ImportFileInput {
@@ -31,10 +32,6 @@ interface ImportPayload {
   status: 'received' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 }
 
-// Default ceiling until the SystemConfig-backed limit (`imports.maxBytes`) is
-// wired up. Replaced in Task #5.
-const DEFAULT_MAX_IMPORT_BYTES = 5 * 1024 * 1024 * 1024; // 5 GiB
-
 @Injectable()
 export class ImportsService {
   private readonly uploadsDir: string;
@@ -44,6 +41,7 @@ export class ImportsService {
     private readonly jobsService: JobsService,
     private readonly queue: QueueService,
     private readonly prisma: PrismaService,
+    private readonly system: SystemService,
   ) {
     const env = loadEnv();
     this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
@@ -54,10 +52,11 @@ export class ImportsService {
       await fs.unlink(file.path).catch(() => undefined);
       throw new BadRequestException('Empty file');
     }
-    if (file.size > DEFAULT_MAX_IMPORT_BYTES) {
+    const maxBytes = await this.system.getConfig<number>('imports.maxBytes');
+    if (file.size > maxBytes) {
       await fs.unlink(file.path).catch(() => undefined);
       throw new BadRequestException(
-        `Import too large: ${file.size} bytes (max ${DEFAULT_MAX_IMPORT_BYTES})`,
+        `Import too large: ${file.size} bytes (max ${maxBytes}; raise SystemConfig.imports.maxBytes in /admin/system)`,
       );
     }
 

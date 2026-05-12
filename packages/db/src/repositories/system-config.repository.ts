@@ -20,4 +20,13 @@ export class SystemConfigRepository {
       update: { value },
     });
   }
+
+  /**
+   * Remove the override for `key`. Returns true if a row was deleted (the
+   * spec falls back to its registry default) and false if no override existed.
+   */
+  async delete(key: string): Promise<boolean> {
+    const result = await this.getPrisma().systemConfig.deleteMany({ where: { key } });
+    return result.count > 0;
+  }
 }

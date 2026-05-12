@@ -2,9 +2,11 @@ import {
   Body,
   Controller,
   DefaultValuePipe,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
+  Param,
   ParseIntPipe,
   Patch,
   Post,
@@ -42,7 +44,10 @@ export class SystemController {
 
   @Get('config')
   @RequiredScope('admin')
-  @ApiOperation({ summary: 'List all system config entries' })
+  @ApiOperation({
+    summary:
+      'Merged config: every registered spec with its default + DB override (if any). Drives the typed admin/system UI.',
+  })
   listConfig() {
     return this.system.listConfig();
   }
@@ -50,9 +55,21 @@ export class SystemController {
   @Patch('config')
   @RequiredScope('admin')
   @Audit({ action: 'system.config.set', targetType: 'SystemConfig' })
-  @ApiOperation({ summary: 'Upsert a system config entry by key' })
+  @ApiOperation({
+    summary: 'Upsert an override for a registered config key. Value is validated against the spec.',
+  })
   setConfig(@Body() body: SetConfigDto) {
     return this.system.setConfig(body.key, body.value);
+  }
+
+  @Delete('config/:key')
+  @RequiredScope('admin')
+  @Audit({ action: 'system.config.reset', targetType: 'SystemConfig', targetIdParam: 'key' })
+  @ApiOperation({
+    summary: 'Drop the DB override for a key so it falls back to its registry default.',
+  })
+  resetConfig(@Param('key') key: string) {
+    return this.system.resetConfig(key);
   }
 
   @Get('claude-status')
