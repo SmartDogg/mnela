@@ -589,7 +589,7 @@
       "lastError": "Last error",
       "attempts": "{count} attempts"
     },
-    "edit": {
+    "editForm": {
       "title": "Edit before accept",
       "submit": "Save and accept",
       "fieldRequired": "Required",

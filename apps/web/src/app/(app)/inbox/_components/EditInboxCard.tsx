@@ -53,7 +53,7 @@ function EditLinkSuggestion({
   isPending,
 }: EditInboxCardProps): JSX.Element {
   const t = useTranslations('inbox');
-  const tEdit = useTranslations('inbox.edit');
+  const tEdit = useTranslations('inbox.editForm');
   const payload = item.payload as unknown as LinkSuggestionPayload;
   const form = useForm<LinkSuggestionFormValues>({
     defaultValues: {
@@ -174,7 +174,7 @@ function EditUnsupported({
   onCancel: () => void;
 }): JSX.Element {
   const t = useTranslations('inbox');
-  const tEdit = useTranslations('inbox.edit');
+  const tEdit = useTranslations('inbox.editForm');
   return (
     <Card data-inbox-card-id={item.id} className="border-amber-500/40">
       <CardHeader className="flex flex-row items-start justify-between gap-3 pb-2">
