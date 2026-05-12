@@ -14,12 +14,18 @@ const config: NextConfig = {
   // transpile them along with our own code so webpack doesn't trip on the
   // package.json `"type": "module"` / `"exports"` resolution at SSR time.
   transpilePackages: ['@mnela/ui'],
-  // Default middleware client-body limit is 10MB. Imports route accepts
-  // ZIP archives up to 1GB (apps/api FileInterceptor cap) — without this,
-  // /_api/imports truncates the upload mid-stream and the API call dies
-  // with ECONNRESET. See apps/api/src/modules/imports/imports.controller.ts.
+  // Next's middleware rewrites buffer the request body, so /_api/imports
+  // truncates the upload mid-stream when this limit is below the file
+  // size and the API call dies with `socket hang up`/`ECONNRESET`. We
+  // ceiling at 50 GiB to match the Multer transport ceiling on the API
+  // side (apps/api/src/modules/imports/upload.config.ts); the *real*
+  // enforced limit lives in SystemConfig `imports.maxBytes` (typed
+  // registry, editable in /admin/system, default 5 GiB, no hard cap).
+  // ADR-0048 — when this gets uncomfortable (multi-GB exports), the
+  // /imports POST should bypass Next entirely and fetch the apps/api
+  // origin directly from the browser.
   experimental: {
-    middlewareClientMaxBodySize: '1gb',
+    middlewareClientMaxBodySize: '50gb',
   },
   async rewrites() {
     return [
