@@ -6,6 +6,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type CSSProperties,
@@ -93,6 +94,10 @@ interface MnelaNode extends NodeObject {
   degree: number;
   confidence?: number;
   synthetic: boolean;
+  /** Wall-clock ms when this node first appeared in the graph — drives
+   * fade-in animation. Identity is preserved across re-renders so d3-force
+   * keeps the simulated position. */
+  __addedAt: number;
 }
 
 interface MnelaLink {
@@ -103,45 +108,94 @@ interface MnelaLink {
   status: string;
   confidence: number;
   synthetic: boolean;
+  /** Wall-clock ms when this link first appeared — drives pulse animation. */
+  __addedAt: number;
 }
 
-function buildGraphData(
+/**
+ * Reconcile incoming Entity/Edge props with the persistent MnelaNode /
+ * MnelaLink caches. KEY PROPERTY: existing entries are mutated in place so
+ * d3-force keeps the same object reference (and its simulated x/y/vx/vy)
+ * across renders. New entries get stamped with `__addedAt = now` so the
+ * painters can fade them in. Gone entries are evicted so removed nodes
+ * actually disappear.
+ *
+ * This is the single biggest behavioural change vs the pre-refactor renderer:
+ * before, every prop change rebuilt fresh MnelaNode objects, which made
+ * d3-force treat the entire graph as new and "rebooted" the simulation —
+ * which is what was making the camera jump and the layout collapse on every
+ * live event.
+ */
+function reconcileCaches(
+  nodeCache: Map<string, MnelaNode>,
+  linkCache: Map<string, MnelaLink>,
   nodes: readonly Entity[],
   edges: readonly Edge[],
-): { nodes: MnelaNode[]; links: MnelaLink[] } {
-  // Compute degree per node so the renderer can scale size/glow even when
-  // the API didn't supply it (neighborhood snapshots have no `degree`).
+  now: number,
+): void {
   const computedDegree = new Map<string, number>();
   for (const e of edges) {
     computedDegree.set(e.fromId, (computedDegree.get(e.fromId) ?? 0) + 1);
     computedDegree.set(e.toId, (computedDegree.get(e.toId) ?? 0) + 1);
   }
 
-  const outNodes: MnelaNode[] = nodes.map((n) => {
+  const seenNodes = new Set<string>();
+  for (const n of nodes) {
+    seenNodes.add(n.id);
     const apiDegree = (n.attributes as { degree?: unknown } | undefined)?.degree;
     const degree = typeof apiDegree === 'number' ? apiDegree : (computedDegree.get(n.id) ?? 0);
-    const node: MnelaNode = {
-      id: n.id,
-      name: n.name,
-      type: n.type,
-      degree,
-      synthetic: n.id.startsWith('syn-'),
-    };
-    if (typeof n.confidence === 'number') node.confidence = n.confidence;
-    return node;
-  });
+    const existing = nodeCache.get(n.id);
+    if (existing) {
+      // Mutate in place. d3-force has a reference to this object; replacing
+      // it would lose position state.
+      existing.name = n.name;
+      existing.type = n.type;
+      existing.degree = degree;
+      if (typeof n.confidence === 'number') existing.confidence = n.confidence;
+      else delete existing.confidence;
+    } else {
+      const node: MnelaNode = {
+        id: n.id,
+        name: n.name,
+        type: n.type,
+        degree,
+        synthetic: n.id.startsWith('syn-'),
+        __addedAt: now,
+      };
+      if (typeof n.confidence === 'number') node.confidence = n.confidence;
+      nodeCache.set(n.id, node);
+    }
+  }
+  // Evict nodes that disappeared from props. Without this, removing a node
+  // wouldn't actually remove it from the canvas.
+  for (const id of [...nodeCache.keys()]) {
+    if (!seenNodes.has(id)) nodeCache.delete(id);
+  }
 
-  const outLinks: MnelaLink[] = edges.map((e) => ({
-    id: e.id,
-    source: e.fromId,
-    target: e.toId,
-    relationType: e.relationType,
-    status: e.status,
-    confidence: e.confidence,
-    synthetic: e.id.startsWith('syn-'),
-  }));
-
-  return { nodes: outNodes, links: outLinks };
+  const seenLinks = new Set<string>();
+  for (const e of edges) {
+    seenLinks.add(e.id);
+    const existing = linkCache.get(e.id);
+    if (existing) {
+      existing.relationType = e.relationType;
+      existing.status = e.status;
+      existing.confidence = e.confidence;
+    } else {
+      linkCache.set(e.id, {
+        id: e.id,
+        source: e.fromId,
+        target: e.toId,
+        relationType: e.relationType,
+        status: e.status,
+        confidence: e.confidence,
+        synthetic: e.id.startsWith('syn-'),
+        __addedAt: now,
+      });
+    }
+  }
+  for (const id of [...linkCache.keys()]) {
+    if (!seenLinks.has(id)) linkCache.delete(id);
+  }
 }
 
 // ─── Custom painters ────────────────────────────────────────────────────────
@@ -157,6 +211,33 @@ function radiusFor(node: MnelaNode): number {
 }
 
 const LABEL_ZOOM_THRESHOLD = 0.6;
+/** Duration of the fade-in for newly added nodes, in ms. */
+const NODE_INTRO_MS = 800;
+/** Duration of the pulse for newly added edges, in ms. */
+const LINK_INTRO_MS = 1500;
+/**
+ * If a node/link's `__addedAt` is far in the past (e.g. from a JSON-stamped
+ * neighbourhood snapshot that pre-existed), skip animation. Anything older
+ * than this is treated as "existing" and paints at full opacity from the
+ * first frame.
+ */
+const INTRO_GRACE_MS = 60_000;
+
+function nodeIntroProgress(node: MnelaNode, now: number): number {
+  const age = now - node.__addedAt;
+  if (age < 0 || age > INTRO_GRACE_MS) return 1;
+  if (age >= NODE_INTRO_MS) return 1;
+  // Ease-out cubic — softer landing than linear, no overshoot.
+  const t = age / NODE_INTRO_MS;
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function linkIntroProgress(link: MnelaLink, now: number): number {
+  const age = now - link.__addedAt;
+  if (age < 0 || age > INTRO_GRACE_MS) return 1;
+  if (age >= LINK_INTRO_MS) return 1;
+  return age / LINK_INTRO_MS;
+}
 
 function paintNode(
   node: MnelaNode,
@@ -173,7 +254,13 @@ function paintNode(
   const isPinned = typeof node.fx === 'number' && typeof node.fy === 'number';
   const dimAlpha = isInHighlight ? 1 : 0.08;
   const confidenceAlpha = typeof node.confidence === 'number' && node.confidence < 0.5 ? 0.6 : 1;
-  const overallAlpha = dimAlpha * confidenceAlpha;
+  // Fade newly-added nodes in over NODE_INTRO_MS so the live stream looks
+  // like nodes flowing in instead of popping. Existing nodes (intro=1) are
+  // unaffected. force-graph paints every tick (cooldownTime: Infinity), so
+  // reading Date.now() per paint gives a smooth animation without an extra
+  // rAF loop.
+  const intro = nodeIntroProgress(node, Date.now());
+  const overallAlpha = dimAlpha * confidenceAlpha * intro;
 
   // Outer soft glow halo: scales with degree, intensifies on hover. This is
   // the single visual that gives the Obsidian "field of energy" feel — a
@@ -289,12 +376,22 @@ function paintLink(
   else if (link.confidence < 0.5) alpha = 0.16;
   else alpha = 0.3;
 
+  const linkIntro = linkIntroProgress(link, Date.now());
+  if (linkIntro < 1) {
+    // Pulse: oscillate width + opacity over the intro window so a brand-new
+    // edge briefly draws the eye, then settles to the steady-state hairline.
+    const pulse = Math.sin(linkIntro * Math.PI); // 0 → 1 → 0
+    alpha = Math.min(1, alpha + pulse * 0.5);
+  }
+
   ctx.strokeStyle = isHighlighted
     ? 'rgba(244,244,245,0.9)'
     : isUnreviewed
       ? `rgba(250,204,21,${alpha})`
       : `rgba(161,161,170,${alpha})`;
-  ctx.lineWidth = (isHighlighted ? 1.4 : 0.8) / scale;
+  const baseWidth = isHighlighted ? 1.4 : 0.8;
+  const pulseExtra = linkIntro < 1 ? Math.sin(linkIntro * Math.PI) * 1.2 : 0;
+  ctx.lineWidth = (baseWidth + pulseExtra) / scale;
   if (link.synthetic || isUnreviewed) ctx.setLineDash([4 / scale, 3 / scale]);
 
   ctx.beginPath();
@@ -463,10 +560,39 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
   // mini-map every tick using this state.
   const [tickToken, setTickToken] = useState(0);
 
-  // Build d3-force-compatible objects. force-graph mutates these to add x/y/
-  // vx/vy etc., so we hold the same array reference across renders when the
-  // input data hasn't changed — otherwise every tick destroys layout state.
-  const graphData = useMemo(() => buildGraphData(nodes, edges), [nodes, edges]);
+  // Persistent caches keyed by id — MnelaNode/MnelaLink object identity is
+  // preserved across renders so d3-force keeps the simulated position
+  // attached to each entry. New entries get `__addedAt = now` to drive the
+  // fade-in/pulse painters. Append/remove paths go through the same caches:
+  //   - props change          → reconcileCaches() during render
+  //   - ref.appendNodes/Edges → direct cache mutation + bump
+  const nodeCacheRef = useRef<Map<string, MnelaNode>>(new Map());
+  const linkCacheRef = useRef<Map<string, MnelaLink>>(new Map());
+  // Bumped when ref-driven append/remove mutates the cache outside the prop
+  // dataflow, so the graphData useMemo below re-runs and force-graph picks
+  // up the new entries.
+  const [refVersion, bumpRefVersion] = useReducer((v: number) => v + 1, 0);
+
+  // Run the reconcile inline (during render) — it's idempotent for the same
+  // (nodes, edges) input. Strict-Mode double-invocation only re-stamps
+  // __addedAt for entries that already exist (which is a no-op in the
+  // reconcile branch). New entries are stamped exactly once at the first
+  // time we see their id.
+  reconcileCaches(nodeCacheRef.current, linkCacheRef.current, nodes, edges, Date.now());
+
+  // Stable-but-fresh outer wrapper. Inner arrays come from the cache so the
+  // MnelaNode/MnelaLink object identities survive between renders. d3-force
+  // sees "1 new node" instead of "everything is new", so positions hold and
+  // the camera doesn't jump.
+  const graphData = useMemo(
+    () => ({
+      nodes: Array.from(nodeCacheRef.current.values()),
+      links: Array.from(linkCacheRef.current.values()),
+    }),
+    // refVersion drives ref-API-driven changes (LiveGraphPane appending via
+    // imperative handle). [nodes, edges] drives the prop-driven path.
+    [nodes, edges, refVersion],
+  );
 
   // Track nodes/links by id so callbacks can resolve back to the user's
   // domain objects (the API the consumer expects).
@@ -613,14 +739,76 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
   useImperativeHandle(
     ref,
     (): MnelaGraphHandle => ({
-      appendNodes: () => {
-        // No-op: the new component reconciles via `graphData` derived from
-        // props. Callers that previously mutated via ref should now lift the
-        // node list into state and let React drive it. Kept on the type to
-        // avoid breaking import sites.
+      appendNodes: (items) => {
+        // Imperative path for live-only consumers (LiveGraphPane) — write
+        // straight into the cache instead of round-tripping through props.
+        // Reuses the same caches as the prop-driven reconcile, so animation
+        // + position preservation work identically across both paths.
+        const cache = nodeCacheRef.current;
+        const linkCache = linkCacheRef.current;
+        const now = Date.now();
+        let added = false;
+        for (const e of items) {
+          if (cache.has(e.id)) continue;
+          const apiDegree = (e.attributes as { degree?: unknown } | undefined)?.degree;
+          // We can't compute incoming-edge degree from just nodes; degree
+          // will refresh next time the consumer calls appendEdges or the
+          // prop-driven reconcile sees the edge. Start at apiDegree or 0.
+          const node: MnelaNode = {
+            id: e.id,
+            name: e.name,
+            type: e.type,
+            degree: typeof apiDegree === 'number' ? apiDegree : 0,
+            synthetic: e.id.startsWith('syn-'),
+            __addedAt: now,
+          };
+          if (typeof e.confidence === 'number') node.confidence = e.confidence;
+          cache.set(e.id, node);
+          added = true;
+        }
+        if (added) {
+          // Recompute degrees from existing links so newly added nodes
+          // immediately size-up correctly when their first edges land.
+          for (const node of cache.values()) node.degree = 0;
+          for (const link of linkCache.values()) {
+            const sId = typeof link.source === 'object' ? link.source.id : link.source;
+            const tId = typeof link.target === 'object' ? link.target.id : link.target;
+            const s = cache.get(sId);
+            const t = cache.get(tId);
+            if (s) s.degree += 1;
+            if (t) t.degree += 1;
+          }
+          bumpRefVersion();
+          fgRef.current?.d3ReheatSimulation();
+        }
       },
-      appendEdges: () => {
-        // No-op for the same reason as appendNodes.
+      appendEdges: (items) => {
+        const linkCache = linkCacheRef.current;
+        const nodeCache = nodeCacheRef.current;
+        const now = Date.now();
+        let added = false;
+        for (const e of items) {
+          if (linkCache.has(e.id)) continue;
+          linkCache.set(e.id, {
+            id: e.id,
+            source: e.fromId,
+            target: e.toId,
+            relationType: e.relationType,
+            status: e.status,
+            confidence: e.confidence,
+            synthetic: e.id.startsWith('syn-'),
+            __addedAt: now,
+          });
+          const s = nodeCache.get(e.fromId);
+          const t = nodeCache.get(e.toId);
+          if (s) s.degree += 1;
+          if (t) t.degree += 1;
+          added = true;
+        }
+        if (added) {
+          bumpRefVersion();
+          fgRef.current?.d3ReheatSimulation();
+        }
       },
       setLayout: () => {
         // The new renderer has no "layout" — re-heating the simulation is the
@@ -628,7 +816,7 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
         fgRef.current?.d3ReheatSimulation();
       },
       centerOn: (id) => {
-        const node = graphData.nodes.find((n) => n.id === id);
+        const node = nodeCacheRef.current.get(id);
         const fg = fgRef.current;
         if (!fg || !node || typeof node.x !== 'number' || typeof node.y !== 'number') return;
         fg.centerAt(node.x, node.y, 600);
@@ -639,7 +827,7 @@ function MnelaGraphInner(props: MnelaGraphProps, ref: Ref<MnelaGraphHandle>): Re
       },
       getCytoscape: () => null,
     }),
-    [graphData],
+    [],
   );
 
   // ── Mini-map state ────────────────────────────────────────────────────────

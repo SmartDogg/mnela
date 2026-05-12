@@ -2,11 +2,11 @@
 
 import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
-import { useMemo } from 'react';
+import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { useLiveSocketStore } from '@/lib/socket/store';
-import type { Edge as GraphEdge, Entity as GraphEntity } from '@mnela/ui';
+import type { Edge as GraphEdge, Entity as GraphEntity, MnelaGraphHandle } from '@mnela/ui';
 import type { GraphEdgeLike, GraphEntityLike } from '@/lib/socket/types';
 
 // MnelaGraph uses HTMLCanvasElement + window — dynamic import keeps it out
@@ -42,6 +42,15 @@ function toEdge(edge: GraphEdgeLike): GraphEdge {
   };
 }
 
+/**
+ * Live import graph. Drives the canvas via MnelaGraph's imperative ref so
+ * each live `graph.node_added` / `graph.edge_added` event becomes a
+ * targeted `appendNodes` / `appendEdges` call — d3-force keeps existing
+ * positions, the camera stays put, and new entries fade in via the
+ * renderer's `__addedAt` painters. The old approach re-rendered with
+ * fresh node arrays on every event, which rebooted the simulation and
+ * made the layout jump.
+ */
 export function LiveGraphPane({ jobId: _jobId }: LiveGraphPaneProps): JSX.Element {
   const t = useTranslations('imports.detail');
 
@@ -49,11 +58,37 @@ export function LiveGraphPane({ jobId: _jobId }: LiveGraphPaneProps): JSX.Elemen
     useShallow((s) => ({ nodes: s.graphNodes, edges: s.graphEdges })),
   );
 
-  // Force-graph reconciles position state across renders by node id, so it's
-  // safe (and simpler) to pass the full materialized arrays from the store
-  // instead of streaming individual additions.
-  const nodeArray = useMemo(() => Array.from(nodes.values()).map(toEntity), [nodes]);
-  const edgeArray = useMemo(() => Array.from(edges.values()).map(toEdge), [edges]);
+  const graphRef = useRef<MnelaGraphHandle | null>(null);
+  // Track which ids have already been pushed to the canvas so a Zustand
+  // re-render only forwards genuinely new entries through the ref API.
+  const seenNodeIds = useRef<Set<string>>(new Set());
+  const seenEdgeIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handle = graphRef.current;
+    if (!handle) return;
+    const newNodes: GraphEntity[] = [];
+    for (const n of nodes.values()) {
+      if (!seenNodeIds.current.has(n.id)) {
+        seenNodeIds.current.add(n.id);
+        newNodes.push(toEntity(n));
+      }
+    }
+    if (newNodes.length > 0) handle.appendNodes(newNodes);
+  }, [nodes]);
+
+  useEffect(() => {
+    const handle = graphRef.current;
+    if (!handle) return;
+    const newEdges: GraphEdge[] = [];
+    for (const e of edges.values()) {
+      if (!seenEdgeIds.current.has(e.id)) {
+        seenEdgeIds.current.add(e.id);
+        newEdges.push(toEdge(e));
+      }
+    }
+    if (newEdges.length > 0) handle.appendEdges(newEdges);
+  }, [edges]);
 
   const empty = nodes.size === 0 && edges.size === 0;
 
@@ -62,7 +97,9 @@ export function LiveGraphPane({ jobId: _jobId }: LiveGraphPaneProps): JSX.Elemen
       <div className="absolute left-2 top-2 z-10 rounded bg-zinc-900/70 px-2 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground backdrop-blur">
         {t('graphLive')} · {nodes.size}n / {edges.size}e
       </div>
-      <MnelaGraph nodes={nodeArray} edges={edgeArray} miniMap />
+      {/* The graph mounts with empty props; everything is streamed in via
+          the ref handle from the effects above. */}
+      <MnelaGraph ref={graphRef} nodes={EMPTY_NODES} edges={EMPTY_EDGES} miniMap />
       {empty && (
         <div
           className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
@@ -74,3 +111,8 @@ export function LiveGraphPane({ jobId: _jobId }: LiveGraphPaneProps): JSX.Elemen
     </div>
   );
 }
+
+// Stable empty arrays so the underlying useMemo([nodes, edges]) never
+// trips a needless recompute — the imperative ref is the only update path.
+const EMPTY_NODES: GraphEntity[] = [];
+const EMPTY_EDGES: GraphEdge[] = [];
