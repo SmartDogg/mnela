@@ -68,4 +68,45 @@ export class EnrichmentEnqueueService implements OnModuleInit, OnModuleDestroy {
     );
     return { enqueued: true };
   }
+
+  /**
+   * Enqueue an analyze_attachment job for an image. The orchestrator's
+   * vision pipeline (apps/orchestrator/src/enrichment) reads SystemConfig
+   * `attachments.imageAnalysisEnabled` + `.Backend` + `.Model` at consume
+   * time, so we don't need to gate it here beyond the global Claude-status
+   * check that we already share with text enrichment.
+   *
+   * The same BullMQ queue (`enrichment`) handles both job kinds — the
+   * consumer dispatches on `attachmentId` vs `documentId`. Reusing the
+   * queue keeps the ADR-0027 single-slot guarantee intact.
+   */
+  async maybeEnqueueImage(
+    attachmentId: string,
+    documentId: string,
+  ): Promise<{ enqueued: boolean; reason?: string }> {
+    if (!this.queue) return { enqueued: false, reason: 'queue-not-ready' };
+    const status = await readClaudeStatus(this.redis.client);
+    if (!status.available) {
+      this.logger.debug(
+        `image analysis skipped for ${attachmentId}: claude unavailable (${status.reason ?? 'unknown'})`,
+      );
+      return { enqueued: false, reason: status.reason ?? 'unavailable' };
+    }
+    const job = await this.jobs.create({
+      type: 'analyze_attachment',
+      payload: { attachmentId, documentId },
+      documentId,
+    });
+    await this.queue.add(
+      'analyze-attachment',
+      { dbJobId: job.id, attachmentId, documentId },
+      {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 2_000 },
+        removeOnComplete: 100,
+        removeOnFail: 200,
+      },
+    );
+    return { enqueued: true };
+  }
 }

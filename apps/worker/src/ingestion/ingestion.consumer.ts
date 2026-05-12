@@ -255,7 +255,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     if (doc.attachments && doc.attachments.length > 0) {
-      await this.persistAttachments(created.id, doc.attachments);
+      await this.persistAttachments(created.id, doc.attachments, doc.source as SourceType, job);
     }
 
     await publishEvent(this.redis.client, {
@@ -365,18 +365,23 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async persistAttachments(documentId: string, atts: ParsedAttachment[]): Promise<void> {
+  private async persistAttachments(
+    parentDocumentId: string,
+    atts: ParsedAttachment[],
+    parentSource: SourceType,
+    job: IngestFileJob,
+  ): Promise<void> {
     const baseDir = attachmentsDir();
     await fs.mkdir(baseDir, { recursive: true });
 
     for (const att of atts) {
-      const buf = await fs.readFile(att.tempPath);
-      const hash = sha256Hex(buf);
+      const hash = await streamingSha256(att.tempPath);
       const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, '_');
       const finalPath = path.join(baseDir, `${hash.slice(0, 16)}-${safeName}`);
       await fs.copyFile(att.tempPath, finalPath);
-      await this.attachments.create({
-        documentId,
+
+      const attachment = await this.attachments.create({
+        documentId: parentDocumentId,
         filename: att.filename,
         mimeType: att.mimeType,
         size: att.size,
@@ -384,7 +389,117 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         contentHash: hash,
         metadata: (att.metadata ?? {}) as Prisma.InputJsonValue,
       });
+
+      // Images become first-class Documents so /documents lists them
+      // separately and the gallery on /documents/:id can render
+      // description + entity links. Audio/PDF/etc stay as plain
+      // Attachments — promotion is image-only by design.
+      if (att.mimeType.startsWith('image/')) {
+        await this.promoteImageToDocument({
+          attachmentId: attachment.id,
+          parentDocumentId,
+          parentSource,
+          filename: att.filename,
+          contentHash: hash,
+          mimeType: att.mimeType,
+          attachmentMeta: (att.metadata ?? {}) as Record<string, unknown>,
+          job,
+        });
+      }
     }
+  }
+
+  /**
+   * Create a Document(type=image, status='raw') companion for an image
+   * attachment, link it back via Attachment.linkedDocumentId, and emit live
+   * graph events tying it to its parent. Idempotent via contentHash:
+   * re-uploading the same image collapses to the existing Document.
+   */
+  private async promoteImageToDocument(args: {
+    attachmentId: string;
+    parentDocumentId: string;
+    parentSource: SourceType;
+    filename: string;
+    contentHash: string;
+    mimeType: string;
+    attachmentMeta: Record<string, unknown>;
+    job: IngestFileJob;
+  }): Promise<string | null> {
+    const promotedHash = sha256Hex(`image::${args.contentHash}`);
+    const existing = await this.documents.findByContentHash(promotedHash);
+
+    let imageDocId: string;
+    if (existing) {
+      imageDocId = existing.id;
+    } else {
+      const created = await this.documents.create({
+        source: args.parentSource,
+        sourceId: `attachment::${args.attachmentId}`,
+        title: args.filename,
+        rawText: '',
+        contentHash: promotedHash,
+        tokenCount: 0,
+        type: 'image',
+        status: 'raw',
+        metadata: {
+          ...args.attachmentMeta,
+          __image: {
+            attachmentId: args.attachmentId,
+            parentDocumentId: args.parentDocumentId,
+            mimeType: args.mimeType,
+          },
+          __import: {
+            jobId: args.job.dbJobId,
+            batchId: args.job.importBatchId ?? null,
+            origin: args.job.origin,
+          },
+        } as Prisma.InputJsonValue,
+      });
+      imageDocId = created.id;
+      await publishEvent(this.redis.client, {
+        type: 'document.created',
+        payload: {
+          jobId: args.job.dbJobId,
+          documentId: imageDocId,
+          status: 'raw',
+          title: args.filename,
+        },
+      });
+    }
+
+    // Bridge the new Attachment row → image Document. Raw SQL because the
+    // Prisma client TS types haven't regenerated yet in this branch (the
+    // dev-server holds the .dll on Windows). Drop to typed update once the
+    // user restarts the server.
+    await this.prisma.client.$executeRawUnsafe(
+      `UPDATE "Attachment" SET "linkedDocumentId" = $1 WHERE id = $2`,
+      imageDocId,
+      args.attachmentId,
+    );
+
+    // Synthetic graph wiring: image-doc node + edge `derived_from` chat-doc.
+    await publishEvent(this.redis.client, {
+      type: 'graph.node_added',
+      payload: { entity: { id: imageDocId, name: args.filename, type: 'document' } },
+    });
+    await publishEvent(this.redis.client, {
+      type: 'graph.edge_added',
+      payload: {
+        edge: {
+          id: `syn-img-${imageDocId}-${args.parentDocumentId}`,
+          fromId: imageDocId,
+          toId: args.parentDocumentId,
+          relationType: 'derived_from',
+        },
+      },
+    });
+
+    // Queue the vision pass — orchestrator gates on SystemConfig at consume
+    // time, so we don't need to check the toggles here. maybeEnqueueImage
+    // already short-circuits when Claude is unavailable.
+    await this.enrichmentEnqueue.maybeEnqueueImage(args.attachmentId, imageDocId);
+
+    return imageDocId;
   }
 
   private async markRunning(dbJobId: string): Promise<void> {
@@ -430,4 +545,19 @@ async function readHead(filePath: string, bytes: number): Promise<Buffer> {
   } finally {
     await fh.close().catch(() => undefined);
   }
+}
+
+/** Streaming sha256 over a file — same shape as the API helper. */
+async function streamingSha256(filePath: string): Promise<string> {
+  const { createReadStream } = await import('node:fs');
+  const { createHash } = await import('node:crypto');
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256');
+    const stream = createReadStream(filePath);
+    stream.on('data', (chunk) => {
+      hash.update(chunk);
+    });
+    stream.once('end', () => resolve(hash.digest('hex')));
+    stream.once('error', reject);
+  });
 }

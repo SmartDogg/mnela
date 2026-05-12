@@ -13,7 +13,10 @@
  */
 
 export type IngestionJobName = 'ingest_file' | 'parse_document';
-export type EnrichmentJobName = 'enrich_document' | 'refresh_project_context';
+export type EnrichmentJobName =
+  | 'enrich_document'
+  | 'refresh_project_context'
+  | 'analyze_attachment';
 export type IndexingJobName = 'rebuild_index' | 'export_vault';
 export type MaintenanceJobName = 'backup' | 'cleanup';
 export type TranscriptionJobName = 'transcribe_audio';
@@ -38,6 +41,11 @@ export interface EnrichmentJob {
   dbJobId: string;
   documentId?: string;
   projectSlug?: string;
+  /** When set, this is an `analyze_attachment` job — described above. */
+  attachmentId?: string;
+  /** Backend chosen by SystemConfig at enqueue time. */
+  imageBackend?: 'claude-code' | 'anthropic-api';
+  imageModel?: 'opus' | 'sonnet' | 'haiku';
 }
 
 export interface IndexingJob {
