@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "dev": "node --watch --enable-source-maps --import @swc-node/register/esm-register src/main.ts",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
@@ -44,6 +44,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^11.0.0",
+    "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.15.33",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.0",
@@ -51,7 +52,6 @@
     "rimraf": "^6.0.1",
     "supertest": "^7.0.0",
     "testcontainers": "^10.16.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "unplugin-swc": "^1.5.9",
     "vitest": "^2.1.8"

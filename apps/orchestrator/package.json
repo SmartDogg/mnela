@@ -17,7 +17,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "dev": "node --watch --enable-source-maps --import @swc-node/register/esm-register src/main.ts",
     "start": "node dist/main.js",
     "start:mcp-stdio": "node dist/mcp/stdio-host.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -45,10 +45,11 @@
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@swc-node/register": "^1.11.1",
+    "@swc/core": "^1.15.33",
     "@types/node": "^22.10.0",
     "rimraf": "^6.0.1",
     "testcontainers": "^10.16.0",
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

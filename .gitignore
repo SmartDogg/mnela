@@ -58,6 +58,7 @@ desktop.ini
 /backups/
 /dropbox/
 apps/api/.test-data/
+apps/*/data/
 
 # Test data archives (kept in repo root for now during dev)
 data-*.zip
