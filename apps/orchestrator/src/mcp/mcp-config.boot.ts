@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,14 +62,20 @@ export class McpConfigBoot implements OnModuleInit {
 }
 
 /**
- * Locate the compiled stdio-host entry. Works for both:
- *   - running compiled JS (apps/orchestrator/dist/...) — file is sibling.
- *   - running source via tsx watch (apps/orchestrator/src/...) — the
- *     compiled dist sibling is the canonical Node-runnable artefact, so we
- *     prefer it when it exists.
+ * Locate the compiled stdio-host entry. The MCP config goes to Claude CLI
+ * which only knows how to spawn plain `node <file.js>`, so we must point
+ * at a real `.js` file regardless of how the orchestrator itself runs.
+ *
+ *   - Running compiled JS  (.../dist/mcp/mcp-config.boot.js)
+ *       → here = .../dist/mcp/  → sibling stdio-host.js exists
+ *   - Running source       (.../src/mcp/mcp-config.boot.ts)
+ *       → here = .../src/mcp/   → sibling is .ts (not runnable by `node`),
+ *         walk two levels up to the package root and reach into dist/.
  */
 function resolveStdioHostPath(): string {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const distSibling = path.resolve(here, 'stdio-host.js');
-  return distSibling;
+  const sibling = path.resolve(here, 'stdio-host.js');
+  if (existsSync(sibling)) return sibling;
+  // here = .../<pkg>/src/mcp → ../../dist/mcp/stdio-host.js
+  return path.resolve(here, '..', '..', 'dist', 'mcp', 'stdio-host.js');
 }
