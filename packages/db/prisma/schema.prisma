@@ -59,7 +59,12 @@ model Document {
   archivedAt  DateTime?
 
   chunks           DocumentChunk[]
-  attachments      Attachment[]
+  attachments      Attachment[]    @relation("AttachmentOwner")
+  /**
+   * If this document was promoted from an image attachment, the originating
+   * Attachment row points here via `linkedDocumentId`. Empty for normal docs.
+   */
+  imageAttachments Attachment[]    @relation("AttachmentImage")
   documentEntities DocumentEntity[]
   documentProjects DocumentProject[]
   edgesAsEvidence  Edge[]            @relation("EdgeEvidence")
@@ -102,11 +107,20 @@ model Attachment {
   ocrText     String? @db.Text
   description String? @db.Text
 
-  createdAt DateTime @default(now())
+  // Image attachments are also promoted to a standalone Document(type=image)
+  // so they appear as first-class entries in /documents and can carry their
+  // own entity links. `linkedDocumentId` points at that companion document.
+  // Non-image attachments keep this null.
+  linkedDocumentId String?
 
-  document Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  analyzedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  document       Document? @relation("AttachmentOwner", fields: [documentId], references: [id], onDelete: SetNull)
+  linkedDocument Document? @relation("AttachmentImage", fields: [linkedDocumentId], references: [id], onDelete: SetNull)
 
   @@index([contentHash])
+  @@index([linkedDocumentId])
 }
 
 // =====================================================================
@@ -304,6 +318,7 @@ enum JobType {
   rebuild_index
   export_vault
   transcribe_audio
+  analyze_attachment
 }
 
 enum JobStatus {
