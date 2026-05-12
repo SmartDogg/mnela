@@ -4,6 +4,49 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0047 — `/graph` page: react-force-graph-2d, overview zero-state, overlay panel, dynamic facets
+
+**Context:** The original `/graph` shipped on Cytoscape.js (see ADR superseded below: ADR-trail for Phase 7 had Cytoscape + cose-bilkent + an in-house mini-map). It worked but the visual was flat — solid-coloured circles on black, straight edges, no continuous physics. The user asked for an Obsidian-grade feel: live drift, glowing halos that scale with degree, hover-dim of the neighbourhood, label fade with zoom. Cytoscape can be styled, but its stylesheet is a CSS-string dictionary — it can't paint per-element radial gradients, can't run a per-tick custom painter, and its underlay-color halo can't be made to feel like a soft field of energy at canvas scale. Additionally several UX gaps surfaced: `/graph` was blank on first visit (required a `?center=`), filters were fixed enum + free-form text drifting out of sync with the actual DB, the `EntityPanel` consumed flex width and pushed the page into horizontal scroll on long content, and there was no way to edit a node or add a new one without leaving the page.
+
+**Decision:** Five connected changes, shipping as two commits (visual rebuild → UX iteration):
+
+1. **Renderer:** replace Cytoscape with `react-force-graph-2d` (canvas + d3-force). The component lives in `packages/ui/src/MnelaGraph.tsx` and owns every painted pixel via `nodeCanvasObjectMode='replace'` + `linkCanvasObjectMode='replace'`. Per-node we paint a radial-gradient halo (intensity scales with degree, brightens 2.5× on hover), an inner gradient body, a ring border, an optional pin glyph, and a label below that fades in with zoom (`scale > 0.6` or on hover). Hover dims everything outside the 1-hop neighbourhood to opacity 0.08. Drag→`fx/fy` pins. Continuous physics with `cooldownTime: Infinity`. Force tuning: `forceManyBody(-180)`, link distance grows with the endpoints' max-degree, link strength weakens between hubs (`1/log2(maxDeg+1)`) so dense clusters don't collapse, `forceCollide` prevents overlap. Public API (`Entity`, `Edge`, `MnelaGraphHandle`, `MnelaGraphLayout`) is preserved as much as possible — `setLayout(any)` now means "re-heat the simulation"; `getCytoscape()` returns `null` (kept on the type to avoid breaking callers).
+
+2. **Zero-state overview:** new `GET /graph/overview?limit=N` returns the top-N most-connected entities + the induced subgraph between them. Computes degree centrality in SQL across `auto_confirmed` and `manual` edges. The web client routes there automatically when `filters.center === ''`. Limit is a real filter — `OVERVIEW_LIMIT_PRESETS = [50, 200, 500, 1000, 0]` rendered as a segmented control in the sidebar (only when in overview mode); `0` is the "no cap" sentinel which the service maps to `GRAPH_MAX_NODES`. The previous "narrow filters to see all" copy is replaced by a `Show more / Show all` CTA on the truncation banner that escalates to the next preset.
+
+3. **Overlay panel:** `EntityPanel` is rendered as `position: absolute right-0 top-0 z-20` _inside_ the canvas container, not as a flex sibling. It slides in from the right via `tailwindcss-animate` (`animate-in slide-in-from-right-4 fade-in-0`), has `role="dialog" aria-modal="false"`, closes on Escape, and never changes the canvas width — page-level horizontal scroll is structurally impossible. The Radix `ScrollArea` viewport gets a global `[&>div]:!block` rule that forces its internal `display: table` wrapper back to block layout (otherwise long alias text expands the panel beyond its declared `w-80`). Camera centres on the clicked node so the overlay doesn't hide it.
+
+4. **Dynamic facets:** new `GET /graph/entity-types` and `GET /graph/relation-types` return distinct values present in the user's DB with usage counts, computed via Prisma `$queryRaw GROUP BY ... ORDER BY count DESC`. `FilterSidebar` reads from these (`useQuery` with 60s `staleTime`) and falls back to the static `ENTITY_TYPES` array when the call fails. Entity-type checkboxes show counts; relation-types drive an HTML5 `<datalist>` autocomplete + quick-chips for the top-6 most-used relations.
+
+5. **Dual-mode search:** the single SearchBar input handles two intents disambiguated by gesture, not by toggling modes. Typing live-highlights matching nodes via a new `highlightQuery` prop on `MnelaGraph`. Picking a result (Enter or click) navigates to `center=`, clears the typed text, and renders the picked entity as a chip with × inside the input. Backspace on empty input drops the chip (Gmail-style). A `Breadcrumb` row "Overview / <Name> ×" appears below the top bar in neighbourhood mode as a redundant always-visible "back to overview" affordance. `handleSetCenter` clears `searchText` so the highlight doesn't leak across navigations — this was the root cause of the "two functions on one selector" bug.
+
+6. **Authoring minimum:** new `POST /graph/entities` (find-or-create — if normalized-name + type collides, returns the existing row), `+ New entity` button in the graph header opens `EntityCreateDialog` and jumps to the newly-created node. `EntityPanel` exposes inline edit on name (double-click or pencil), description (textarea + ⌘/Ctrl+Enter save), and aliases (comma-separated chip input). All three use the existing `PATCH /graph/entities/:id`. `/graph` is promoted in `sidebar.tsx` to the top section next to dashboard/search/ask.
+
+**API surface added:**
+
+| Endpoint                    | Scope       | Purpose                                                         |
+| --------------------------- | ----------- | --------------------------------------------------------------- |
+| `GET /graph/overview`       | `read_only` | Zero-state landing: top-N most-connected entities               |
+| `GET /graph/entity-types`   | `read_only` | Distinct `Entity.type` values + counts                          |
+| `GET /graph/relation-types` | `read_only` | Distinct `Edge.relationType` values + counts (LIMIT 200)        |
+| `POST /graph/entities`      | `mcp`       | Manual entity create (find-or-create on normalized name + type) |
+
+Existing endpoints (`GET /graph`, `GET /graph/entities`, `PATCH /graph/entities/:id`, `PATCH /graph/edges/:id`, `DELETE /graph/edges/:id`, `POST /graph/entities/merge`) are unchanged.
+
+**Dependencies added:** `react-force-graph-2d ^1.29`, `d3-force ^3.0`, `@types/d3-force`. **Removed:** `cytoscape`, `cytoscape-cola`, `cytoscape-fcose`, `cytoscape-cose-bilkent`. `transpilePackages: ['@mnela/ui']` added in `apps/web/next.config.ts` so the ESM-only chain bundles cleanly. `MNELA_API_INTERNAL_BASE` and `apiOrigin` in `next.config.ts` default to `127.0.0.1` instead of `localhost` to dodge the Node-22-on-Windows `::1` resolution that left server-side fetch with `ECONNREFUSED` against the IPv4-only Nest API.
+
+**Alternatives:**
+
+- **Stay on Cytoscape, polish harder:** Tried first — Cytoscape supports underlay-color/-padding for glow, dashed edges, mapData() for size scaling. The result was a substantial cosmetic improvement but still not Obsidian-grade: Cytoscape's canvas renderer can't run a per-frame painter, can't draw the radial-gradient halo, and its `cose-bilkent`/`fcose` layouts don't sustain a perpetual drift the way d3-force does with `cooldownTime: Infinity`. Effort/payoff was poor compared to swapping the renderer.
+- **Sigma.js v3 (WebGL):** Faster for 100k+ nodes but custom node "programs" are WebGL shaders — too heavy for the 30–500 range Mnela actually operates in. Hover-neighborhood dim and label zoom-fade would need to be re-implemented from scratch against the WebGL pipeline.
+- **Reagraph (WebGL/three.js):** Defaults look corporate; per-pixel control requires dropping to three.js anyway. No worse, no better than building on `react-force-graph-2d`, with a heavier dep.
+- **Cosmograph:** CC BY-NC license. Project is MIT.
+- **EntityPanel via Radix Sheet/Dialog portal:** Portals to `body`, which breaks the "click canvas outside panel to dismiss" affordance and decouples the panel from the canvas's scoping. The absolute-overlay-in-relative-parent pattern is local, simpler, and animates with the same `tailwindcss-animate` recipes used elsewhere.
+- **Two search inputs (filter / navigate):** Forces a pre-commit mode choice. The typed-highlight → Enter-navigate gesture is a single user intent already; splitting it adds chrome without payoff. The chip + breadcrumb double affordance handles the "where am I" orientation that the mode split was meant to solve.
+- **Move `EntityType` from Prisma enum to free string:** Considered, deferred. Would let new types appear without migrations, but breaks Zod enum validation, type-narrowing in TypeScript, and ingestion pipeline contracts. Dynamic facets endpoint solves the discoverability problem without the schema change. Revisit if/when a real use-case for arbitrary types lands.
+
+**Status:** Accepted. Implementation in commits `439b035` (renderer swap + overview endpoint) and `10c98ed` (UX iteration).
+
 ## ADR-0046 — Audio attachment streaming: Range-aware Express handler on `GET /documents/:id/attachment`
 
 **Context:** Phase 9 adds an audio player to `/documents/:id`. The web client uses native `<audio controls preload="metadata" src="/_api/documents/:id/attachment">`. The element issues a `HEAD` (or `GET` with `Range: bytes=0-`) to read duration, then partial `Range` requests when the user seeks. Without proper `206 Partial Content` support, seek silently breaks in Chrome/Safari for files > a few MB. The codebase had no binary-streaming pattern yet (recon: no `createReadStream`, `StreamableFile`, or `Range`/`Content-Range` usage outside `apps/api/src/modules/search/search.controller.ts` SSE writes).

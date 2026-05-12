@@ -71,9 +71,9 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Importing a ZIP shows growing live graph; pause/resume/cancel work; graph view supports filters, hover-evidence, layout switcher.
 
-- [x] Cytoscape.js wrapper in `packages/ui` (`<MnelaGraph>` with imperative ref, lazy cose-bilkent, in-house mini-map)
-- [x] `apps/api` graph endpoint with center/depth/types/relations/projectSlug/confidence/from/to + truncated stats
-- [x] `/graph` page with filters and interactions (filter sidebar, search, layout switcher, entity panel, mini-map)
+- [x] `<MnelaGraph>` renderer in `packages/ui` — see ADR-0047, now built on react-force-graph-2d (canvas + d3-force) with custom radial-gradient halos, hover-dim 1-hop neighborhood, dual-mode highlight, continuous physics. Cytoscape.js was the previous implementation, removed in the same ADR.
+- [x] `apps/api` graph endpoint with center/depth/types/relations/projectSlug/confidence/from/to + truncated stats; plus `/graph/overview`, `/graph/entity-types`, `/graph/relation-types`, `POST /graph/entities` (see ADR-0047)
+- [x] `/graph` page with filters and interactions: density preset, dynamic entity-type & relation-type facets, dual-mode search + chip + breadcrumb, overlay EntityPanel with inline edit, "+ New entity" header button, mini-map, re-heat / fit camera controls
 - [x] Socket.io client with namespace `/live` (singleton manager, refcounted subs, exp backoff, 5s degrade timer)
 - [x] Live updates on `/imports/:id` with growing graph + log tail
 - [x] Animations: fadeIn nodes, pulse edges
