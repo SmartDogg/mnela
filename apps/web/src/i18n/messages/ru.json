@@ -378,17 +378,18 @@
     "title": "Граф",
     "subtitle": "Силовой граф сущностей и связей.",
     "stats": "{nodes} узлов · {edges} рёбер",
+    "overviewStats": "Обзор · {nodes} узлов · {edges} рёбер",
     "truncated": "Показано {returned} из {total} узлов — уточните фильтры.",
     "search": {
       "placeholder": "Поиск сущностей…",
-      "pickCenter": "Выберите центральную сущность…",
+      "pickCenter": "Перейти к сущности…",
       "replaceCenter": "Поиск или смена центра…",
       "loading": "Поиск…",
       "empty": "Ничего не найдено."
     },
-    "empty": {
-      "title": "Центр не выбран",
-      "subtitle": "Найдите сущность выше — граф загрузит её окрестность."
+    "overview": {
+      "badge": "Обзор",
+      "hint": "Самые связные сущности · клик по узлу — погружение"
     },
     "error": {
       "title": "Не удалось загрузить граф"
@@ -410,12 +411,9 @@
       "confirmedOnly": "Подтверждённые",
       "includeReview": "С неподтв."
     },
-    "layouts": {
-      "fcose": "Силовой ✦ (fcose)",
-      "cose": "Силовой (cose)",
-      "coseBilkent": "Силовой+ (cose-bilkent)",
-      "circular": "Круговой",
-      "grid": "Сетка"
+    "actions": {
+      "reheat": "Перезапустить раскладку",
+      "fit": "Вместить в экран"
     },
     "entityPanel": {
       "close": "Закрыть",

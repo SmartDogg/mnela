@@ -4,7 +4,6 @@ export {
   type MnelaGraphLayout,
   type MnelaGraphProps,
 } from './MnelaGraph.js';
-export { confidenceBucket, toCytoscapeElement, toCytoscapeElements } from './transform.js';
 export {
   type Edge,
   type EdgeStatus,

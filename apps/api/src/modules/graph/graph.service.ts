@@ -25,6 +25,8 @@ export interface CytoscapeNode {
     label: string;
     type: EntityType;
     description?: string;
+    /** Edge degree (in+out). Present on the overview endpoint; absent on /graph. */
+    degree?: number;
   };
 }
 
@@ -63,6 +65,15 @@ export interface NeighborhoodOptions {
   confidence?: number;
   from?: Date;
   to?: Date;
+}
+
+export interface OverviewOptions {
+  /** Soft cap on returned nodes; clamped to GRAPH_MAX_NODES. */
+  limit?: number;
+  /** Hide entities with degree < this number to suppress orphan dust. */
+  minDegree?: number;
+  /** Restrict the overview to specific entity types (e.g. project,person). */
+  types?: EntityType[];
 }
 
 @Injectable()
@@ -176,6 +187,109 @@ export class GraphService {
         totalEdges,
         returnedNodes: returnedNodes.length,
         returnedEdges: returnedEdges.length,
+        truncated,
+      },
+    };
+  }
+
+  /**
+   * Zero-state landing view for /graph: the most connected entities and the
+   * edges that link them. Computes degree centrality in SQL (confirmed/manual
+   * edges only) then loads the surviving entities and the induced subgraph.
+   * Truncation flags use the standard GraphStats shape so the client renders
+   * the same banner as a regular neighborhood query.
+   */
+  async overview(options: OverviewOptions = {}): Promise<CytoscapeGraph> {
+    const limit = Math.min(options.limit ?? 80, GRAPH_MAX_NODES);
+    const minDegree = Math.max(1, options.minDegree ?? 1);
+    const typeFilter = options.types && options.types.length > 0 ? options.types : null;
+    const prisma = this.prisma.active();
+
+    // Degree per entity from active edges. The double `WHERE soft-delete` is
+    // implicit via `prisma.active()` — we go to $queryRaw, so we must apply
+    // the entity filter explicitly below.
+    const rows = await prisma.$queryRaw<{ id: string; degree: bigint }[]>`
+      SELECT e.id, COUNT(*)::bigint AS degree
+      FROM "Entity" e
+      JOIN (
+        SELECT "fromId" AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+        UNION ALL
+        SELECT "toId"   AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+      ) d ON d.entity_id = e.id
+      WHERE e."mergedIntoId" IS NULL
+      GROUP BY e.id
+      HAVING COUNT(*) >= ${minDegree}
+      ORDER BY degree DESC, e.id
+      LIMIT ${limit}
+    `;
+
+    if (rows.length === 0) {
+      return emptyGraph('');
+    }
+
+    const idsInDegreeOrder = rows.map((r) => r.id);
+    const degreeById = new Map(rows.map((r) => [r.id, Number(r.degree)]));
+    const entities = await prisma.entity.findMany({
+      where: {
+        id: { in: idsInDegreeOrder },
+        ...(typeFilter ? { type: { in: typeFilter } } : {}),
+      },
+    });
+    // SQL didn't filter by type; do it after to preserve degree-ordering
+    // when typeFilter is null.
+    const entityById = new Map(entities.map((e) => [e.id, e]));
+    const nodes = idsInDegreeOrder
+      .map((id) => entityById.get(id))
+      .filter((e): e is Entity => Boolean(e));
+
+    const idSet = new Set(nodes.map((n) => n.id));
+    // Induced subgraph: edges where BOTH endpoints made the cut.
+    const edges = await prisma.edge.findMany({
+      where: {
+        status: { in: ['auto_confirmed', 'manual'] },
+        fromId: { in: nodes.map((n) => n.id) },
+        toId: { in: nodes.map((n) => n.id) },
+      },
+      take: GRAPH_MAX_EDGES + 1,
+    });
+    const filteredEdges = edges.filter((e) => idSet.has(e.fromId) && idSet.has(e.toId));
+
+    let truncatedEdges = filteredEdges;
+    let truncated = false;
+    if (truncatedEdges.length > GRAPH_MAX_EDGES) {
+      truncatedEdges = truncatedEdges.slice(0, GRAPH_MAX_EDGES);
+      truncated = true;
+    }
+
+    // Total nodes available with degree ≥ minDegree (for the banner).
+    const totalRow = await prisma.$queryRaw<{ total: bigint }[]>`
+      SELECT COUNT(*)::bigint AS total FROM (
+        SELECT e.id
+        FROM "Entity" e
+        JOIN (
+          SELECT "fromId" AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+          UNION ALL
+          SELECT "toId"   AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+        ) d ON d.entity_id = e.id
+        WHERE e."mergedIntoId" IS NULL
+        GROUP BY e.id
+        HAVING COUNT(*) >= ${minDegree}
+      ) x
+    `;
+    const totalNodes = Number(totalRow[0]?.total ?? nodes.length);
+    if (totalNodes > nodes.length) truncated = true;
+
+    return {
+      // No single center for an overview — emit an empty string. Front-end
+      // never uses `center` from the response (it tracks its own).
+      center: '',
+      nodes: nodes.map((e) => toOverviewNode(e, degreeById.get(e.id) ?? 0)),
+      edges: truncatedEdges.map(toCytoscapeEdge),
+      stats: {
+        totalNodes,
+        totalEdges: filteredEdges.length,
+        returnedNodes: nodes.length,
+        returnedEdges: truncatedEdges.length,
         truncated,
       },
     };
@@ -315,6 +429,19 @@ function toCytoscapeNode(e: Entity): CytoscapeNode {
     id: e.id,
     label: e.name,
     type: e.type,
+  };
+  if (e.description) data.description = e.description;
+  return { data };
+}
+
+function toOverviewNode(e: Entity, degree: number): CytoscapeNode {
+  // Carry degree on the node so the client can size it without a second
+  // pass over edges (and so the value survives if the consumer drops edges).
+  const data: CytoscapeNode['data'] = {
+    id: e.id,
+    label: e.name,
+    type: e.type,
+    degree,
   };
   if (e.description) data.description = e.description;
   return { data };

@@ -14,7 +14,15 @@ const ScrollArea = forwardRef<
     className={cn('relative overflow-hidden', className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    {/*
+      Radix wraps Viewport's children in a `display: table; min-width: 100%`
+      div by default. That div grows with content, which pushes flex parents
+      past their declared widths and produces a page-level horizontal scroll
+      whenever a child has un-wrappable content. The `[&>div]:!block` rule
+      forces that inner wrapper back to block layout — vertical scrolling
+      still works exactly the same.
+    */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] [&>div]:!block">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

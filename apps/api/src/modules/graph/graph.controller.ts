@@ -16,6 +16,7 @@ import type { EntityType } from '@prisma/client';
 import { Audit } from '../../audit/audit.decorator.js';
 import { RequiredScope } from '../../auth/scope.decorator.js';
 import {
+  GraphOverviewQuery,
   GraphQuery,
   ListEdgesQuery,
   ListEntitiesQuery,
@@ -52,6 +53,24 @@ export class GraphController {
       confidence: query.confidence,
       from: query.from ? new Date(query.from) : undefined,
       to: query.to ? new Date(query.to) : undefined,
+    });
+  }
+
+  @Get('overview')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary: 'Zero-state landing view: top-N most-connected entities and the edges that link them',
+  })
+  graphOverview(@Query() query: GraphOverviewQuery) {
+    const types = query.types
+      ? Array.isArray(query.types)
+        ? (query.types as EntityType[])
+        : [query.types as EntityType]
+      : undefined;
+    return this.graph.overview({
+      limit: query.limit,
+      minDegree: query.minDegree,
+      types,
     });
   }
 

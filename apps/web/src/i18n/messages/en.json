@@ -378,17 +378,18 @@
     "title": "Graph",
     "subtitle": "Force-directed view across entities and edges.",
     "stats": "{nodes} nodes · {edges} edges",
+    "overviewStats": "Overview · {nodes} nodes · {edges} edges",
     "truncated": "Showing {returned} of {total} nodes — narrow filters to see all.",
     "search": {
       "placeholder": "Search entities…",
-      "pickCenter": "Pick a center entity…",
+      "pickCenter": "Jump to an entity…",
       "replaceCenter": "Search or change center…",
       "loading": "Searching…",
       "empty": "No matches."
     },
-    "empty": {
-      "title": "No center selected",
-      "subtitle": "Search above to pick an entity. The graph will load its neighborhood."
+    "overview": {
+      "badge": "Overview",
+      "hint": "Most connected entities · click any node to dive in"
     },
     "error": {
       "title": "Failed to load graph"
@@ -410,12 +411,9 @@
       "confirmedOnly": "Confirmed",
       "includeReview": "Include review"
     },
-    "layouts": {
-      "fcose": "Force ✦ (fcose)",
-      "cose": "Force (cose)",
-      "coseBilkent": "Force+ (cose-bilkent)",
-      "circular": "Circular",
-      "grid": "Grid"
+    "actions": {
+      "reheat": "Re-heat layout",
+      "fit": "Fit to screen"
     },
     "entityPanel": {
       "close": "Close",

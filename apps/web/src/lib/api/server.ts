@@ -3,7 +3,11 @@ import { cookies } from 'next/headers';
 import { ApiError } from './client';
 import type { Principal, ProblemDetails } from './types';
 
-const INTERNAL_BASE = process.env.MNELA_API_INTERNAL_BASE ?? 'http://localhost:3000/api/v1';
+// Hard-code IPv4 in the default. On Windows + Node 22 `localhost` may resolve
+// to `::1` first (IPv6) while the API binds 0.0.0.0 (IPv4 only) — that combo
+// gives ECONNREFUSED on every server-side fetch. Override with
+// MNELA_API_INTERNAL_BASE in deployments where the API speaks IPv6.
+const INTERNAL_BASE = process.env.MNELA_API_INTERNAL_BASE ?? 'http://127.0.0.1:3000/api/v1';
 
 async function serverFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const cookieStore = await cookies();

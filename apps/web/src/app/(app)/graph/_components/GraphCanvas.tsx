@@ -5,23 +5,22 @@ import {
   type Edge as GraphEdge,
   type Entity as GraphEntity,
   type MnelaGraphHandle,
-  type MnelaGraphLayout,
 } from '@mnela/ui';
 import { forwardRef } from 'react';
 
 interface GraphCanvasProps {
   nodes: GraphEntity[];
   edges: GraphEdge[];
-  layout: MnelaGraphLayout;
   onNodeClick: (entity: GraphEntity) => void;
   onEdgeClick?: (edge: GraphEdge) => void;
+  highlightQuery?: string;
 }
 
 // Thin client-side wrapper around <MnelaGraph>. Lives in its own file so the
-// page can lazy-load it via next/dynamic with ssr disabled — Cytoscape touches
-// `window` at module init.
+// page can lazy-load it via next/dynamic with ssr disabled — the renderer
+// touches `window` and `HTMLCanvasElement.getContext` at module init.
 export const GraphCanvas = forwardRef<MnelaGraphHandle, GraphCanvasProps>(function GraphCanvas(
-  { nodes, edges, layout, onNodeClick, onEdgeClick },
+  { nodes, edges, onNodeClick, onEdgeClick, highlightQuery },
   ref,
 ): JSX.Element {
   return (
@@ -29,9 +28,9 @@ export const GraphCanvas = forwardRef<MnelaGraphHandle, GraphCanvasProps>(functi
       ref={ref}
       nodes={nodes}
       edges={edges}
-      layout={layout}
       onNodeClick={onNodeClick}
       onEdgeClick={onEdgeClick}
+      highlightQuery={highlightQuery}
       miniMap
       className="h-full w-full"
     />
