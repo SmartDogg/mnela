@@ -21,10 +21,17 @@ export interface BulkInboxResult {
   failed: { id: string; reason: string }[];
 }
 
+// Writer side (packages/mcp-tools/src/tools/add-links.ts) emits the edgeId
+// of an Edge it already created with status='needs_review', plus
+// fromEntityId/toEntityId for diff UIs. Older payloads (and edits) may use
+// the bare fromId/toId field names — accept either.
 interface LinkSuggestionPayload {
-  fromId: string;
-  toId: string;
-  relationType: string;
+  edgeId?: string;
+  fromId?: string;
+  toId?: string;
+  fromEntityId?: string;
+  toEntityId?: string;
+  relationType?: string;
   confidence?: number;
   evidenceDocumentId?: string;
 }
@@ -172,14 +179,27 @@ export class InboxService {
     switch (item.type) {
       case 'link_suggestion': {
         const p = payload as unknown as LinkSuggestionPayload;
-        if (!p.fromId || !p.toId || !p.relationType) {
+        // Happy path: writer already created the Edge with status=needs_review
+        // and stamped edgeId into the payload. Accept just confirms it —
+        // creating a second Edge would duplicate the relation.
+        if (p.edgeId) {
+          return this.edges.update(p.edgeId, {
+            status: 'manual' as LinkStatus,
+            reviewedAt: new Date(),
+          });
+        }
+        // Legacy / edited payloads — no edgeId, build one from the
+        // identifiers we have.
+        const fromId = p.fromId ?? p.fromEntityId;
+        const toId = p.toId ?? p.toEntityId;
+        if (!fromId || !toId || !p.relationType) {
           throw new BadRequestException(
-            'link_suggestion payload requires fromId, toId, relationType',
+            'link_suggestion payload requires edgeId, or {fromId|fromEntityId, toId|toEntityId, relationType}',
           );
         }
         return this.edges.create({
-          fromId: p.fromId,
-          toId: p.toId,
+          fromId,
+          toId,
           relationType: p.relationType,
           confidence: typeof p.confidence === 'number' ? p.confidence : 1,
           status: 'manual' as LinkStatus,
