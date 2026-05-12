@@ -1,6 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 
-import type { ClaudeStatus, JobSummary } from '@/lib/api/types';
+import type { ClaudeStatus, EnrichmentQueueState, JobSummary } from '@/lib/api/types';
 
 import type {
   JobCompletedEvent,
@@ -71,6 +71,19 @@ export function syncCacheForEvent(qc: QueryClient, event: MnelaEvent): void {
         return next;
       });
       qc.invalidateQueries({ queryKey: ['claude-status'] });
+      return;
+    }
+    case 'enrichment.queue.tick': {
+      // Patch the React Query cache so /jobs renders without an extra poll.
+      // The orchestrator emits this every ~4s; in the gap, the cache stays
+      // valid and /jobs avoids re-issuing GET /jobs/queue-state.
+      qc.setQueryData<EnrichmentQueueState>(['jobs', 'queue-state'], event.payload);
+      return;
+    }
+    case 'enrichment.document.started':
+    case 'enrichment.document.finished': {
+      // Consumed directly from the live event ring by /jobs and /imports —
+      // no separate cache to patch.
       return;
     }
   }

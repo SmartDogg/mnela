@@ -13,6 +13,7 @@ import type { LiveImportDocument } from '@/lib/socket/types';
 import { formatDate } from '@/lib/utils';
 
 import { ActionBar } from './ActionBar';
+import { EnrichmentPhase } from './EnrichmentPhase';
 import { FileList } from './FileList';
 import { LiveGraphPane } from './LiveGraphPane';
 import { LogTail } from './LogTail';
@@ -154,6 +155,7 @@ export function LiveImportView({ id }: LiveImportViewProps): JSX.Element {
         etaSeconds={eta.etaSeconds}
         ratePerSec={eta.ratePerSec}
       />
+      <EnrichmentPhase documents={documents} />
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(280px,360px)_1fr]">
         <div className="flex min-h-0 flex-col border-b lg:border-b-0 lg:border-r">
           <div className="flex items-center justify-between border-b px-4 py-1.5">

@@ -1,96 +1,38 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { Activity } from 'lucide-react';
-import { useTranslations } from 'next-intl';
-import Link from 'next/link';
-
 import { PageHeader } from '@/components/page-header';
-import { JobStatusBadge } from '@/components/status-badge';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { api } from '@/lib/api/client';
-import { jobLastActivityAt, type JobSummary, type Paginated } from '@/lib/api/types';
-import { relativeTime } from '@/lib/utils';
 
+import { EnrichmentSection } from './_components/EnrichmentSection';
+import { FailedJobs } from './_components/FailedJobs';
+import { OtherJobs } from './_components/OtherJobs';
+import { StatsPanel } from './_components/StatsPanel';
+import { useEnrichmentQueueState } from './_components/useEnrichmentQueueState';
+
+/**
+ * Single home for everything queue-related that's NOT tied to a specific
+ * import. The per-import live view stays at /imports/:id (extended in this
+ * change with an Enrichment-phase strip); this page covers:
+ *
+ *   - Enrichment queue live view (counters, ETA, in-flight docs, pause)
+ *   - Other job types (MCP, transcription, refresh, …)
+ *   - Failed jobs with retry — collapsed when count is 0
+ *   - Stats panel — collapsed by default; lazy-loaded
+ *
+ * The old /admin/jobs metrics page redirects here.
+ */
 export default function JobsPage(): JSX.Element {
-  const t = useTranslations('nav');
-  const tj = useTranslations('admin.jobs');
-  const query = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => api.get<Paginated<JobSummary>>('/jobs', { query: { page: 1, limit: 50 } }),
-    refetchInterval: 5000,
-  });
-
+  const queue = useEnrichmentQueueState();
   return (
     <div>
       <PageHeader
-        title={t('jobs')}
-        subtitle="Background jobs (ingestion, enrichment, indexing)."
-        actions={
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/admin/jobs">
-              <Activity />
-              {tj('viewDashboard')}
-            </Link>
-          </Button>
-        }
+        title="Jobs"
+        subtitle="Background work happening outside of a specific import — enrichment, MCP, transcription."
       />
-      <div className="px-8 py-6">
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Type</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Attempts</TableHead>
-                <TableHead className="text-right">Last activity</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {query.isLoading &&
-                Array.from({ length: 6 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell colSpan={4}>
-                      <Skeleton className="h-5 w-full" />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {query.data?.items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No jobs.
-                  </TableCell>
-                </TableRow>
-              )}
-              {query.data?.items.map((job) => (
-                <TableRow key={job.id}>
-                  <TableCell>
-                    <span className="font-mono text-xs">{job.type}</span>
-                  </TableCell>
-                  <TableCell>
-                    <JobStatusBadge status={job.status} />
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {job.attempts}
-                    {` / ${job.maxAttempts}`}
-                  </TableCell>
-                  <TableCell className="text-right text-xs text-muted-foreground">
-                    {relativeTime(jobLastActivityAt(job))}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+      <div className="space-y-3 px-8 py-6">
+        <EnrichmentSection state={queue.data} isLoading={queue.isLoading} />
+        <OtherJobs />
+        <FailedJobs />
+        <StatsPanel />
       </div>
     </div>
   );

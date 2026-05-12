@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { errorRateTone, formatBucketTs, formatMs } from './format';
+import {
+  errorRateTone,
+  formatBucketTs,
+  formatElapsedShort,
+  formatEtaLong,
+  formatMs,
+} from './format';
 
 describe('formatMs', () => {
   it('formats sub-second as ms', () => {
@@ -30,6 +36,40 @@ describe('formatBucketTs', () => {
   it('zero-pads HH:MM in local time', () => {
     const d = new Date(2025, 0, 1, 9, 5, 0);
     expect(formatBucketTs(d.toISOString())).toBe('09:05');
+  });
+});
+
+describe('formatElapsedShort', () => {
+  it('rounds down to whole seconds under a minute', () => {
+    expect(formatElapsedShort(0)).toBe('0s');
+    expect(formatElapsedShort(999)).toBe('0s');
+    expect(formatElapsedShort(1000)).toBe('1s');
+    expect(formatElapsedShort(59_999)).toBe('59s');
+  });
+
+  it('shows mixed m+s in the 1m-1h band', () => {
+    expect(formatElapsedShort(60_000)).toBe('1m');
+    expect(formatElapsedShort(90_000)).toBe('1m 30s');
+  });
+
+  it('shows h+m beyond an hour', () => {
+    expect(formatElapsedShort(3_600_000)).toBe('1h');
+    expect(formatElapsedShort(3_780_000)).toBe('1h 3m');
+  });
+});
+
+describe('formatEtaLong', () => {
+  it('returns em-dash for unknown', () => {
+    expect(formatEtaLong(null)).toBe('—');
+    expect(formatEtaLong(-1)).toBe('—');
+    expect(formatEtaLong(Number.NaN)).toBe('—');
+  });
+
+  it('rounds to nearest unit', () => {
+    expect(formatEtaLong(30)).toBe('30s');
+    expect(formatEtaLong(120)).toBe('2m');
+    expect(formatEtaLong(3600)).toBe('1h');
+    expect(formatEtaLong(5400)).toBe('1h 30m');
   });
 });
 

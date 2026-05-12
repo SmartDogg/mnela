@@ -5,9 +5,11 @@ vi.mock('@mnela/claude-runner', () => ({ runClaude: runClaudeMock }));
 
 const publishEventMock = vi.fn();
 const peekSlotMock = vi.fn().mockResolvedValue(null);
+const recordCompletionMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@mnela/queue', () => ({
   publishEvent: publishEventMock,
   peekSlot: peekSlotMock,
+  recordEnrichmentCompletion: recordCompletionMock,
 }));
 
 const { EnrichmentPipeline } = await import('../pipeline.js');

@@ -9,7 +9,6 @@ import {
   Cog,
   GitBranch,
   GraduationCap,
-  Activity,
   Inbox as InboxIcon,
   KeyRound,
   LayoutDashboard,
@@ -75,7 +74,6 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
       title: t('admin'),
       items: [
         { href: '/admin/system', label: t('system'), icon: Server },
-        { href: '/admin/jobs', label: t('jobsDashboard'), icon: Activity },
         { href: '/admin/tokens', label: t('tokens'), icon: KeyRound },
         { href: '/admin/claude', label: t('claude'), icon: GraduationCap },
         { href: '/admin/backup', label: t('backup'), icon: Cloud },

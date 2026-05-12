@@ -8,7 +8,7 @@ import {
   SystemConfigRepository,
   normalizeEntityName,
 } from '@mnela/db';
-import { peekSlot, publishEvent } from '@mnela/queue';
+import { peekSlot, publishEvent, recordEnrichmentCompletion } from '@mnela/queue';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ClaudeStatusService } from '../claude-status/claude-status.service.js';
@@ -106,6 +106,46 @@ export class EnrichmentPipeline {
     }
 
     await this.documents.update(input.documentId, { status: 'enriching' });
+    const startedAtMs = Date.now();
+    // The web client already has the title cached from `document.created`
+    // (emitted at ingestion time and persisted via cacheSync), so this event
+    // can stay slim — payload skips title here. Image analysis below does
+    // include filename because that path already loaded the attachment.
+    await publishEvent(this.redis.client, {
+      type: 'enrichment.document.started',
+      payload: {
+        jobId: input.dbJobId,
+        documentId: input.documentId,
+        kind: 'document',
+        startedAt: new Date(startedAtMs).toISOString(),
+      },
+    });
+
+    const finish = async (outcome: EnrichmentOutcome): Promise<EnrichmentOutcome> => {
+      const durationMs = Date.now() - startedAtMs;
+      const ok = outcome.status === 'enriched';
+      await publishEvent(this.redis.client, {
+        type: 'enrichment.document.finished',
+        payload: {
+          jobId: input.dbJobId,
+          documentId: input.documentId,
+          addedEntities: outcome.addedEntities,
+          addedEdges: outcome.addedEdges,
+          durationMs,
+          ok,
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+        },
+      });
+      // Only successful runs count toward p50/ratePerMinute — a failed
+      // 30-second Claude crash shouldn't drag the success-time stats up.
+      if (ok) {
+        await recordEnrichmentCompletion(this.redis.client, {
+          jobId: input.dbJobId,
+          durationMs,
+        }).catch(() => undefined);
+      }
+      return outcome;
+    };
 
     const result = await runClaude({
       prompt: enrichmentPromptFor(input.documentId),
@@ -134,13 +174,13 @@ export class EnrichmentPipeline {
           : {}),
       });
       await this.documents.update(input.documentId, { status: 'parsed' });
-      return {
+      return finish({
         status: 'rate-limited',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
         reason,
-      };
+      });
     }
 
     if (result.authError) {
@@ -150,24 +190,24 @@ export class EnrichmentPipeline {
         checkedAt: new Date().toISOString(),
       });
       await this.documents.update(input.documentId, { status: 'parsed' });
-      return {
+      return finish({
         status: 'auth-error',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
         reason: result.authError,
-      };
+      });
     }
 
     if (result.exitCode !== 0 || result.timedOut) {
       await this.documents.update(input.documentId, { status: 'failed' });
-      return {
+      return finish({
         status: 'failed',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
         reason: result.timedOut ? 'timeout' : `exit ${result.exitCode}`,
-      };
+      });
     }
 
     const summary = parseStructured(result.result?.result ?? '');
@@ -186,12 +226,12 @@ export class EnrichmentPipeline {
       `enriched ${input.documentId}: +${summary.addedEntitiesCount} entities, +${summary.addedEdgesCount} edges`,
     );
 
-    return {
+    return finish({
       status: 'enriched',
       addedEntities: summary.addedEntitiesCount,
       addedEdges: summary.addedEdgesCount,
       droppedLowConfidence: summary.droppedLowConfidence,
-    };
+    });
   }
 
   /**
@@ -351,6 +391,42 @@ export class EnrichmentPipeline {
       return zeroOutcome('skipped', `not an image (${attachment.mimeType})`);
     }
 
+    const linkedDocumentId = attachment.linkedDocumentId ?? input.attachmentId;
+    const startedAtMs = Date.now();
+    await publishEvent(this.redis.client, {
+      type: 'enrichment.document.started',
+      payload: {
+        jobId: input.dbJobId,
+        documentId: linkedDocumentId,
+        title: attachment.filename,
+        kind: 'image',
+        startedAt: new Date(startedAtMs).toISOString(),
+      },
+    });
+    const finishImage = async (outcome: EnrichmentOutcome): Promise<EnrichmentOutcome> => {
+      const durationMs = Date.now() - startedAtMs;
+      const ok = outcome.status === 'enriched';
+      await publishEvent(this.redis.client, {
+        type: 'enrichment.document.finished',
+        payload: {
+          jobId: input.dbJobId,
+          documentId: linkedDocumentId,
+          addedEntities: outcome.addedEntities,
+          addedEdges: outcome.addedEdges,
+          durationMs,
+          ok,
+          ...(outcome.reason ? { reason: outcome.reason } : {}),
+        },
+      });
+      if (ok) {
+        await recordEnrichmentCompletion(this.redis.client, {
+          jobId: input.dbJobId,
+          durationMs,
+        }).catch(() => undefined);
+      }
+      return outcome;
+    };
+
     const backendName = await readRegistryValue<'claude-code' | 'anthropic-api'>(
       this.systemConfig,
       'attachments.imageAnalysisBackend',
@@ -371,10 +447,10 @@ export class EnrichmentPipeline {
 
     const result = await backend.analyze(backendInput);
     if (result.status === 'unavailable') {
-      return zeroOutcome('skipped', `${backend.name}: ${result.reason}`);
+      return finishImage(zeroOutcome('skipped', `${backend.name}: ${result.reason}`));
     }
     if (result.status === 'failed') {
-      return zeroOutcome('failed', `${backend.name}: ${result.reason}`);
+      return finishImage(zeroOutcome('failed', `${backend.name}: ${result.reason}`));
     }
 
     const { output } = result;
@@ -436,12 +512,12 @@ export class EnrichmentPipeline {
       `analyzed image ${input.attachmentId} via ${backend.name}: +${addedEntities} entities, -${droppedLowConfidence} dropped`,
     );
 
-    return {
+    return finishImage({
       status: 'enriched',
       addedEntities,
       addedEdges: 0,
       droppedLowConfidence,
-    };
+    });
   }
 }
 

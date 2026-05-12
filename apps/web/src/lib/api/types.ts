@@ -181,6 +181,27 @@ export interface JobErrorRateStats {
   rate: number;
 }
 
+/**
+ * Live enrichment-queue snapshot. Initial load from GET /jobs/queue-state;
+ * live patches arrive via the `enrichment.queue.tick` Socket.io event.
+ * Mirrors packages/queue/src/enrichment-stats.ts `EnrichmentSnapshot`.
+ */
+export interface EnrichmentQueueState {
+  waiting: number;
+  active: number;
+  delayed: number;
+  failed: number;
+  completedLastHour: number;
+  ratePerMinute: number;
+  p50DurationMs: number;
+  parallelism: number;
+  useSlot: boolean;
+  slotHolder: 'ask' | 'enrichment' | null;
+  paused: boolean;
+  userPaused: boolean;
+  rateLimitedUntil: string | null;
+}
+
 // Mirrors @mnela/search SearchHit — the API only returns documentId/title/
 // snippet/score plus the FTS / trigram intermediates. Source/type/matchedTerms
 // are not emitted; resolve them via /documents/:id when needed.

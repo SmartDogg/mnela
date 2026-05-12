@@ -24,10 +24,25 @@ export {
   type GraphEvent,
   type InboxEvent,
   type SystemEvent,
+  type EnrichmentEvent,
+  type EnrichmentDocumentStartedEvent,
+  type EnrichmentDocumentFinishedEvent,
+  type EnrichmentQueueTickEvent,
   PUBSUB_CHANNEL,
   publishEvent,
   subscribeEvents,
 } from './events.js';
+export {
+  type EnrichmentSnapshot,
+  type SnapshotInputs,
+  ENRICHMENT_COMPLETIONS_KEY,
+  ENRICHMENT_USER_PAUSED_KEY,
+  readEnrichmentSnapshot,
+  readEnrichmentUserPaused,
+  readRateLimitedUntil,
+  recordEnrichmentCompletion,
+  setEnrichmentUserPaused,
+} from './enrichment-stats.js';
 export {
   type ClaudeStatusState,
   type ClaudeUnavailableReason,

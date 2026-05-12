@@ -69,12 +69,19 @@ test('graph page renders filter sidebar and search bar', async ({ page, request 
   await expect(page.getByPlaceholder(/search/i).first()).toBeVisible();
 });
 
-test('admin jobs dashboard loads with the throughput chart', async ({ page, request }) => {
+test('/jobs surfaces the enrichment section and expandable stats', async ({ page, request }) => {
   await loginOrSkip(page, request);
+  // /admin/jobs now redirects to /jobs; both URLs land on the same page.
   await page.goto('/admin/jobs');
+  await expect(page).toHaveURL(/\/jobs$/, { timeout: 10_000 });
 
-  // Three cards: throughput, durations, error rate. Use the i18n labels.
-  await expect(page.getByText(/throughput/i).first()).toBeVisible({ timeout: 10_000 });
+  // Top "Enrichment" section is always present.
+  await expect(page.getByText(/^Enrichment$/).first()).toBeVisible({ timeout: 10_000 });
+  // Failed-jobs section header always renders (collapsible).
+  await expect(page.getByText(/^Failed \(\d+\)$/).first()).toBeVisible();
+  // Stats is collapsed by default — expand and verify the three tiles render.
+  await page.getByText(/Stats \(last 24h\)/i).click();
+  await expect(page.getByText(/throughput/i).first()).toBeVisible();
   await expect(page.getByText(/duration/i).first()).toBeVisible();
   await expect(page.getByText(/error rate/i).first()).toBeVisible();
 });

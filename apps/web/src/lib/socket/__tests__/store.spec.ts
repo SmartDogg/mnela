@@ -84,6 +84,41 @@ describe('useLiveSocketStore', () => {
     expect(s.lastEvents).toHaveLength(1);
   });
 
+  it('enrichment.document.started/finished round-trips through enriching map', () => {
+    const store = useLiveSocketStore.getState();
+    store.pushEvent({
+      type: 'enrichment.document.started',
+      payload: {
+        jobId: 'j1',
+        documentId: 'd1',
+        title: 'Conv X',
+        kind: 'document',
+        startedAt: '2026-05-12T12:00:00.000Z',
+      },
+    });
+    const enriching = useLiveSocketStore.getState().enriching;
+    expect(enriching.get('d1')).toMatchObject({
+      documentId: 'd1',
+      jobId: 'j1',
+      title: 'Conv X',
+      kind: 'document',
+      startedAtMs: Date.parse('2026-05-12T12:00:00.000Z'),
+    });
+
+    store.pushEvent({
+      type: 'enrichment.document.finished',
+      payload: {
+        jobId: 'j1',
+        documentId: 'd1',
+        addedEntities: 3,
+        addedEdges: 2,
+        durationMs: 4500,
+        ok: true,
+      },
+    });
+    expect(useLiveSocketStore.getState().enriching.has('d1')).toBe(false);
+  });
+
   it('setStatus transitions through expected states', () => {
     const store = useLiveSocketStore.getState();
     store.setStatus('connecting');

@@ -11,11 +11,25 @@ import type {
 
 const MAX_EVENT_RING = 50;
 
+/**
+ * In-flight enrichment record — populated from `enrichment.document.started`
+ * and removed on `enrichment.document.finished`. /jobs and /imports/:id read
+ * this map to paint the "now processing" list with live elapsed timers.
+ */
+export interface EnrichingDocument {
+  documentId: string;
+  jobId: string;
+  title?: string;
+  kind: 'document' | 'image' | 'project';
+  startedAtMs: number;
+}
+
 export interface LiveSocketState {
   status: LiveStatus;
   lastEvents: RecordedEvent[];
   graphNodes: Map<string, GraphEntityLike>;
   graphEdges: Map<string, GraphEdgeLike>;
+  enriching: Map<string, EnrichingDocument>;
   pushEvent: (event: MnelaEvent, ts?: number) => void;
   setStatus: (status: LiveStatus) => void;
   clearGraph: () => void;
@@ -23,9 +37,9 @@ export interface LiveSocketState {
 }
 
 function applyGraphMutation(
-  state: Pick<LiveSocketState, 'graphNodes' | 'graphEdges'>,
+  state: Pick<LiveSocketState, 'graphNodes' | 'graphEdges' | 'enriching'>,
   event: MnelaEvent,
-): Partial<Pick<LiveSocketState, 'graphNodes' | 'graphEdges'>> {
+): Partial<Pick<LiveSocketState, 'graphNodes' | 'graphEdges' | 'enriching'>> {
   switch (event.type) {
     case 'graph.node_added': {
       const next = new Map(state.graphNodes);
@@ -55,6 +69,24 @@ function applyGraphMutation(
       next.set(existing.id, merged);
       return { graphNodes: next };
     }
+    case 'enrichment.document.started': {
+      const next = new Map(state.enriching);
+      const startedAtMs = Date.parse(event.payload.startedAt);
+      next.set(event.payload.documentId, {
+        documentId: event.payload.documentId,
+        jobId: event.payload.jobId,
+        ...(event.payload.title ? { title: event.payload.title } : {}),
+        kind: event.payload.kind,
+        startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : Date.now(),
+      });
+      return { enriching: next };
+    }
+    case 'enrichment.document.finished': {
+      if (!state.enriching.has(event.payload.documentId)) return {};
+      const next = new Map(state.enriching);
+      next.delete(event.payload.documentId);
+      return { enriching: next };
+    }
     default:
       return {};
   }
@@ -65,6 +97,7 @@ export const useLiveSocketStore = create<LiveSocketState>((set) => ({
   lastEvents: [],
   graphNodes: new Map(),
   graphEdges: new Map(),
+  enriching: new Map(),
   pushEvent: (event, ts = Date.now()) =>
     set((state) => {
       const trimmed =
@@ -82,6 +115,7 @@ export const useLiveSocketStore = create<LiveSocketState>((set) => ({
       lastEvents: [],
       graphNodes: new Map(),
       graphEdges: new Map(),
+      enriching: new Map(),
     }),
 }));
 
@@ -108,6 +142,7 @@ export const liveSocketSelectors = {
   lastEvents: (state: LiveSocketState): RecordedEvent[] => state.lastEvents,
   graphNodes: (state: LiveSocketState): Map<string, GraphEntityLike> => state.graphNodes,
   graphEdges: (state: LiveSocketState): Map<string, GraphEdgeLike> => state.graphEdges,
+  enriching: (state: LiveSocketState): Map<string, EnrichingDocument> => state.enriching,
 };
 
 export const LIVE_EVENT_RING_SIZE = MAX_EVENT_RING;

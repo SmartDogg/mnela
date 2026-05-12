@@ -20,6 +20,42 @@ export class JobsController {
     return this.jobs.stats();
   }
 
+  @Get('queue-state')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'Live snapshot of the enrichment queue: counts, paused reasons, slot owner, rolling rate/p50, registry-resolved parallelism/useSlot. Initial load for /jobs; matches the enrichment.queue.tick event payload.',
+  })
+  queueState() {
+    return this.jobs.getEnrichmentQueueState();
+  }
+
+  @Post('queue/pause')
+  @RequiredScope('admin')
+  @Audit({ action: 'enrichment_queue.pause', targetType: 'Queue' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Manually pause the enrichment queue. Distinct from RateLimitService auto-pause — manual resume only un-pauses if no rate-limit window is active.',
+  })
+  async pauseQueue() {
+    await this.jobs.setEnrichmentQueuePaused(true);
+    return { paused: true };
+  }
+
+  @Post('queue/resume')
+  @RequiredScope('admin')
+  @Audit({ action: 'enrichment_queue.resume', targetType: 'Queue' })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Clear the manual enrichment-queue pause. Does not override an active rate-limit pause.',
+  })
+  async resumeQueue() {
+    await this.jobs.setEnrichmentQueuePaused(false);
+    return { paused: false };
+  }
+
   @Get('stats/throughput')
   @RequiredScope('read_only')
   @ApiOperation({ summary: 'Completed-jobs throughput bucketed by minute or hour' })

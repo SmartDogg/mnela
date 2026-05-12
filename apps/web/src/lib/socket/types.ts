@@ -114,7 +114,63 @@ export interface SystemClaudeStatusChangedEvent {
 }
 export type SystemEvent = SystemClaudeStatusChangedEvent;
 
-export type MnelaEvent = JobEvent | DocumentEvent | GraphEvent | InboxEvent | SystemEvent;
+/**
+ * Enrichment-specific live signals. Mirrors `EnrichmentEvent` from
+ * packages/queue/src/events.ts. Additive on top of the existing job.* /
+ * document.* events; the existing import view keeps working unchanged.
+ */
+export interface EnrichmentDocumentStartedEvent {
+  type: 'enrichment.document.started';
+  payload: {
+    jobId: string;
+    documentId: string;
+    title?: string;
+    kind: 'document' | 'image' | 'project';
+    startedAt: string;
+  };
+}
+export interface EnrichmentDocumentFinishedEvent {
+  type: 'enrichment.document.finished';
+  payload: {
+    jobId: string;
+    documentId: string;
+    addedEntities: number;
+    addedEdges: number;
+    durationMs: number;
+    ok: boolean;
+    reason?: string;
+  };
+}
+export interface EnrichmentQueueTickEvent {
+  type: 'enrichment.queue.tick';
+  payload: {
+    waiting: number;
+    active: number;
+    delayed: number;
+    failed: number;
+    completedLastHour: number;
+    ratePerMinute: number;
+    p50DurationMs: number;
+    parallelism: number;
+    useSlot: boolean;
+    slotHolder: 'ask' | 'enrichment' | null;
+    paused: boolean;
+    userPaused: boolean;
+    rateLimitedUntil: string | null;
+  };
+}
+export type EnrichmentEvent =
+  | EnrichmentDocumentStartedEvent
+  | EnrichmentDocumentFinishedEvent
+  | EnrichmentQueueTickEvent;
+
+export type MnelaEvent =
+  | JobEvent
+  | DocumentEvent
+  | GraphEvent
+  | InboxEvent
+  | SystemEvent
+  | EnrichmentEvent;
 
 export type MnelaEventType = MnelaEvent['type'];
 
@@ -135,6 +191,9 @@ export const ALL_EVENT_TYPES: readonly MnelaEventType[] = [
   'inbox.item_added',
   'inbox.item_resolved',
   'system.claude_status_changed',
+  'enrichment.document.started',
+  'enrichment.document.finished',
+  'enrichment.queue.tick',
 ] as const;
 
 export type LiveStatus = 'idle' | 'connecting' | 'connected' | 'unavailable';

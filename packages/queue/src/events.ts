@@ -119,7 +119,65 @@ export interface SystemWhisperStatusChangedEvent {
 }
 export type SystemEvent = SystemClaudeStatusChangedEvent | SystemWhisperStatusChangedEvent;
 
-export type MnelaEvent = JobEvent | DocumentEvent | GraphEvent | InboxEvent | SystemEvent;
+/**
+ * Enrichment-specific live signals. The pipeline already emits
+ * `document.enriched` at the end of a run; these add per-doc start markers
+ * and a rolling queue-state heartbeat so /jobs and /imports can paint a live
+ * "now processing" view without polling. Back-compat with the existing
+ * job.* / document.* events is preserved — these are additive.
+ */
+export interface EnrichmentDocumentStartedEvent {
+  type: 'enrichment.document.started';
+  payload: {
+    jobId: string;
+    documentId: string;
+    title?: string;
+    kind: 'document' | 'image' | 'project';
+    startedAt: string;
+  };
+}
+export interface EnrichmentDocumentFinishedEvent {
+  type: 'enrichment.document.finished';
+  payload: {
+    jobId: string;
+    documentId: string;
+    addedEntities: number;
+    addedEdges: number;
+    durationMs: number;
+    ok: boolean;
+    reason?: string;
+  };
+}
+export interface EnrichmentQueueTickEvent {
+  type: 'enrichment.queue.tick';
+  payload: {
+    waiting: number;
+    active: number;
+    delayed: number;
+    failed: number;
+    completedLastHour: number;
+    ratePerMinute: number;
+    p50DurationMs: number;
+    parallelism: number;
+    useSlot: boolean;
+    slotHolder: 'ask' | 'enrichment' | null;
+    paused: boolean;
+    userPaused: boolean;
+    rateLimitedUntil: string | null;
+  };
+}
+export type EnrichmentEvent =
+  | EnrichmentDocumentStartedEvent
+  | EnrichmentDocumentFinishedEvent
+  | EnrichmentQueueTickEvent;
+
+export type MnelaEvent =
+  | JobEvent
+  | DocumentEvent
+  | GraphEvent
+  | InboxEvent
+  | SystemEvent
+  | EnrichmentEvent;
 
 export async function publishEvent(redis: Redis, event: MnelaEvent): Promise<number> {
   return redis.publish(PUBSUB_CHANNEL, JSON.stringify(event));

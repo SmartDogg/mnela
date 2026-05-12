@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { JobRepository, type JobListFilters, PrismaService } from '@mnela/db';
+import { type EnrichmentSnapshot } from '@mnela/queue';
 import { Prisma, type Job, type JobStatus } from '@prisma/client';
 
+import { QueueService } from '../../queue/queue.service.js';
 import { SINCE_MS, type StatsSince, type ThroughputBucket } from './dto.js';
 
 export interface ThroughputBucketRow {
@@ -31,7 +33,18 @@ export class JobsService {
   constructor(
     private readonly jobs: JobRepository,
     private readonly prisma: PrismaService,
+    private readonly queue: QueueService,
   ) {}
+
+  /** Snapshot of the enrichment queue + slot + paused reasons — initial load
+   * for /jobs. Live updates ride the `enrichment.queue.tick` Socket.io event. */
+  getEnrichmentQueueState(): Promise<EnrichmentSnapshot> {
+    return this.queue.getEnrichmentQueueSnapshot();
+  }
+
+  setEnrichmentQueuePaused(paused: boolean): Promise<void> {
+    return this.queue.setEnrichmentPaused(paused);
+  }
 
   list(filters: JobListFilters, page?: number, limit?: number) {
     return this.jobs.list(filters, { page, limit });

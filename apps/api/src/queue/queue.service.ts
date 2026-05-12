@@ -3,11 +3,14 @@ import { readRegistryValue } from '@mnela/core';
 import { SystemConfigRepository } from '@mnela/db';
 import {
   type EnrichmentJob,
+  type EnrichmentSnapshot,
   type IngestFileJob,
   type TranscribeAudioJob,
   QUEUE_NAMES,
   createQueueConnection,
   publishEvent,
+  readEnrichmentSnapshot,
+  setEnrichmentUserPaused,
 } from '@mnela/queue';
 import { Queue, type JobsOptions } from 'bullmq';
 import { type Redis } from 'ioredis';
@@ -144,5 +147,34 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     const job = await this.ingestionQueue?.getJob(dbJobId);
     if (!job) return;
     await job.remove().catch(() => undefined);
+  }
+
+  /**
+   * Read-only snapshot of the enrichment queue + slot owner + paused
+   * reasons. Mirrors the payload published by the orchestrator's
+   * `enrichment.queue.tick` so /jobs can initial-load this and then patch
+   * via live events.
+   */
+  async getEnrichmentQueueSnapshot(): Promise<EnrichmentSnapshot> {
+    if (!this.enrichmentQueue) throw new Error('enrichment queue not initialized');
+    const [parallelism, useSlot] = await Promise.all([
+      readRegistryValue<number>(this.systemConfig, 'enrichment.parallelism'),
+      readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot'),
+    ]);
+    return readEnrichmentSnapshot(this.enrichmentQueue, this.redis.client, {
+      parallelism,
+      useSlot,
+    });
+  }
+
+  /**
+   * Toggle the user-initiated pause. Distinct from RateLimitService's
+   * automatic pause (handled in the orchestrator) so a manual resume can't
+   * defeat an active rate-limit window, and clearing the rate-limit can't
+   * un-pause a manually paused queue.
+   */
+  async setEnrichmentPaused(paused: boolean): Promise<void> {
+    if (!this.enrichmentQueue) throw new Error('enrichment queue not initialized');
+    await setEnrichmentUserPaused(this.enrichmentQueue, this.redis.client, paused);
   }
 }
