@@ -65,10 +65,10 @@ export class ImportsController {
       limits: { fileSize: MULTER_RAW_CEILING_BYTES },
     }),
   )
-  @Audit({ action: 'import.create', targetType: 'Job' })
+  @Audit({ action: 'import.create', targetType: 'Job', transactional: false })
   @ApiOperation({
     summary:
-      'Upload an export ZIP/file. The body is streamed to disk; ImportsService enforces SystemConfig `imports.maxBytes`.',
+      'Upload an export ZIP/file. The body is streamed to disk; ImportsService enforces SystemConfig `imports.maxBytes`. Audit is non-transactional: the multi-GB streaming sha256 + rename routinely exceeds the 5s interactive-tx timeout, and the file/queue side-effects are already non-atomic with the AuditLog row regardless.',
   })
   upload(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) throw new BadRequestException('Missing file field "file"');

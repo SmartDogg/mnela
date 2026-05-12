@@ -65,10 +65,10 @@ export class DocumentsController {
       limits: { fileSize: 100 * 1024 * 1024 },
     }),
   )
-  @Audit({ action: 'document.upload', targetType: 'Job' })
+  @Audit({ action: 'document.upload', targetType: 'Job', transactional: false })
   @ApiOperation({
     summary:
-      'Upload any supported file. Streams to disk, returns a Job; the worker parses asynchronously. Subscribe to /live for progress or poll /jobs/:id.',
+      'Upload any supported file. Streams to disk, returns a Job; the worker parses asynchronously. Audit is non-transactional — same rationale as POST /imports.',
   })
   upload(@UploadedFile() file: Express.Multer.File | undefined) {
     if (!file) {
