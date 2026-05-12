@@ -1,4 +1,5 @@
 import { runClaude } from '@mnela/claude-runner';
+import { readRegistryValue } from '@mnela/core';
 import {
   AttachmentRepository,
   DocumentEntityRepository,
@@ -75,7 +76,11 @@ export class EnrichmentPipeline {
         reason: status.reason ?? 'unavailable',
       };
     }
-    if (await this.rateLimit.isPaused()) {
+    const respectRateLimit = await readRegistryValue<boolean>(
+      this.systemConfig,
+      'enrichment.respectRateLimit',
+    );
+    if (respectRateLimit && (await this.rateLimit.isPaused())) {
       return {
         status: 'rate-limited',
         addedEntities: 0,
@@ -85,16 +90,19 @@ export class EnrichmentPipeline {
       };
     }
 
-    const slot = await peekSlot(this.redis.client);
-    if (slot && slot.owner !== 'enrichment') {
-      this.logger.debug(`yielding to ${slot.owner} slot for ${input.documentId}`);
-      return {
-        status: 'skipped',
-        addedEntities: 0,
-        addedEdges: 0,
-        droppedLowConfidence: 0,
-        reason: `slot-held-by-${slot.owner}`,
-      };
+    const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
+    if (useSlot) {
+      const slot = await peekSlot(this.redis.client);
+      if (slot && slot.owner !== 'enrichment') {
+        this.logger.debug(`yielding to ${slot.owner} slot for ${input.documentId}`);
+        return {
+          status: 'skipped',
+          addedEntities: 0,
+          addedEdges: 0,
+          droppedLowConfidence: 0,
+          reason: `slot-held-by-${slot.owner}`,
+        };
+      }
     }
 
     await this.documents.update(input.documentId, { status: 'enriching' });
@@ -207,7 +215,11 @@ export class EnrichmentPipeline {
         reason: status.reason ?? 'unavailable',
       };
     }
-    if (await this.rateLimit.isPaused()) {
+    const respectRateLimit = await readRegistryValue<boolean>(
+      this.systemConfig,
+      'enrichment.respectRateLimit',
+    );
+    if (respectRateLimit && (await this.rateLimit.isPaused())) {
       return {
         status: 'rate-limited',
         addedEntities: 0,
@@ -216,15 +228,18 @@ export class EnrichmentPipeline {
         reason: 'queue-paused',
       };
     }
-    const slot = await peekSlot(this.redis.client);
-    if (slot && slot.owner !== 'enrichment') {
-      return {
-        status: 'skipped',
-        addedEntities: 0,
-        addedEdges: 0,
-        droppedLowConfidence: 0,
-        reason: `slot-held-by-${slot.owner}`,
-      };
+    const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
+    if (useSlot) {
+      const slot = await peekSlot(this.redis.client);
+      if (slot && slot.owner !== 'enrichment') {
+        return {
+          status: 'skipped',
+          addedEntities: 0,
+          addedEdges: 0,
+          droppedLowConfidence: 0,
+          reason: `slot-held-by-${slot.owner}`,
+        };
+      }
     }
 
     const result = await runClaude({
@@ -301,7 +316,10 @@ export class EnrichmentPipeline {
    * `enriched`/`skipped` → DB Job completed; everything else → failed.
    */
   async runImageAnalysis(input: ImageAnalysisInput): Promise<EnrichmentOutcome> {
-    const enabled = await this.getConfig<boolean>('attachments.imageAnalysisEnabled', true);
+    const enabled = await readRegistryValue<boolean>(
+      this.systemConfig,
+      'attachments.imageAnalysisEnabled',
+    );
     if (!enabled) {
       return zeroOutcome('skipped', 'image-analysis-disabled');
     }
@@ -310,12 +328,19 @@ export class EnrichmentPipeline {
     if (!status.available) {
       return zeroOutcome('skipped', status.reason ?? 'unavailable');
     }
-    if (await this.rateLimit.isPaused()) {
+    const respectRateLimit = await readRegistryValue<boolean>(
+      this.systemConfig,
+      'enrichment.respectRateLimit',
+    );
+    if (respectRateLimit && (await this.rateLimit.isPaused())) {
       return zeroOutcome('rate-limited', 'queue-paused');
     }
-    const slot = await peekSlot(this.redis.client);
-    if (slot && slot.owner !== 'enrichment') {
-      return zeroOutcome('skipped', `slot-held-by-${slot.owner}`);
+    const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
+    if (useSlot) {
+      const slot = await peekSlot(this.redis.client);
+      if (slot && slot.owner !== 'enrichment') {
+        return zeroOutcome('skipped', `slot-held-by-${slot.owner}`);
+      }
     }
 
     const attachment = await this.attachments.findById(input.attachmentId);
@@ -326,13 +351,13 @@ export class EnrichmentPipeline {
       return zeroOutcome('skipped', `not an image (${attachment.mimeType})`);
     }
 
-    const backendName = await this.getConfig<'claude-code' | 'anthropic-api'>(
+    const backendName = await readRegistryValue<'claude-code' | 'anthropic-api'>(
+      this.systemConfig,
       'attachments.imageAnalysisBackend',
-      'claude-code',
     );
-    const model = await this.getConfig<'opus' | 'sonnet' | 'haiku'>(
+    const model = await readRegistryValue<'opus' | 'sonnet' | 'haiku'>(
+      this.systemConfig,
       'attachments.imageAnalysisModel',
-      'sonnet',
     );
     const backend: ImageAnalysisBackend =
       backendName === 'anthropic-api' ? anthropicApiImageBackend : claudeCodeImageBackend;
@@ -417,12 +442,6 @@ export class EnrichmentPipeline {
       addedEdges: 0,
       droppedLowConfidence,
     };
-  }
-
-  private async getConfig<T>(key: string, fallback: T): Promise<T> {
-    const row = await this.systemConfig.get(key);
-    if (!row || row.value === null || row.value === undefined) return fallback;
-    return row.value as T;
   }
 }
 

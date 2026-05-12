@@ -24,6 +24,7 @@
     "clean": "rimraf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
+    "@mnela/core": "workspace:*",
     "@mnela/db": "workspace:*",
     "@mnela/ingestion": "workspace:*",
     "@mnela/queue": "workspace:*",

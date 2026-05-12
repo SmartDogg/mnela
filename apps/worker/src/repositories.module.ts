@@ -7,6 +7,7 @@ import {
   JobRepository,
   PrismaService,
   ProjectRepository,
+  SystemConfigRepository,
 } from '@mnela/db';
 
 type RepoCtor = new (provider: () => ReturnType<PrismaService['active']>) => unknown;
@@ -18,6 +19,7 @@ const REPO_CLASSES = [
   EntityRepository,
   JobRepository,
   ProjectRepository,
+  SystemConfigRepository,
 ] as const satisfies readonly RepoCtor[];
 
 const providers: Provider[] = REPO_CLASSES.map((Ctor) => ({

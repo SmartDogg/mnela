@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { JobRepository } from '@mnela/db';
+import { readRegistryValue } from '@mnela/core';
+import { JobRepository, SystemConfigRepository } from '@mnela/db';
 import {
   type EnrichmentJob,
   QUEUE_NAMES,
@@ -27,6 +28,7 @@ export class EnrichmentEnqueueService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly redis: RedisService,
     private readonly jobs: JobRepository,
+    private readonly systemConfig: SystemConfigRepository,
   ) {}
 
   onModuleInit(): void {
@@ -56,12 +58,14 @@ export class EnrichmentEnqueueService implements OnModuleInit, OnModuleDestroy {
       payload: { documentId },
       documentId,
     });
+    const attempts = await readRegistryValue<number>(this.systemConfig, 'enrichment.attempts');
+    const delay = await readRegistryValue<number>(this.systemConfig, 'enrichment.backoffMs');
     await this.queue.add(
       'enrich-document',
       { dbJobId: enrichmentJob.id, documentId },
       {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
+        attempts,
+        backoff: { type: 'exponential', delay },
         removeOnComplete: 100,
         removeOnFail: 200,
       },
@@ -97,12 +101,14 @@ export class EnrichmentEnqueueService implements OnModuleInit, OnModuleDestroy {
       payload: { attachmentId, documentId },
       documentId,
     });
+    const attempts = await readRegistryValue<number>(this.systemConfig, 'enrichment.imageAttempts');
+    const delay = await readRegistryValue<number>(this.systemConfig, 'enrichment.imageBackoffMs');
     await this.queue.add(
       'analyze-attachment',
       { dbJobId: job.id, attachmentId, documentId },
       {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 2_000 },
+        attempts,
+        backoff: { type: 'exponential', delay },
         removeOnComplete: 100,
         removeOnFail: 200,
       },

@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@mnela/claude-runner": "workspace:*",
+    "@mnela/core": "workspace:*",
     "@mnela/db": "workspace:*",
     "@mnela/mcp-tools": "workspace:*",
     "@mnela/queue": "workspace:*",

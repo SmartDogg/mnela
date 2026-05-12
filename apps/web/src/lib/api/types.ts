@@ -267,7 +267,14 @@ export interface SystemConfigEntry {
  * rows; `overridden` flips the badge + reset button.
  */
 export type ConfigType = 'bytes' | 'int' | 'bool' | 'enum' | 'string';
-export type ConfigGroup = 'imports' | 'parsers' | 'enrichment' | 'vision' | 'whisper' | 'claude';
+export type ConfigGroup =
+  | 'imports'
+  | 'parsers'
+  | 'enrichment'
+  | 'vision'
+  | 'whisper'
+  | 'claude'
+  | 'worker';
 
 interface ConfigSpecCommon {
   key: string;

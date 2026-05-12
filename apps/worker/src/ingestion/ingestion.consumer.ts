@@ -2,12 +2,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { readRegistryValue } from '@mnela/core';
 import {
   AttachmentRepository,
   DocumentRepository,
   EntityRepository,
   JobRepository,
   PrismaService,
+  SystemConfigRepository,
   normalizeEntityName,
   type CreateDocumentInput,
 } from '@mnela/db';
@@ -53,6 +55,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly jobs: JobRepository,
     private readonly entities: EntityRepository,
     private readonly enrichmentEnqueue: EnrichmentEnqueueService,
+    private readonly systemConfig: SystemConfigRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -61,12 +64,17 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     // commands (BRPOPLPUSH); sharing with the pubsub-publishing client
     // causes "Connection in subscriber mode" / "already connecting" races.
     this.bullConnection = createQueueConnection(env.REDIS_URL);
+    const concurrency = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.ingestion.concurrency',
+      env.WORKER_INGESTION_CONCURRENCY,
+    );
     this.worker = new Worker<IngestFileJob>(
       QUEUE_NAMES[0], // 'ingestion'
       async (bullJob) => this.handleJob(bullJob),
       {
         connection: this.bullConnection,
-        concurrency: env.WORKER_INGESTION_CONCURRENCY,
+        concurrency,
       },
     );
 
@@ -82,7 +90,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     });
 
     await this.worker.waitUntilReady();
-    this.logger.log(`ingestion worker ready (concurrency=${env.WORKER_INGESTION_CONCURRENCY})`);
+    this.logger.log(`ingestion worker ready (concurrency=${concurrency})`);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -321,12 +329,20 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       payload: { documentId },
       documentId,
     });
+    const attempts = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.transcription.attempts',
+    );
+    const delay = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.transcription.backoffMs',
+    );
     await this.transcriptionQueue.add(
       'transcribe-audio',
       { dbJobId: dbJob.id, documentId },
       {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
+        attempts,
+        backoff: { type: 'exponential', delay },
         removeOnComplete: 100,
         removeOnFail: 200,
       },

@@ -1,4 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { readRegistryValue } from '@mnela/core';
+import { SystemConfigRepository } from '@mnela/db';
 import {
   type EnrichmentJob,
   type IngestFileJob,
@@ -27,7 +29,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   private enrichmentQueue?: Queue<EnrichmentJob>;
   private bullConnection?: Redis;
 
-  constructor(private readonly redis: RedisService) {}
+  constructor(
+    private readonly redis: RedisService,
+    private readonly systemConfig: SystemConfigRepository,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
@@ -79,12 +84,15 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     if (!this.enrichmentQueue) throw new Error('enrichment queue not initialized');
     // Mirror worker's enqueue (apps/worker/src/shared/enrichment-enqueue.service.ts):
     // job-name 'enrich-document' (the orchestrator consumer matches on this), with
-    // BullMQ retry attempts:3 + exponential backoff — see ADR-0027.
+    // BullMQ retry attempts + exponential backoff from SystemConfig (defaults
+    // live in @mnela/core registry — see ADR-0027).
     const jobName = payload.projectSlug ? 'refresh-project-context' : 'enrich-document';
+    const attempts = await readRegistryValue<number>(this.systemConfig, 'enrichment.attempts');
+    const delay = await readRegistryValue<number>(this.systemConfig, 'enrichment.backoffMs');
     const bullJob = await this.enrichmentQueue.add(jobName, payload, {
       jobId: payload.dbJobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
+      attempts,
+      backoff: { type: 'exponential', delay },
       removeOnComplete: { count: 1000 },
       removeOnFail: { count: 1000 },
       ...opts,
@@ -105,10 +113,18 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     opts: JobsOptions = {},
   ): Promise<string> {
     if (!this.transcriptionQueue) throw new Error('transcription queue not initialized');
+    const attempts = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.transcription.attempts',
+    );
+    const delay = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.transcription.backoffMs',
+    );
     const bullJob = await this.transcriptionQueue.add('transcribe-audio', payload, {
       jobId: payload.dbJobId,
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 1000 },
+      attempts,
+      backoff: { type: 'exponential', delay },
       removeOnComplete: { count: 1000 },
       removeOnFail: { count: 1000 },
       ...opts,

@@ -324,6 +324,9 @@ importers:
       '@mnela/claude-runner':
         specifier: workspace:*
         version: link:../../packages/claude-runner
+      '@mnela/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@mnela/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -578,6 +581,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@mnela/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@mnela/db':
         specifier: workspace:*
         version: link:../../packages/db

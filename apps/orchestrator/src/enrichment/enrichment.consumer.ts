@@ -1,4 +1,5 @@
-import { JobRepository, PrismaService } from '@mnela/db';
+import { readRegistryValue } from '@mnela/core';
+import { JobRepository, PrismaService, SystemConfigRepository } from '@mnela/db';
 import { type EnrichmentJob, createQueueConnection, publishEvent, QUEUE_NAMES } from '@mnela/queue';
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -20,17 +21,26 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly redis: RedisService,
     private readonly jobs: JobRepository,
     private readonly prisma: PrismaService,
+    private readonly systemConfig: SystemConfigRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
+    // Read parallelism from registry (DB override > env fallback > spec default).
+    // BullMQ Worker fixes concurrency at construction, so changes need a
+    // process restart — surfaced as `requiresRestart` in the admin UI.
+    const parallelism = await readRegistryValue<number>(
+      this.systemConfig,
+      'enrichment.parallelism',
+      env.MNELA_ENRICHMENT_CONCURRENCY,
+    );
     this.bullConnection = createQueueConnection(env.REDIS_URL);
     this.worker = new Worker<EnrichmentJob>(
       QUEUE_NAMES[1], // 'enrichment'
       async (bullJob) => this.handleJob(bullJob),
       {
         connection: this.bullConnection,
-        concurrency: env.MNELA_ENRICHMENT_CONCURRENCY,
+        concurrency: parallelism,
       },
     );
 
@@ -41,7 +51,7 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     });
 
     await this.worker.waitUntilReady();
-    this.logger.log(`enrichment worker ready (concurrency=${env.MNELA_ENRICHMENT_CONCURRENCY})`);
+    this.logger.log(`enrichment worker ready (parallelism=${parallelism})`);
   }
 
   async onModuleDestroy(): Promise<void> {

@@ -1,5 +1,12 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { AttachmentRepository, DocumentRepository, JobRepository, PrismaService } from '@mnela/db';
+import { readRegistryValue } from '@mnela/core';
+import {
+  AttachmentRepository,
+  DocumentRepository,
+  JobRepository,
+  PrismaService,
+  SystemConfigRepository,
+} from '@mnela/db';
 import { chunkText, countTokens, createWhisperClient, type WhisperClient } from '@mnela/ingestion';
 import {
   QUEUE_NAMES,
@@ -40,6 +47,7 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly jobs: JobRepository,
     private readonly status: WhisperStatusService,
     private readonly enrichmentEnqueue: EnrichmentEnqueueService,
+    private readonly systemConfig: SystemConfigRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -49,10 +57,14 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
       baseUrl: env.WHISPER_URL,
       timeoutMs: env.WHISPER_TIMEOUT_MS,
     });
+    const concurrency = await readRegistryValue<number>(
+      this.systemConfig,
+      'worker.transcription.concurrency',
+    );
     this.worker = new Worker<TranscribeAudioJob>(
       QUEUE_NAMES[4],
       async (bullJob) => this.handleJob(bullJob),
-      { connection: this.bullConnection, concurrency: 1 },
+      { connection: this.bullConnection, concurrency },
     );
     this.worker.on('failed', (bullJob, err) => {
       this.logger.error(
@@ -60,7 +72,7 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
       );
     });
     await this.worker.waitUntilReady();
-    this.logger.log('transcription worker ready (concurrency=1)');
+    this.logger.log(`transcription worker ready (concurrency=${concurrency})`);
   }
 
   async onModuleDestroy(): Promise<void> {
