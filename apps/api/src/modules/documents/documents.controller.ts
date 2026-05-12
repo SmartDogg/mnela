@@ -118,6 +118,16 @@ export class DocumentsController {
     return this.documents.listEntities(id);
   }
 
+  @Get(':id/attachments')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'List attachments persisted next to this document — images, PDFs, voice notes. Images carry description + ocrText once the analyze_attachment pipeline finishes.',
+  })
+  listAttachments(@Param('id') id: string) {
+    return this.documents.listAttachments(id);
+  }
+
   @Get(':id/related')
   @RequiredScope('read_only')
   @ApiOperation({ summary: 'Find documents with similar titles (trigram similarity)' })

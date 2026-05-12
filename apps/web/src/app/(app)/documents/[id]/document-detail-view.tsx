@@ -232,6 +232,8 @@ export function DocumentDetailView({ document }: { document: DocumentDetail }): 
 
         <MentionedEntities documentId={document.id} />
 
+        <AttachmentsGallery documentId={document.id} />
+
         {(() => {
           const importMeta =
             document.metadata && typeof document.metadata === 'object'
@@ -262,6 +264,138 @@ function Field({ label, value }: { label: string; value: React.ReactNode }): JSX
     <div className="flex items-center justify-between gap-3">
       <Label className="text-xs uppercase tracking-wider text-muted-foreground">{label}</Label>
       <div className="text-sm">{value}</div>
+    </div>
+  );
+}
+
+interface DocumentAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  description: string | null;
+  ocrText: string | null;
+  analyzedAt: string | null;
+  linkedDocumentId: string | null;
+}
+
+function AttachmentsGallery({ documentId }: { documentId: string }): JSX.Element | null {
+  const query = useQuery({
+    queryKey: ['document', documentId, 'attachments'],
+    queryFn: () =>
+      api.get<DocumentAttachment[]>(`/documents/${encodeURIComponent(documentId)}/attachments`),
+  });
+
+  if (query.isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Attachments</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Loader2 className="size-4 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const items = query.data ?? [];
+  if (items.length === 0) return null;
+
+  const images = items.filter((a) => a.mimeType.startsWith('image/'));
+  const other = items.filter((a) => !a.mimeType.startsWith('image/'));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          Attachments
+          <span className="ml-2 text-xs text-muted-foreground">({items.length})</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {images.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            {images.map((img) => (
+              <ImageAttachmentCard key={img.id} attachment={img} />
+            ))}
+          </div>
+        )}
+        {other.length > 0 && (
+          <ul className="space-y-1.5">
+            {other.map((a) => (
+              <li key={a.id} className="flex items-center justify-between gap-2 text-xs">
+                <span className="truncate" title={a.filename}>
+                  {a.filename}
+                </span>
+                <span className="text-[10px] text-muted-foreground">{a.mimeType}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImageAttachmentCard({ attachment }: { attachment: DocumentAttachment }): JSX.Element {
+  // Companion image Document streams the binary at its own attachment endpoint
+  // (promoted image-doc → Attachment via linkedDocumentId reverse pointer).
+  const src = attachment.linkedDocumentId
+    ? `/_api/documents/${encodeURIComponent(attachment.linkedDocumentId)}/attachment`
+    : null;
+  const status: 'analyzed' | 'analyzing' | 'pending' = attachment.analyzedAt
+    ? 'analyzed'
+    : attachment.linkedDocumentId
+      ? 'analyzing'
+      : 'pending';
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/20">
+      {src ? (
+        <Link
+          href={`/documents/${encodeURIComponent(attachment.linkedDocumentId!)}`}
+          className="block aspect-square overflow-hidden bg-black/40"
+        >
+          {/* Plain <img> on purpose: streamed via /_api passthrough, not an
+              optimizable Next/Image source. */}
+          <img
+            src={src}
+            alt={attachment.description ?? attachment.filename}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        </Link>
+      ) : (
+        <div className="flex aspect-square items-center justify-center text-xs text-muted-foreground">
+          (no preview)
+        </div>
+      )}
+      <div className="space-y-1 p-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-[11px] font-medium" title={attachment.filename}>
+            {attachment.filename}
+          </span>
+          <Badge
+            variant="outline"
+            className={
+              status === 'analyzed'
+                ? 'border-emerald-500/40 text-[10px] text-emerald-300'
+                : status === 'analyzing'
+                  ? 'border-amber-500/40 text-[10px] text-amber-300'
+                  : 'text-[10px]'
+            }
+          >
+            {status}
+          </Badge>
+        </div>
+        {attachment.description && (
+          <p className="line-clamp-3 text-[10px] leading-relaxed text-muted-foreground">
+            {attachment.description}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

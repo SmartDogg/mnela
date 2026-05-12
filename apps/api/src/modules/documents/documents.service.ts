@@ -224,6 +224,45 @@ export class DocumentsService {
     }));
   }
 
+  /**
+   * Attachments persisted next to a document. Images carry description +
+   * ocrText (filled by the analyze_attachment pipeline) and a linkedDocumentId
+   * pointing at the companion image Document. Non-image attachments only
+   * have filename/mime/size.
+   */
+  async listAttachments(id: string): Promise<
+    {
+      id: string;
+      filename: string;
+      mimeType: string;
+      size: number;
+      createdAt: string;
+      description: string | null;
+      ocrText: string | null;
+      analyzedAt: string | null;
+      linkedDocumentId: string | null;
+    }[]
+  > {
+    await this.findById(id);
+    const rows = await this.prisma.active().attachment.findMany({
+      where: { documentId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      filename: r.filename,
+      mimeType: r.mimeType,
+      size: r.size,
+      createdAt: r.createdAt.toISOString(),
+      description: r.description,
+      ocrText: r.ocrText,
+      analyzedAt:
+        ((r as unknown as { analyzedAt: Date | null }).analyzedAt ?? null)?.toISOString() ?? null,
+      linkedDocumentId:
+        (r as unknown as { linkedDocumentId: string | null }).linkedDocumentId ?? null,
+    }));
+  }
+
   async findRelated(
     id: string,
     limit = 10,
