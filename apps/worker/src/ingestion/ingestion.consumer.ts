@@ -110,7 +110,11 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     });
 
     try {
-      const buf = await fs.readFile(data.filePath);
+      // Only the first 64 KiB are needed for magic-byte / format detection.
+      // Parsers that handle multi-GB ZIPs read entries through `ctx.inputPath`
+      // (yauzl.open) instead of the buffer — see ADR-0048. For small files
+      // (text/markdown/image), the parser still receives the full buffer.
+      const headBuf = await readHead(data.filePath, 64 * 1024);
       const baseAttachments = attachmentsDir();
       await fs.mkdir(baseAttachments, { recursive: true });
       const ctx: ParseContext = {
@@ -119,13 +123,19 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         filename: path.basename(data.originalName),
         origin: 'manual_upload',
         workdir: await fs.mkdtemp(path.join(baseAttachments, '.work-')),
+        inputPath: data.filePath,
       };
 
-      const { parser } = await resolveParser(buf, ctx);
+      const { parser } = await resolveParser(headBuf, ctx);
       this.logger.log(`job ${dbJobId}: parser=${parser.name} file=${data.originalName}`);
       await bullJob.updateProgress(5);
       await this.publishProgress(dbJobId, 5, `parser ${parser.name} selected`);
 
+      // Parsers that need the full body (small files: txt/md/html/json/csv/
+      // docx/pdf/image) read it now. ZIP-flavoured parsers (chatgpt/claude)
+      // ignore `buf` when `ctx.inputPath` is set.
+      const needsFullBody = parser.name !== 'chatgpt' && parser.name !== 'claude';
+      const buf = needsFullBody ? await fs.readFile(data.filePath) : headBuf;
       const parsed = await parser.parse(buf, ctx);
       await bullJob.updateProgress(30);
       await this.publishProgress(dbJobId, 30, `parsed ${parsed.length} document(s)`);
@@ -407,5 +417,17 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       type: 'job.progress',
       payload: { jobId, progress, message },
     });
+  }
+}
+
+/** Read the first N bytes of a file without materializing the rest in RAM. */
+async function readHead(filePath: string, bytes: number): Promise<Buffer> {
+  const fh = await fs.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(bytes);
+    const { bytesRead } = await fh.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await fh.close().catch(() => undefined);
   }
 }
