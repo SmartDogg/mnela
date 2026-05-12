@@ -252,13 +252,48 @@ export interface SystemStats {
   dbSizeBytes: number;
 }
 
-// API stores SystemConfig.value as Json — entries can be strings, booleans, or
-// objects (e.g. enrichment.confidenceThresholds = { needsReview, autoConfirmed }).
-// Don't render `value` directly into JSX — stringify it first.
+// Legacy shape (kept for any prior consumers). New code should use
+// `MergedConfigEntry` returned by GET /system/config — see below.
 export interface SystemConfigEntry {
   key: string;
   value: unknown;
   updatedAt: string;
+}
+
+/**
+ * Merged entry returned by GET /system/config — spec metadata from the
+ * server-side registry plus the resolved value (override-or-default). The
+ * admin UI uses `spec.type` to pick a control and `spec.group` to bucket
+ * rows; `overridden` flips the badge + reset button.
+ */
+export type ConfigType = 'bytes' | 'int' | 'bool' | 'enum' | 'string';
+export type ConfigGroup = 'imports' | 'parsers' | 'enrichment' | 'vision' | 'whisper' | 'claude';
+
+interface ConfigSpecCommon {
+  key: string;
+  group: ConfigGroup;
+  description: string;
+  requiresRestart?: boolean;
+}
+
+export type ConfigSpec =
+  | (ConfigSpecCommon & {
+      type: 'bytes';
+      default: number;
+      min?: number;
+      max?: number | null;
+      presets?: number[];
+    })
+  | (ConfigSpecCommon & { type: 'int'; default: number; min?: number; max?: number })
+  | (ConfigSpecCommon & { type: 'bool'; default: boolean })
+  | (ConfigSpecCommon & { type: 'enum'; default: string; options: string[] })
+  | (ConfigSpecCommon & { type: 'string'; default: string; pattern?: string });
+
+export interface MergedConfigEntry {
+  spec: ConfigSpec;
+  value: unknown;
+  overridden: boolean;
+  updatedAt: string | null;
 }
 
 export type InboxItemType =
