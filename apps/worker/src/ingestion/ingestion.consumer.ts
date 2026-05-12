@@ -467,15 +467,11 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    // Bridge the new Attachment row → image Document. Raw SQL because the
-    // Prisma client TS types haven't regenerated yet in this branch (the
-    // dev-server holds the .dll on Windows). Drop to typed update once the
-    // user restarts the server.
-    await this.prisma.client.$executeRawUnsafe(
-      `UPDATE "Attachment" SET "linkedDocumentId" = $1 WHERE id = $2`,
-      imageDocId,
-      args.attachmentId,
-    );
+    // Bridge the new Attachment row → image Document.
+    await this.prisma.client.attachment.update({
+      where: { id: args.attachmentId },
+      data: { linkedDocumentId: imageDocId },
+    });
 
     // Synthetic graph wiring: image-doc node + edge `derived_from` chat-doc.
     await publishEvent(this.redis.client, {

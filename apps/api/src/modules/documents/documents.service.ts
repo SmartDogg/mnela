@@ -256,10 +256,8 @@ export class DocumentsService {
       createdAt: r.createdAt.toISOString(),
       description: r.description,
       ocrText: r.ocrText,
-      analyzedAt:
-        ((r as unknown as { analyzedAt: Date | null }).analyzedAt ?? null)?.toISOString() ?? null,
-      linkedDocumentId:
-        (r as unknown as { linkedDocumentId: string | null }).linkedDocumentId ?? null,
+      analyzedAt: r.analyzedAt?.toISOString() ?? null,
+      linkedDocumentId: r.linkedDocumentId,
     }));
   }
 
