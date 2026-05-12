@@ -206,7 +206,7 @@
     "refreshUnavailable": "Claude orchestrator is not reachable. Start it to refresh project context.",
     "noContext": "No context yet. Run \"Refresh context\" once Claude is available.",
     "noEntities": "No entities surfaced yet — enrich some documents in this project first.",
-    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug { metadata: { openQuestions: [...] } }."
+    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug with metadata.openQuestions."
   },
   "decisions": {
     "title": "Decisions",
