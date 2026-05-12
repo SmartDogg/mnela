@@ -82,53 +82,212 @@ export const chatgptParser: Parser = {
     }
 
     const entries = await loadZipEntries(buf, ctx);
-    const conversations = await loadConversationsFromZip(entries);
-
-    // Index ZIP entries by trailing file-XXX id so each asset_pointer is an
-    // O(1) lookup across the whole conversation list. Entries appear in a few
-    // shapes:
-    //   dalle-generations/file-OvD09kxbV9F8fhRsB0Mt2NJ0-foo.png
-    //   file-OvD09kxbV9F8fhRsB0Mt2NJ0-bar.jpeg          (root)
-    //   attachments/file-XXXXX-name.pdf                  (user uploads)
-    const filesByAssetId = indexByAssetId(entries);
-
-    const docs: ParsedDocument[] = [];
     await fs.mkdir(ctx.workdir, { recursive: true });
 
-    for (const conv of conversations) {
-      const refs = collectAssetReferences(conv);
-      const attachments: ParsedAttachment[] = [];
-      const inlineMarkers = new Map<string, string>(); // assetId -> filename
-
-      for (const ref of refs) {
-        const entry = filesByAssetId.get(ref.assetId);
-        if (!entry) continue;
-        const baseName = path.basename(entry.fileName);
-        const safe = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const destPath = path.join(ctx.workdir, `${ref.assetId}-${safe}`);
-        await entry.streamTo(destPath);
-        attachments.push({
-          filename: baseName,
-          mimeType: ref.mimeType || guessMime(baseName),
-          tempPath: destPath,
-          size: entry.size,
-          metadata: {
-            assetPointer: ref.assetPointer,
-            assetId: ref.assetId,
-            sourceZipEntry: entry.fileName,
-            width: ref.width,
-            height: ref.height,
-          },
-        });
-        inlineMarkers.set(ref.assetId, baseName);
-      }
-
-      docs.push(renderConversation(conv, ctx, attachments, refs, inlineMarkers));
+    // The Privacy-Center "account-wide" export ships nested ZIPs under
+    // `User Online Activity/{Conversations,Dall-E,Files}__*.zip` and uses a
+    // different asset_pointer scheme (`sediment://file_<hex>`) than the
+    // classic /chatgpt data export. Detect + dispatch.
+    const isAccountExport = entries.some(
+      (e) =>
+        /^User Online Activity\/Conversations__.*\.zip$/i.test(e.fileName) ||
+        /^User Online Activity\/Conversations__.*-chatgpt-\d+\.zip$/i.test(e.fileName),
+    );
+    if (isAccountExport) {
+      return parseAccountExport(entries, ctx);
     }
 
-    return docs;
+    return parseClassicExport(entries, ctx);
   },
 };
+
+// --- Classic data-export (single conversations.json + dalle-generations/) ----
+
+async function parseClassicExport(
+  entries: ZipEntry[],
+  ctx: ParseContext,
+): Promise<ParsedDocument[]> {
+  const conversations = await loadConversationsFromZip(entries);
+
+  // Index ZIP entries by trailing file-XXX id so each asset_pointer is an
+  // O(1) lookup across the whole conversation list.
+  const filesByAssetId = indexByAssetId(entries);
+
+  const docs: ParsedDocument[] = [];
+  for (const conv of conversations) {
+    const refs = collectAssetReferences(conv);
+    const attachments: ParsedAttachment[] = [];
+    const inlineMarkers = new Map<string, string>();
+
+    for (const ref of refs) {
+      const entry = filesByAssetId.get(ref.assetId);
+      if (!entry) continue;
+      const baseName = path.basename(entry.fileName);
+      const safe = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const destPath = path.join(ctx.workdir, `${ref.assetId}-${safe}`);
+      await entry.streamTo(destPath);
+      attachments.push({
+        filename: baseName,
+        mimeType: ref.mimeType || guessMime(baseName),
+        tempPath: destPath,
+        size: entry.size,
+        metadata: {
+          assetPointer: ref.assetPointer,
+          assetId: ref.assetId,
+          sourceZipEntry: entry.fileName,
+          width: ref.width,
+          height: ref.height,
+        },
+      });
+      inlineMarkers.set(ref.assetId, baseName);
+    }
+
+    docs.push(renderConversation(conv, ctx, attachments, refs, inlineMarkers));
+  }
+
+  return docs;
+}
+
+// --- Account-wide / Privacy-Center export ------------------------------------
+//
+// Outer ZIP layout (one real example, ~1.4 GB):
+//   User Online Activity/Conversations__<hash>-chatgpt-0001.zip   869 MB
+//   User Online Activity/Dall-E__<hash>-dalle-0001.zip            289 MB
+//   User Online Activity/Dall-E__<hash>-dalle-0002.zip             36 MB
+//   User Online Activity/Files__<hash>-files-0001.zip             172 MB
+//   Financial/*.csv, User Profile/*.csv, Contact Info/*.csv, report.html
+//
+// Conversations ZIP: `chat.html` (very large, ignored) + sharded
+// `conversations-001.json` … `conversations-NNN.json` (~30-40 MB each — safe
+// to JSON.parse directly without a streaming JSON reader).
+//
+// asset_pointer values in this format look like
+// `sediment://file_000000004ad0620ab9ea4966ccc8e273`. The DALL-E shards key
+// images by `generation-<token>`, not by the sediment file hash; a precise
+// mapping requires walking the chat's `metadata.dalle.gen_id` and matching
+// against generation-<id> paths. For v1 we extract every DALL-E + Files
+// image as a standalone ParsedDocument(type='image') so they appear in
+// /documents and get vision-analyzed; cross-linking back to the originating
+// conversation is a follow-up (the synthetic graph edge is missed, but the
+// chat text + the image both land in the system).
+async function parseAccountExport(
+  entries: ZipEntry[],
+  ctx: ParseContext,
+): Promise<ParsedDocument[]> {
+  // Stream mode: emit each parsed doc through the callback and DON'T
+  // accumulate in the array. The worker passes a callback that persists
+  // immediately so a 1.4 GB export ingests in bounded memory. The array
+  // we return is always empty in stream mode — callers must treat empty
+  // returns as "see onDocument".
+  const streaming = typeof ctx.onDocument === 'function';
+  const docs: ParsedDocument[] = [];
+  const emit = async (d: ParsedDocument): Promise<void> => {
+    if (streaming) {
+      await ctx.onDocument!(d);
+    } else {
+      docs.push(d);
+    }
+  };
+
+  // 1) Conversations — process and release before opening other nested ZIPs.
+  for (const entry of entries.filter((e) =>
+    /^User Online Activity\/Conversations__.*\.zip$/i.test(e.fileName),
+  )) {
+    const tempZip = path.join(ctx.workdir, `conversations-${Date.now()}.zip`);
+    await entry.streamTo(tempZip);
+    const innerEntries = await readZipEntriesFromFile(tempZip);
+    const chunkEntries = innerEntries
+      .filter((e) => /(^|\/)conversations(-\d+)?\.json$/i.test(e.fileName))
+      .sort((a, b) => a.fileName.localeCompare(b.fileName, 'en'));
+    for (const chunk of chunkEntries) {
+      // Read, parse, render, drop all references before the next chunk —
+      // V8 GC has a hard time keeping up with 18×(40 MB Buffer + ~120 MB
+      // JS-object tree) inside a hot synchronous loop. Yielding to the
+      // event loop between chunks lets the scheduler trigger a young/old
+      // gen sweep and keeps the worker comfortably under the heap cap.
+      let chunkBuf: Buffer | null = await chunk.read();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(chunkBuf.toString('utf-8'));
+      } catch {
+        chunkBuf = null;
+        continue;
+      }
+      chunkBuf = null; // release the raw buffer ASAP — we have the parsed tree.
+      const list: ChatGPTConversation[] = Array.isArray(parsed)
+        ? (parsed as ChatGPTConversation[])
+        : [];
+      let convIdx = 0;
+      for (const conv of list) {
+        const refs = collectAssetReferences(conv);
+        const inlineMarkers = new Map<string, string>();
+        for (const ref of refs) {
+          inlineMarkers.set(ref.assetId, ref.assetId);
+        }
+        await emit(renderConversation(conv, ctx, [], refs, inlineMarkers));
+        // Yield to the event loop every 10 conversations so BullMQ can run
+        // its stalled-check heartbeat — without this the worker holds the
+        // microtask queue through 18 chunks × 60 chats × sync work and
+        // BullMQ kills the job with "stalled more than allowable limit".
+        convIdx += 1;
+        if (convIdx % 10 === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+      }
+      parsed = null;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    await fs.unlink(tempZip).catch(() => undefined);
+  }
+
+  // 2) DALL-E + Files — extract each image as a standalone image Document.
+  // The worker's persistAttachments will promote it into a Document(type='image')
+  // (idempotent on content hash) and the vision pipeline picks it up.
+  for (const entry of entries.filter(
+    (e) =>
+      /^User Online Activity\/Dall-E__.*\.zip$/i.test(e.fileName) ||
+      /^User Online Activity\/Files__.*\.zip$/i.test(e.fileName),
+  )) {
+    const tempZip = path.join(ctx.workdir, `media-${Date.now()}-${path.basename(entry.fileName)}`);
+    await entry.streamTo(tempZip);
+    const innerEntries = await readZipEntriesFromFile(tempZip);
+    for (const fileEntry of innerEntries) {
+      const base = path.basename(fileEntry.fileName);
+      const mime = guessMime(base);
+      if (!mime.startsWith('image/')) continue;
+      const safe = base.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const destPath = path.join(ctx.workdir, `${Date.now()}-${safe}`);
+      await fileEntry.streamTo(destPath);
+      await emit({
+        source: 'chatgpt_export',
+        sourceId: `asset::${fileEntry.fileName}`,
+        title: base,
+        rawText: '',
+        type: 'image',
+        metadata: {
+          originalFilename: base,
+          sourceZipEntry: fileEntry.fileName,
+          outerEntry: entry.fileName,
+        },
+        attachments: [
+          {
+            filename: base,
+            mimeType: mime,
+            tempPath: destPath,
+            size: fileEntry.size,
+            metadata: {
+              sourceZipEntry: fileEntry.fileName,
+              outerEntry: entry.fileName,
+            },
+          },
+        ],
+      });
+    }
+    await fs.unlink(tempZip).catch(() => undefined);
+  }
+
+  return docs;
+}
 
 async function loadZipEntries(buf: Buffer, ctx: ParseContext): Promise<ZipEntry[]> {
   if (ctx.inputPath) return readZipEntriesFromFile(ctx.inputPath);

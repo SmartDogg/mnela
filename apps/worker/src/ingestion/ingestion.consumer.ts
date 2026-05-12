@@ -117,6 +117,36 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       const headBuf = await readHead(data.filePath, 64 * 1024);
       const baseAttachments = attachmentsDir();
       await fs.mkdir(baseAttachments, { recursive: true });
+      const documentIds: string[] = [];
+      let duplicates = 0;
+      let processed = 0;
+
+      // Streaming sink: parsers that handle huge inputs (chatgpt account
+      // export) emit one ParsedDocument at a time through this callback so
+      // the worker can persist it immediately and the parser doesn't hold
+      // every chat + every image in RAM at once. For small-file parsers
+      // that return an array instead, we iterate that array below — the
+      // logic is identical, just a different delivery channel.
+      const persistOne = async (doc: ParsedDocument): Promise<void> => {
+        const result = await this.persistDocument(doc, data);
+        if (result.duplicate) {
+          duplicates += 1;
+        } else {
+          documentIds.push(result.documentId);
+        }
+        processed += 1;
+        // Progress is unknown for streaming parsers (total isn't computable
+        // up-front), so we report a heartbeat percent that creeps toward
+        // but never reaches 95% until parser.parse() returns.
+        const pct = Math.min(95, 30 + Math.floor(processed / 20));
+        await bullJob.updateProgress(pct);
+        await this.publishProgress(
+          dbJobId,
+          pct,
+          `${processed} parsed (${duplicates} duplicates so far)`,
+        );
+      };
+
       const ctx: ParseContext = {
         mimeType: data.mimeType,
         extension: path.extname(data.originalName).toLowerCase(),
@@ -124,6 +154,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         origin: 'manual_upload',
         workdir: await fs.mkdtemp(path.join(baseAttachments, '.work-')),
         inputPath: data.filePath,
+        onDocument: persistOne,
       };
 
       const { parser } = await resolveParser(headBuf, ctx);
@@ -138,28 +169,19 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
       const buf = needsFullBody ? await fs.readFile(data.filePath) : headBuf;
       const parsed = await parser.parse(buf, ctx);
       await bullJob.updateProgress(30);
-      await this.publishProgress(dbJobId, 30, `parsed ${parsed.length} document(s)`);
+      await this.publishProgress(
+        dbJobId,
+        30,
+        parsed.length > 0
+          ? `parsed ${parsed.length} document(s)`
+          : `streamed ${processed} document(s) so far`,
+      );
 
-      const documentIds: string[] = [];
-      let duplicates = 0;
-
-      const total = parsed.length;
-      for (let i = 0; i < parsed.length; i += 1) {
-        const doc = parsed[i];
-        if (!doc) continue;
-        const result = await this.persistDocument(doc, data);
-        if (result.duplicate) {
-          duplicates += 1;
-        } else {
-          documentIds.push(result.documentId);
-        }
-        const pct = 30 + Math.floor(((i + 1) / Math.max(1, total)) * 60);
-        await bullJob.updateProgress(pct);
-        await this.publishProgress(
-          dbJobId,
-          pct,
-          `${i + 1}/${total} (${duplicates} duplicates so far)`,
-        );
+      // Parsers that returned an array haven't been streamed yet — persist
+      // each one now. Streaming parsers return [] and have already routed
+      // each doc through `persistOne` via `ctx.onDocument`.
+      for (const doc of parsed) {
+        if (doc) await persistOne(doc);
       }
 
       await fs.rm(ctx.workdir, { recursive: true, force: true }).catch(() => undefined);
@@ -255,7 +277,13 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     }
 
     if (doc.attachments && doc.attachments.length > 0) {
-      await this.persistAttachments(created.id, doc.attachments, doc.source as SourceType, job);
+      await this.persistAttachments(
+        created.id,
+        doc.attachments,
+        doc.source as SourceType,
+        job,
+        doc.type ?? null,
+      );
     }
 
     await publishEvent(this.redis.client, {
@@ -370,9 +398,18 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     atts: ParsedAttachment[],
     parentSource: SourceType,
     job: IngestFileJob,
+    parentDocType: string | null,
   ): Promise<void> {
     const baseDir = attachmentsDir();
     await fs.mkdir(baseDir, { recursive: true });
+
+    // When the parent Document is itself type='image' (i.e. produced by
+    // imageParser for standalone uploads, or by the account-export parser
+    // emitting one Doc per image), the parent IS the image's first-class
+    // representation — we just link the Attachment back to it and skip
+    // promotion. Otherwise (chat docs with embedded images) we create a
+    // companion image Document so /documents lists images separately.
+    const parentIsImageDoc = parentDocType === 'image';
 
     for (const att of atts) {
       const hash = await streamingSha256(att.tempPath);
@@ -390,21 +427,27 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         metadata: (att.metadata ?? {}) as Prisma.InputJsonValue,
       });
 
-      // Images become first-class Documents so /documents lists them
-      // separately and the gallery on /documents/:id can render
-      // description + entity links. Audio/PDF/etc stay as plain
-      // Attachments — promotion is image-only by design.
       if (att.mimeType.startsWith('image/')) {
-        await this.promoteImageToDocument({
-          attachmentId: attachment.id,
-          parentDocumentId,
-          parentSource,
-          filename: att.filename,
-          contentHash: hash,
-          mimeType: att.mimeType,
-          attachmentMeta: (att.metadata ?? {}) as Record<string, unknown>,
-          job,
-        });
+        if (parentIsImageDoc) {
+          // Parent IS the image-doc — point linkedDocumentId back to it and
+          // enqueue analysis directly without spawning a second Document.
+          await this.prisma.client.attachment.update({
+            where: { id: attachment.id },
+            data: { linkedDocumentId: parentDocumentId },
+          });
+          await this.enrichmentEnqueue.maybeEnqueueImage(attachment.id, parentDocumentId);
+        } else {
+          await this.promoteImageToDocument({
+            attachmentId: attachment.id,
+            parentDocumentId,
+            parentSource,
+            filename: att.filename,
+            contentHash: hash,
+            mimeType: att.mimeType,
+            attachmentMeta: (att.metadata ?? {}) as Record<string, unknown>,
+            job,
+          });
+        }
       }
     }
   }

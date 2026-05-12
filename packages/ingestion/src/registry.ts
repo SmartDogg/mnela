@@ -99,8 +99,15 @@ async function detectZipFlavor(
     const hasClaudeChats = names.some(
       (n) => n.startsWith('design_chats/') || n === 'memories.json',
     );
+    // Privacy-Center / account-wide export — nested ZIPs under
+    // `User Online Activity/Conversations__…-chatgpt-NNNN.zip`. No
+    // top-level conversations.json, so the classic detection above misses it.
+    const hasAccountExport = names.some((n) =>
+      /^User Online Activity\/Conversations__.*\.zip$/i.test(n),
+    );
 
     if (hasClaudeUsers && (hasClaudeChats || hasChatgpt)) return 'claude';
+    if (hasAccountExport) return 'chatgpt';
     if (hasChatgpt && hasUserJson) return 'chatgpt';
     // Bare ChatGPT export sometimes ships only conversations.json + chat.html
     if (hasChatgpt && !hasClaudeUsers) return 'chatgpt';

@@ -57,6 +57,16 @@ export interface ParseContext {
    * for magic-byte / format detection only.
    */
   inputPath?: string;
+  /**
+   * Optional streaming sink — when set, parsers may emit each
+   * `ParsedDocument` through it instead of (or in addition to) accumulating
+   * them into the array they return. The worker uses this to persist
+   * documents incrementally for huge imports (OpenAI account-wide export
+   * has 700+ chats + 350 images that, taken as one giant docs[], blow past
+   * Node's heap on low-RAM dev boxes). Parsers that don't support
+   * streaming simply ignore this field.
+   */
+  onDocument?: (doc: ParsedDocument) => Promise<void> | void;
 }
 
 export interface Parser {
