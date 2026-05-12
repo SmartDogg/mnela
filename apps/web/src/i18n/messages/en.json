@@ -555,7 +555,9 @@
       "range_today": "Today",
       "range_7d": "7 days",
       "range_30d": "30 days",
-      "range_all": "All time"
+      "range_all": "All time",
+      "selectAllVisible": "Select all ({count})",
+      "deselectAll": "Deselect all"
     },
     "bulk": {
       "selected": "{count, plural, one {# selected} other {# selected}}",

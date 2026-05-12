@@ -555,7 +555,9 @@
       "range_today": "Сегодня",
       "range_7d": "7 дней",
       "range_30d": "30 дней",
-      "range_all": "Всё время"
+      "range_all": "Всё время",
+      "selectAllVisible": "Выбрать всё ({count})",
+      "deselectAll": "Снять выделение"
     },
     "bulk": {
       "selected": "{count, plural, one {выбрано #} few {выбрано #} other {выбрано #}}",

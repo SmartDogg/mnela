@@ -14,6 +14,9 @@ interface InboxFiltersProps {
   onChange: (next: InboxFilters) => void;
   projects: { slug: string; name: string }[];
   total: number;
+  selectedCount: number;
+  onSelectAllVisible: () => void;
+  onClearSelection: () => void;
 }
 
 const TYPES = [
@@ -32,6 +35,9 @@ export function InboxFiltersBar({
   onChange,
   projects,
   total,
+  selectedCount,
+  onSelectAllVisible,
+  onClearSelection,
 }: InboxFiltersProps): JSX.Element {
   const t = useTranslations('inbox.filters');
   const tTypes = useTranslations('inbox.types');
@@ -108,7 +114,17 @@ export function InboxFiltersBar({
             {t('clear')}
           </Button>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          {total > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs"
+              onClick={selectedCount === total ? onClearSelection : onSelectAllVisible}
+            >
+              {selectedCount === total ? t('deselectAll') : t('selectAllVisible', { count: total })}
+            </Button>
+          )}
           <Badge variant="outline" className="font-mono text-[10px]">
             {total}
           </Badge>

@@ -203,6 +203,9 @@ export default function InboxPage(): JSX.Element {
         onChange={handleFilterChange}
         projects={projectsQuery.data?.items ?? []}
         total={totalShown}
+        selectedCount={selection.selectedIds.size}
+        onSelectAllVisible={() => selection.selectAll(filtered.map((i) => i.id))}
+        onClearSelection={() => selection.clear()}
       />
       <div className="space-y-2 px-8 py-6">
         {inboxQuery.isLoading &&
