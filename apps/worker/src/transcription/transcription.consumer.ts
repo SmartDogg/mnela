@@ -1,3 +1,8 @@
+import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { readRegistryValue } from '@mnela/core';
 import {
@@ -16,12 +21,68 @@ import {
 } from '@mnela/queue';
 import { Prisma } from '@prisma/client';
 import { Worker, type Job as BullJob } from 'bullmq';
+// `ffmpeg-static` is a CommonJS module that default-exports the bundled
+// binary path (string) or `null` on unsupported platforms. The dynamic
+// import is the cleanest ESM interop on Node 22.
+import ffmpegStatic from 'ffmpeg-static';
 import { type Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
 import { EnrichmentEnqueueService } from '../shared/enrichment-enqueue.service.js';
 import { WhisperStatusService } from './whisper-status.service.js';
+
+/**
+ * whisper.cpp's HTTP server reads WAV only — when we hand it OGG/OPUS
+ * (Telegram voice messages), MP3, M4A etc. it answers 400 with
+ * "failed to read audio data as wav". So we pre-decode every non-WAV
+ * file to 16 kHz mono PCM-WAV via the bundled ffmpeg binary before
+ * shipping. WAV inputs short-circuit and skip the conversion.
+ */
+const FFMPEG_BIN: string | null = (ffmpegStatic as unknown as string | null) ?? null;
+const WAV_MIMES = new Set(['audio/wav', 'audio/wave', 'audio/x-wav']);
+
+function isWavMime(mime: string | null | undefined): boolean {
+  if (!mime) return false;
+  return WAV_MIMES.has(mime.toLowerCase());
+}
+
+async function convertToWav(srcPath: string): Promise<string> {
+  if (!FFMPEG_BIN) {
+    throw new Error('ffmpeg-static binary not available on this platform');
+  }
+  const outPath = path.join(
+    tmpdir(),
+    `mnela-whisper-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.wav`,
+  );
+  await new Promise<void>((resolve, reject) => {
+    const args = [
+      '-loglevel',
+      'error',
+      '-y',
+      '-i',
+      srcPath,
+      '-ar',
+      '16000',
+      '-ac',
+      '1',
+      '-c:a',
+      'pcm_s16le',
+      outPath,
+    ];
+    const child = spawn(FFMPEG_BIN as string, args, { windowsHide: true });
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`ffmpeg exited ${code}: ${stderr.trim() || '(no stderr)'}`));
+    });
+  });
+  return outPath;
+}
 
 interface TranscriptionMetadata {
   engine: 'whisper.cpp';
@@ -118,12 +179,38 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
       if (!audioAtt) throw new Error(`document ${documentId} has no attachment to transcribe`);
 
       await bullJob.updateProgress(10);
-      await this.publishProgress(dbJobId, 10, `calling whisper on ${audioAtt.filename}`);
 
-      const result = await this.whisper.transcribe({
-        filePath: audioAtt.path,
-        language: env.MNELA_TRANSCRIPTION_LANGUAGE,
-      });
+      // whisper.cpp wants WAV. Convert anything else first.
+      let inputPath = audioAtt.path;
+      let tempWavPath: string | null = null;
+      if (!isWavMime(audioAtt.mimeType)) {
+        await this.publishProgress(dbJobId, 10, `transcoding ${audioAtt.filename} → wav`);
+        try {
+          tempWavPath = await convertToWav(audioAtt.path);
+          inputPath = tempWavPath;
+          this.logger.debug(
+            `transcoded ${audioAtt.filename} (${audioAtt.mimeType}) → ${tempWavPath}`,
+          );
+        } catch (err) {
+          throw new Error(
+            `ffmpeg failed to decode ${audioAtt.mimeType}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
+      await this.publishProgress(dbJobId, 20, `calling whisper on ${audioAtt.filename}`);
+
+      let result;
+      try {
+        result = await this.whisper.transcribe({
+          filePath: inputPath,
+          language: env.MNELA_TRANSCRIPTION_LANGUAGE,
+        });
+      } finally {
+        if (tempWavPath) {
+          await fs.unlink(tempWavPath).catch(() => undefined);
+        }
+      }
 
       await bullJob.updateProgress(80);
       await this.publishProgress(dbJobId, 80, `transcribed ${result.text.length} chars`);

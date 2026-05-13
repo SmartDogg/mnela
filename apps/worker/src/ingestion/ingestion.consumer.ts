@@ -165,7 +165,10 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
         mimeType: data.mimeType,
         extension: path.extname(data.originalName).toLowerCase(),
         filename: path.basename(data.originalName),
-        origin: 'manual_upload',
+        // Caller-supplied SourceType wins (tg-bot=telegram, scripted ingest=
+        // api_ingest, etc.). Legacy web uploads stay at the historical
+        // `manual_upload` default — same value as before this change.
+        origin: data.source ?? 'manual_upload',
         workdir: await fs.mkdtemp(path.join(baseAttachments, '.work-')),
         inputPath: data.filePath,
         onDocument: persistOne,
@@ -228,11 +231,18 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     //   - With a stable sourceId (ChatGPT/Claude conversation uuid) the hash
     //     is sha256(rawText :: source :: sourceId) so the same conversation
     //     re-uploaded inside another archive collapses to one row.
-    //   - Without sourceId (markdown/txt/etc) the hash is sha256(rawText)
-    //     alone — different filenames around the same body still dedupe.
+    //   - With non-empty rawText: sha256(rawText) — different filenames
+    //     around the same body still dedupe.
+    //   - With empty rawText (audio uploaded pre-transcription, photo
+    //     pre-vision): seed off the *file* contentHash from the ingest job.
+    //     Without this, every empty-rawText doc hashed to the same value and
+    //     every audio after the first deduplicated to whichever voice was
+    //     uploaded first — distinct recordings silently merged.
     const seed = doc.sourceId
       ? `${doc.source}::${doc.sourceId}::${sha256Hex(doc.rawText)}`
-      : sha256Hex(doc.rawText);
+      : doc.rawText.length > 0
+        ? sha256Hex(doc.rawText)
+        : `${doc.source}::file::${job.contentHash}`;
     const contentHash = sha256Hex(seed);
 
     // Re-import path: conversation UUIDs (ChatGPT/Claude) are stable across
@@ -262,6 +272,19 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     // dedup so markdown/txt re-uploads still collapse byte-identical files.
     const existingByHash = await this.documents.findByContentHash(contentHash);
     if (existingByHash) {
+      // Re-send of audio whose transcript never landed (e.g. user shipped
+      // the voice before whisper was online): the dedup branch was
+      // historically silent so the voice stayed `status='raw'` with empty
+      // rawText forever. If Whisper is now available, kick a fresh
+      // transcribe_audio job on the existing Document so subsequent /ask
+      // calls actually find the text. Idempotent: a no-op when the doc
+      // already has transcribed text.
+      if (
+        existingByHash.type === 'audio' &&
+        (!existingByHash.rawText || existingByHash.rawText.trim().length === 0)
+      ) {
+        await this.maybeEnqueueTranscription(existingByHash.id);
+      }
       return { documentId: existingByHash.id, action: 'duplicate' };
     }
 

@@ -115,6 +115,7 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
         contentHash,
         receivedAt: new Date().toISOString(),
         origin: 'dropbox',
+        source: 'manual_upload',
       } as unknown as Prisma.InputJsonValue,
       priority: 50,
     });
