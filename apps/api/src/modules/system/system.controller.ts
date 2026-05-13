@@ -110,4 +110,16 @@ export class SystemController {
   ): Promise<{ enqueued: number; jobIds: string[] }> {
     return this.documents.retranscribePending(limit);
   }
+
+  @Post('restart')
+  @RequiredScope('admin')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @Audit({ action: 'system.restart', targetType: 'System' })
+  @ApiOperation({
+    summary:
+      'Hot-reload all subsystems with `requiresRestart` registry settings — publishes system.service_reload on mnela:events; worker + orchestrator re-init their BullMQ consumers in-process. No actual process restart (works the same on docker / systemd / pnpm dev).',
+  })
+  restart(): Promise<{ accepted: true }> {
+    return this.system.requestRestart('manual');
+  }
 }

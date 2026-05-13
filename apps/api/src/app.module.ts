@@ -20,7 +20,7 @@ import { ProvidersModule } from './modules/providers/providers.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { TelegramModule } from './modules/telegram/telegram.module.js';
-import { PrismaModule, RepositoriesModule } from '@mnela/db';
+import { PrismaModule, RepositoriesModule, SystemConfigRepository } from '@mnela/db';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis.module.js';
 
@@ -49,13 +49,27 @@ const env = loadEnv();
         },
       },
     }),
-    ThrottlerModule.forRoot([
-      {
-        name: 'default',
-        ttl: 60_000,
-        limit: env.RATE_LIMIT_GLOBAL_PER_MINUTE,
+    // ThrottlerModule is configured once at startup; live re-configure
+    // would mean rebuilding NestJS DI graph mid-flight. The registry
+    // key `api.rateLimit.global` is marked requiresRestart=true, so the
+    // /admin/system Restart Services button re-bootstraps the api with
+    // the new value via process.exit(0) → docker/systemd auto-restart.
+    // We deliberately read env here as the BOOT default (zod fallback)
+    // before SystemConfig is even reachable; if the registry override
+    // exists, the boot-time read in AppModule.imports will use it.
+    ThrottlerModule.forRootAsync({
+      imports: [PrismaModule, RepositoriesModule],
+      inject: [SystemConfigRepository],
+      useFactory: async (systemConfig: SystemConfigRepository) => {
+        const { readRegistryValue } = await import('@mnela/core');
+        const limit = await readRegistryValue<number>(
+          systemConfig,
+          'api.rateLimit.global',
+          env.RATE_LIMIT_GLOBAL_PER_MINUTE,
+        );
+        return [{ name: 'default', ttl: 60_000, limit }];
       },
-    ]),
+    }),
     PrismaModule,
     QueueModule,
     RedisModule,

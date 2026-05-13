@@ -25,12 +25,9 @@ const EnvSchema = z.object({
   MNELA_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   MNELA_DATA_DIR: z.string().default('./data'),
 
+  /** Boot-time fallback for the global rate limit when SystemConfig is
+   * not yet reachable. Live tuning lives at `api.rateLimit.global`. */
   RATE_LIMIT_GLOBAL_PER_MINUTE: z.coerce.number().int().positive().default(100),
-  RATE_LIMIT_LOGIN_PER_MINUTE: z.coerce.number().int().positive().default(10),
-
-  SEARCH_FTS_WEIGHT: z.coerce.number().min(0).max(1).default(0.7),
-  SEARCH_TRIGRAM_WEIGHT: z.coerce.number().min(0).max(1).default(0.3),
-  SEARCH_TRIGRAM_THRESHOLD: z.coerce.number().min(0).max(1).default(0.3),
 
   // Ask Brain (Phase 8) — same Claude binary + MCP config as the orchestrator.
   MNELA_CLAUDE_BIN: z.string().default('claude'),

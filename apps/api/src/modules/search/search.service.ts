@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaService } from '@mnela/db';
+import { readRegistryValue } from '@mnela/core';
+import { PrismaService, SystemConfigRepository } from '@mnela/db';
 import {
   FtsSearchAdapter,
   HybridSearchAdapter,
@@ -10,25 +11,46 @@ import {
   TrigramSearchAdapter,
 } from '@mnela/search';
 
-import { loadEnv } from '../../env.js';
-
+/**
+ * Search blend tuning lives in SystemConfig (`search.*` registry keys);
+ * `onModuleInit` reads the live values and rebuilds the adapters. The
+ * "Restart services" button on /admin/system re-bootstraps the api so
+ * post-toggle adapters reflect the new weights without process-level
+ * restart (see ReloadService).
+ */
 @Injectable()
 export class SearchService implements OnModuleInit {
   private fts!: FtsSearchAdapter;
   private trigram!: TrigramSearchAdapter;
   private hybrid!: HybridSearchAdapter;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly systemConfig: SystemConfigRepository,
+  ) {}
 
-  onModuleInit(): void {
-    const env = loadEnv();
+  async onModuleInit(): Promise<void> {
+    await this.buildAdapters();
+  }
+
+  /** Re-read registry and rebuild the three adapters. Idempotent. */
+  async buildAdapters(): Promise<void> {
+    const [ftsPct, trigramPct, thresholdPct] = await Promise.all([
+      readRegistryValue<number>(this.systemConfig, 'search.fts.weight'),
+      readRegistryValue<number>(this.systemConfig, 'search.trigram.weight'),
+      readRegistryValue<number>(this.systemConfig, 'search.trigram.threshold'),
+    ]);
+    // Registry stores integer percentages 0-100; the adapter math expects 0-1.
+    const ftsWeight = ftsPct / 100;
+    const trigramWeight = trigramPct / 100;
+    const trigramThreshold = thresholdPct / 100;
     const provider = (): ReturnType<PrismaService['active']> => this.prisma.active();
     this.fts = new FtsSearchAdapter(provider);
-    this.trigram = new TrigramSearchAdapter(provider, env.SEARCH_TRIGRAM_THRESHOLD);
+    this.trigram = new TrigramSearchAdapter(provider, trigramThreshold);
     this.hybrid = new HybridSearchAdapter(provider, {
-      ftsWeight: env.SEARCH_FTS_WEIGHT,
-      trigramWeight: env.SEARCH_TRIGRAM_WEIGHT,
-      trigramThreshold: env.SEARCH_TRIGRAM_THRESHOLD,
+      ftsWeight,
+      trigramWeight,
+      trigramThreshold,
     });
   }
 

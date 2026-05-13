@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService, SystemConfigRepository } from '@mnela/db';
+import { publishEvent } from '@mnela/queue';
 import type { Prisma, SystemConfig } from '@prisma/client';
 
+import { RedisService } from '../../redis.service.js';
 import {
   CONFIG_REGISTRY,
   type ConfigSpec,
@@ -35,10 +37,31 @@ export interface MergedConfigEntry {
 
 @Injectable()
 export class SystemService {
+  private readonly logger = new Logger(SystemService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configRepo: SystemConfigRepository,
+    private readonly redis: RedisService,
   ) {}
+
+  /**
+   * Publishes `system.service_reload` on the shared Redis pubsub. Every
+   * worker/orchestrator subscriber re-initialises its BullMQ consumers
+   * (concurrency from registry, dropbox watcher, whisper status probe,
+   * etc.) without an actual process restart — works the same on docker
+   * compose, systemd, and `pnpm dev`. The HTTP response is fire-and-
+   * forget; the UI shows a toast and re-fetches /system/config to pick
+   * up the post-reload state.
+   */
+  async requestRestart(reason: string): Promise<{ accepted: true }> {
+    await publishEvent(this.redis.client, {
+      type: 'system.service_reload',
+      payload: { service: 'all', reason },
+    });
+    this.logger.log(`service_reload published (reason=${reason})`);
+    return { accepted: true };
+  }
 
   async stats(): Promise<SystemStats> {
     const client = this.prisma.client;
