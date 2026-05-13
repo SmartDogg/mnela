@@ -7,6 +7,7 @@ import { DelayedError, Worker, type Job as BullJob } from 'bullmq';
 import type { Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
+import { ProjectsQueueService } from '../projects/projects-queue.service.js';
 import { RedisService } from '../redis.service.js';
 import { EnrichmentPipeline } from './pipeline.js';
 
@@ -22,6 +23,7 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly jobs: JobRepository,
     private readonly prisma: PrismaService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly projectsQueue: ProjectsQueueService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -59,6 +61,26 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+  }
+
+  /**
+   * Pull the import batchId from the document's metadata.__import.batchId
+   * stamp (set by the worker on first ingest) and ask ProjectsQueueService
+   * to schedule a debounced project_suggest pass for that batch.
+   */
+  private async maybeDebounceProjectSuggest(documentId: string | undefined): Promise<void> {
+    if (!documentId) return;
+    const doc = await this.prisma.client.document.findUnique({
+      where: { id: documentId },
+      select: { metadata: true },
+    });
+    const meta = doc?.metadata;
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
+    const importMeta = (meta as Record<string, unknown>)['__import'];
+    if (!importMeta || typeof importMeta !== 'object' || Array.isArray(importMeta)) return;
+    const batchId = (importMeta as Record<string, unknown>)['batchId'];
+    if (typeof batchId !== 'string' || batchId.length === 0) return;
+    await this.projectsQueue.debounceBatchSuggest(batchId);
   }
 
   private async handleJob(bullJob: BullJob<EnrichmentJob>): Promise<unknown> {
@@ -140,6 +162,17 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
             completedAt: new Date().toISOString(),
           },
         });
+        // ADR-0051: if this was a successful document enrichment, debounce a
+        // project_suggest pass for the import batch. The suggester itself
+        // re-checks the gate, so leaving this call unconditional is fine —
+        // when suggestions are disabled the suggester exits immediately.
+        if (outcome.status === 'enriched' && !isImageAnalysis && !isProjectContext) {
+          await this.maybeDebounceProjectSuggest(data.documentId).catch((err) => {
+            this.logger.warn(
+              `project_suggest debounce failed for ${data.documentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
       } else {
         await publishEvent(this.redis.client, {
           type: 'job.failed',

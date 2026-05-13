@@ -25,12 +25,17 @@ import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 
 import { loadEnv, mcpConfigPath, vaultDir } from '../env.js';
 
-export type OrchestratorFeatureKey = 'enrichment' | 'vision' | 'projectContext';
+export type OrchestratorFeatureKey = 'enrichment' | 'vision' | 'projectContext' | 'projectSuggest';
 
 const FEATURE_CONFIG_KEYS: Record<OrchestratorFeatureKey, string> = {
   enrichment: 'providers.enrichment',
   vision: 'providers.vision',
   projectContext: 'providers.projectContext',
+  // ADR-0051: project_suggest reuses the enrichment provider routing —
+  // we don't surface a separate `providers.projectSuggest` key because the
+  // naming call is a single Haiku-class request and the operator already
+  // has fine-grained control via enrichment/default routing.
+  projectSuggest: 'providers.enrichment',
 };
 
 @Injectable()
@@ -119,7 +124,11 @@ export class OrchestratorProvidersService implements OnModuleInit {
     kind: string;
     model: string;
     baseUrl: string | null;
-    apiKeyEnc: Buffer | null;
+    /**
+     * Prisma 6 surfaces Bytes as `Uint8Array`, not `Buffer`. The keystore
+     * accepts Buffer at call time; we widen here and wrap once below.
+     */
+    apiKeyEnc: Uint8Array | null;
     extra: unknown;
   }): ProviderConfig {
     const out: ProviderConfig = {
@@ -131,7 +140,7 @@ export class OrchestratorProvidersService implements OnModuleInit {
     if (row.baseUrl) out.baseUrl = row.baseUrl;
     if (row.apiKeyEnc) {
       try {
-        out.apiKey = this.keystore.decrypt(row.apiKeyEnc);
+        out.apiKey = this.keystore.decrypt(Buffer.from(row.apiKeyEnc));
       } catch (err) {
         this.logger.error(
           `failed to decrypt apiKey for provider ${row.id}: ${err instanceof Error ? err.message : String(err)} — provider will fail at call time`,

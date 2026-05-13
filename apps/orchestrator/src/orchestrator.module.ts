@@ -10,6 +10,12 @@ import { EnrichmentQueueStateService } from './enrichment/queue-state.service.js
 import { loadEnv } from './env.js';
 import { McpConfigBoot } from './mcp/mcp-config.boot.js';
 import { OrchestratorProvidersService } from './providers/providers.service.js';
+import { ProjectsAutofillService } from './projects/projects-autofill.service.js';
+import { ProjectsConsumer } from './projects/projects.consumer.js';
+import { ProjectsQueueService } from './projects/projects-queue.service.js';
+import { ProjectsSuggesterService } from './projects/projects-suggester.service.js';
+import { SuggestionDetector } from './projects/detector.js';
+import { SuggestionNamer } from './projects/naming.js';
 import { RateLimitService } from './rate-limit/rate-limit.service.js';
 import { RedisService } from './redis.service.js';
 import { RepositoriesModule } from './repositories.module.js';
@@ -43,7 +49,20 @@ const env = loadEnv();
     EnrichmentPipeline,
     EnrichmentConsumer,
     EnrichmentQueueStateService,
+    SuggestionDetector,
+    SuggestionNamer,
+    ProjectsSuggesterService,
+    ProjectsAutofillService,
+    ProjectsQueueService,
+    ProjectsConsumer,
   ],
-  exports: [PrismaService, RedisService, ClaudeStatusService, RateLimitService, SearchBridge],
+  exports: [
+    PrismaService,
+    RedisService,
+    ClaudeStatusService,
+    RateLimitService,
+    SearchBridge,
+    ProjectsQueueService,
+  ],
 })
 export class OrchestratorModule {}
