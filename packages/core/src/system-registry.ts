@@ -18,7 +18,13 @@ export type ConfigType = 'bytes' | 'int' | 'bool' | 'enum' | 'string';
  * are new with ADR-0049; the older `imports | parsers | …` bucket survives
  * for backwards compatibility but is now subordinate to `section`.
  */
-export type ConfigSection = 'providers' | 'ingestion' | 'enrichment' | 'storage' | 'advanced';
+export type ConfigSection =
+  | 'providers'
+  | 'ingestion'
+  | 'enrichment'
+  | 'storage'
+  | 'projects'
+  | 'advanced';
 
 export interface ConfigSpecBase {
   key: string;
@@ -30,7 +36,8 @@ export interface ConfigSpecBase {
     | 'whisper'
     | 'claude'
     | 'worker'
-    | 'providers';
+    | 'providers'
+    | 'projects';
   /**
    * Top-level card the key renders under in /admin/system. Defaults are
    * derived from `group` so existing specs keep working without explicit
@@ -313,6 +320,32 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     description:
       'Provider override for project-context refresh jobs. Empty string falls back to providers.enrichment then providers.default.',
     default: '',
+  },
+
+  // ---- Projects (ADR-0051) ----
+  // Master gates for the auto-suggested-projects pipeline. When the
+  // suggestion gate is off, the detector job exits before reading
+  // documents and the Haiku naming call is never made — zero tokens, zero
+  // analytical SQL. When the autoSummary gate is off, the project detail
+  // page falls back to a heuristic header (top entities + doc count) and
+  // skips the Haiku summary refresh.
+  'projects.suggestions.enabled': {
+    key: 'projects.suggestions.enabled',
+    type: 'bool',
+    group: 'projects',
+    section: 'projects',
+    description:
+      'Master gate for auto-project suggestions (ADR-0051). When off, the project_suggest detector and its single-Haiku naming call never run — no token use, no detection SQL. /projects/new shows a fallback empty state. Default ON.',
+    default: true,
+  },
+  'projects.autoSummary.enabled': {
+    key: 'projects.autoSummary.enabled',
+    type: 'bool',
+    group: 'projects',
+    section: 'projects',
+    description:
+      'Gate for the LLM-generated project summary shown on /projects/[slug]. When off, the header falls back to top-entities + doc count without any LLM call. Default ON.',
+    default: true,
   },
 };
 
