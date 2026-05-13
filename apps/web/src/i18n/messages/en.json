@@ -27,18 +27,14 @@
     "ask": "Ask Brain",
     "documents": "Documents",
     "projects": "Projects",
-    "decisions": "Decisions",
     "graph": "Graph",
     "inbox": "Inbox",
-    "imports": "Imports",
-    "jobs": "Jobs",
+    "review": "Review",
+    "activity": "Imports & Queues",
     "admin": "Admin",
     "system": "System",
-    "tokens": "Tokens",
-    "claude": "Claude Code",
-    "backup": "Backup",
-    "knowledge": "Knowledge",
-    "operations": "Operations",
+    "workspace": "Workspace",
+    "library": "Library",
     "jobsDashboard": "Job stats"
   },
   "login": {
@@ -133,6 +129,7 @@
   "documents": {
     "title": "Documents",
     "subtitle": "Everything ingested into your brain.",
+    "openImports": "Imports & Queues",
     "filters": {
       "status": "Status",
       "source": "Source",
@@ -286,6 +283,15 @@
       "decided": "Decided",
       "reverted": "Reverted",
       "superseded": "Superseded"
+    }
+  },
+  "activity": {
+    "title": "Imports & Queues",
+    "subtitle": "Active uploads and background jobs in one view.",
+    "newImport": "New import",
+    "tabs": {
+      "uploads": "Imports",
+      "queue": "Queue"
     }
   },
   "imports": {
@@ -663,7 +669,7 @@
         "apiKey": "API key",
         "apiKeyPlaceholder": "(stored encrypted)",
         "extra": "Extra (JSON, optional)",
-        "extraPlaceholder": "{\"headers\":{\"HTTP-Referer\":\"https://mnela.local\"}}",
+        "extraPlaceholder": "'{'\"headers\":'{'\"HTTP-Referer\":\"https://mnela.local\"'}}'",
         "extraInvalid": "extra must be valid JSON",
         "cancel": "Cancel",
         "submit": "Add provider",
@@ -696,11 +702,6 @@
       "unavailable": "Unavailable",
       "test": "Test",
       "phase5": "Available in Phase 5"
-    },
-    "backup": {
-      "title": "Backup",
-      "subtitle": "Snapshot the database and vault.",
-      "phase10": "Available in Phase 10"
     },
     "jobs": {
       "title": "Job stats",
@@ -741,8 +742,8 @@
     "networkError": "Network error — check the API is running"
   },
   "inbox": {
-    "title": "Inbox",
-    "subtitle": "Items waiting for review (entity merges, edge suggestions).",
+    "title": "Review",
+    "subtitle": "Triage queue for system suggestions — entity merges, link hints, duplicates, conflicts.",
     "empty": "Nothing to review. Suggestions arrive when Claude enriches your documents.",
     "emptyHint": "Try a wider date range or clear the filters above.",
     "loadError": "Couldn't load inbox",

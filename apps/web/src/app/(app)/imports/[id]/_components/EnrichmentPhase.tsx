@@ -86,7 +86,7 @@ export function EnrichmentPhase({ documents }: EnrichmentPhaseProps): JSX.Elemen
               parallelism {q?.parallelism} · slot {q?.useSlot ? 'on' : 'off'}
             </Link>
           )}
-          <Link href="/jobs" className="text-[11px] hover:text-foreground">
+          <Link href="/activity?tab=queue" className="text-[11px] hover:text-foreground">
             Queue →
           </Link>
         </div>

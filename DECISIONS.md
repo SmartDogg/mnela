@@ -4,6 +4,45 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0052 — v1 menu consolidation: Imports & Queues, Review, decisions into projects, admin into System
+
+**Context:** The sidebar had accreted into thirteen entries spread across four sections (Dashboard, Knowledge, Operations, Admin), several of which were partial placeholders or actively overlapped: `/admin/backup` was a Phase-10 placeholder card; `/admin/claude` duplicated half of the AI Providers section after ADR-0049 (the `claude-cli` provider is one of N now); `/admin/tokens` was a standalone CRUD page nobody would discover from `/admin/system`; `/imports` and `/jobs` were two different views of the same job pipeline ("uploads" vs "everything else background"); `/decisions` was a global list whose only navigation target — `/decisions/{id}` — never existed (the inbox-`ConflictingDecisionDiff` deep links were broken). "Inbox" suggested "new documents" but the page was actually a triage queue for system-generated suggestions (entity merges, duplicate detection, conflicting decisions). After ADR-0050 (`/daily` collapsed into `/ask`) and ADR-0051 (auto-suggested projects), the user wanted a single ruthless audit that produced a v1-ready menu.
+
+**Decision:** Three sidebar sections, four routes per section ceiling. URL stability for valid bookmarks via redirects, deletions for everything that was a placeholder.
+
+1. **Menu shape.**
+   - **Workspace**: `/`, `/graph`, `/ask`.
+   - **Library**: `/documents`, `/projects`, `/inbox` (labelled **Review**).
+   - **Admin**: `/activity`, `/admin/system`.
+
+2. **`/inbox` keeps its URL, gets renamed to "Review" in the sidebar and on the page header.** The route name stays for incoming Socket.io events (`inbox.item_added` / `inbox.item_resolved`) and the existing `apps/api` controller. No backend changes. Only `nav.review` and `inbox.title/subtitle` strings move.
+
+3. **`/imports` and `/jobs` collapse into `/activity` with two tabs.** New page at `apps/web/src/app/(app)/activity/page.tsx`, default tab `?tab=uploads` (the old `/imports` table), second tab `?tab=queue` (the EnrichmentSection + OtherJobs + FailedJobs + StatsPanel components, still imported from `../jobs/_components/*` so the existing tests keep working). Both `/imports` and `/jobs` become server redirects to `/activity?tab=uploads|queue`; `/admin/jobs` is updated to redirect to `/activity?tab=queue` as well. `/imports/new` and `/imports/[id]` keep their own routes — they are deep-link surfaces, not list views. The Russian sidebar label is "Импорты и очереди" (the user explicitly asked for descriptive over the more abstract "Активность"); English label is "Imports & Queues" to match.
+
+4. **`/decisions` is deleted; its function moves into `/projects/[slug]` → Decisions tab.** The standalone page was the only place a user could see all decisions or create one, but the project detail's Decisions tab previously rendered only a count. The list + Create dialog now live in `apps/web/src/app/(app)/projects/[slug]/_components/decisions-tab.tsx`. Create is project-scoped — `projectId` is auto-filled from the URL slug, no global "unfiled" decisions can be created via UI. The `DecisionsService` POST endpoint still accepts decisions without `projectId` for API/MCP callers. The broken `<a href="/decisions/{id}">` links inside `apps/web/src/app/(app)/inbox/_components/InboxDiff.tsx::ConflictingDecisionDiff` are replaced with plain `<code>` spans (the detail route never existed in any phase).
+
+5. **`/admin/backup` is deleted.** Pure placeholder card ("Available in Phase 10"). Storage stats already live in `/admin/system → Storage`. No redirect — a stale bookmark to a placeholder is not worth preserving.
+
+6. **`/admin/tokens` becomes the `TokensSection` card inside `/admin/system`.** The full Token CRUD UI (table + issue dialog + plaintext-once dialog) lives at `apps/web/src/app/(app)/admin/system/_components/tokens-section.tsx`. The route folder is deleted; `docs/MCP_INTEGRATION.md` now points to `/admin/system → API tokens` for the issue-token flow.
+
+7. **`/admin/claude` becomes the `ClaudeStatusBlock` expand inside the AI Providers card.** Status (Available/Unavailable badge), version, rate-limit reset, and the "Test" button now live as a collapsible block at `apps/web/src/app/(app)/admin/system/_components/claude-status-block.tsx`, rendered inside `ProvidersSection` after the per-feature router. The route folder is deleted. Keeps the Claude-specific surface (rate-limit reset banner, test latency) without pretending it's separate from the broader provider routing.
+
+**Alternatives considered:**
+
+- _Merge `/inbox` into `/documents` as a `?tab=review` filter._ Tempting because both list documents, but `/inbox` items are not documents — they are payloads (`link_suggestion`, `entity_merge_suggestion`, `duplicate_detection`, `enrichment_failed`, `conflicting_decision`) with bulk accept/reject mutations, keyboard shortcuts (`InboxKeyboard`), per-type diff renderers, and URL-state filters specific to suggestion triage. Rebuilding all of that into a documents-page tab would be more code than it deletes. Rejected.
+
+- _Add `/decisions` back as a `/projects` tab ("All decisions across all projects")._ The user explicitly chose to delete the page and re-home the functionality. If cross-project decision search becomes a real need we'll add it (the API endpoint still supports `GET /decisions` without a project filter); for v1 the project detail's Decisions tab is the canonical surface.
+
+- _Keep `/imports` and `/jobs` as separate sidebar items but rename the section to "Activity"._ Doesn't address the actual confusion ("which one shows my upload?"). The tab model is more discoverable: you land on Uploads by default and the Queue tab is one click away.
+
+- _Rebuild `/admin/system` with top-level tabs (Providers / Tokens / Storage / Advanced)._ Considered, but the existing card-stack layout already groups by concern. Adding a tab bar on top would either nest tabs (provider routing already has a sub-selector) or fragment what is essentially a one-page settings sheet. Sections are simpler.
+
+- _Soft-delete (mark as `comingSoon: true` and hide)._ Doesn't reduce code; just hides the entry point. v1 cleanup means deleting routes, not stashing them.
+
+**Status:** Accepted (2026-05-13).
+
+---
+
 ## ADR-0051 — Auto-suggested projects (post-import detector + manual create + ask scope)
 
 **Context:** /projects was a manual-only feature: the only way to create a Project was via `POST /projects` (scope `mcp`) followed by `PATCH /documents/:id { projects: [...] }` for every doc you wanted attached. After thousands of files were imported (ChatGPT exports, Claude.ai exports, dropped folders) the page reliably showed **zero** projects. The brain knew which entities co-occurred in which documents, knew which docs came in the same import batch, knew their FTS profile — and surfaced none of it. Meanwhile, every Ask Brain query roamed the full corpus with no way to say "answer this with respect to the X project only".

@@ -15,6 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ApiError, api } from '@/lib/api/client';
 import type { DecisionSummary, DocumentSummary, Paginated, ProjectDetail } from '@/lib/api/types';
 
+import { DecisionsTab } from './_components/decisions-tab';
+
 interface ProjectEntity {
   id: string;
   name: string;
@@ -306,9 +308,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
           </TabsContent>
 
           <TabsContent value="decisions">
-            <p className="text-sm text-muted-foreground">
-              {decisionCount} decision{decisionCount === 1 ? '' : 's'}.
-            </p>
+            <DecisionsTab projectId={project.id} projectSlug={project.slug} />
           </TabsContent>
 
           <TabsContent value="questions">

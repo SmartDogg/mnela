@@ -14,7 +14,7 @@ This guide shows how to connect an MCP-capable client (Claude Code CLI, Cursor, 
 ## Issue an MCP token
 
 1. Sign in to the Web UI as admin.
-2. Navigate to `/admin/tokens`.
+2. Navigate to `/admin/system` → the **API tokens** card.
 3. Click **Issue token** and choose a scope:
    - `read_only` — read tools only (queries, lookups).
    - `mcp` — read + write (default for Claude Code; covers note-saving, decisions, entity/link writes).
@@ -143,7 +143,7 @@ Names match TZ §5 verbatim. See the spec for full input/output schemas.
 
 ## Troubleshooting
 
-- **`401 Unauthorized`** — Token is missing, malformed, or has been revoked. Re-issue via `/admin/tokens` and update your client config.
+- **`401 Unauthorized`** — Token is missing, malformed, or has been revoked. Re-issue via `/admin/system` → API tokens and update your client config.
 - **`403 Forbidden`** (or `scope insufficient` in the MCP error body) — The token's scope is too low for the tool you called. Use `mcp` for write tools, `admin` for admin tools.
 - **"Tool not found" in the client** — The client cached an old tool list. Re-add the server, e.g. `claude mcp remove mnela && claude mcp add ...`. For Cursor/Cline, restart the editor.
 - **SSL errors with a self-signed Caddy cert** — Trust the cert in your OS keystore, or point your client at `http://localhost:3010/mcp` while on the same host.

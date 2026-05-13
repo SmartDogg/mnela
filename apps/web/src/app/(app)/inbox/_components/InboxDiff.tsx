@@ -189,19 +189,11 @@ function ConflictingDecisionDiff({
   return (
     <div className="space-y-2 text-xs">
       <div className="grid grid-cols-[1fr_auto_1fr] items-stretch gap-3 rounded-md border border-border/60 bg-muted/30 px-4 py-3">
-        <a
-          href={`/decisions/${payload.decisionId}`}
-          className="break-all text-sm text-foreground hover:underline"
-        >
-          {payload.decisionId}
-        </a>
+        <code className="break-all text-sm text-foreground">{payload.decisionId}</code>
         <span className="self-center text-muted-foreground">↔</span>
-        <a
-          href={`/decisions/${payload.conflictingDecisionId}`}
-          className="break-all text-right text-sm text-foreground hover:underline"
-        >
+        <code className="break-all text-right text-sm text-foreground">
           {payload.conflictingDecisionId}
-        </a>
+        </code>
       </div>
       {payload.summary && <p className="text-[11px] text-muted-foreground">{payload.summary}</p>}
     </div>

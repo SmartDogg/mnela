@@ -1,18 +1,13 @@
 'use client';
 
 import {
+  Activity,
   BookOpen,
   Boxes,
-  Cloud,
-  CloudUpload,
   Cog,
   GitBranch,
-  GraduationCap,
   Inbox as InboxIcon,
-  KeyRound,
   LayoutDashboard,
-  ListChecks,
-  ListTree,
   MessageCircleQuestion,
   Server,
 } from 'lucide-react';
@@ -41,39 +36,29 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
 
   const sections: NavSection[] = [
     {
-      title: t('dashboard'),
+      title: t('workspace'),
       items: [
         { href: '/', label: t('dashboard'), icon: LayoutDashboard },
-        // Graph is the centre of the brain — promote it to top-level so
-        // it's never more than one click away. Global search lives in the
-        // header via ⌘K and no longer has a dedicated sidebar entry.
+        // Graph stays one click from the workspace shell — it is the
+        // canonical visual of the brain. Global search lives in the header
+        // via ⌘K, not as a sidebar entry.
         { href: '/graph', label: t('graph'), icon: GitBranch },
         { href: '/ask', label: t('ask'), icon: MessageCircleQuestion },
       ],
     },
     {
-      title: t('knowledge'),
+      title: t('library'),
       items: [
         { href: '/documents', label: t('documents'), icon: BookOpen },
         { href: '/projects', label: t('projects'), icon: Boxes },
-        { href: '/decisions', label: t('decisions'), icon: ListChecks },
-        { href: '/inbox', label: t('inbox'), icon: InboxIcon },
-      ],
-    },
-    {
-      title: t('operations'),
-      items: [
-        { href: '/imports', label: t('imports'), icon: CloudUpload },
-        { href: '/jobs', label: t('jobs'), icon: ListTree },
+        { href: '/inbox', label: t('review'), icon: InboxIcon },
       ],
     },
     {
       title: t('admin'),
       items: [
+        { href: '/activity', label: t('activity'), icon: Activity },
         { href: '/admin/system', label: t('system'), icon: Server },
-        { href: '/admin/tokens', label: t('tokens'), icon: KeyRound },
-        { href: '/admin/claude', label: t('claude'), icon: GraduationCap },
-        { href: '/admin/backup', label: t('backup'), icon: Cloud },
       ],
     },
   ];

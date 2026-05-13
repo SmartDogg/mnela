@@ -6,9 +6,9 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -39,7 +39,7 @@ import { ApiError, api } from '@/lib/api/client';
 import type { AuthTokenSummary, CreatedAuthToken, TokenScope } from '@/lib/api/types';
 import { formatDate } from '@/lib/utils';
 
-export default function AdminTokensPage(): JSX.Element {
+export function TokensSection(): JSX.Element {
   const t = useTranslations('admin.tokens');
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -78,55 +78,55 @@ export default function AdminTokensPage(): JSX.Element {
   };
 
   return (
-    <div>
-      <PageHeader
-        title={t('title')}
-        subtitle={t('subtitle')}
-        actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus /> {t('create')}
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>{t('create')}</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="tk-name">{t('name')}</Label>
-                  <Input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="tk-scope">{t('scope')}</Label>
-                  <Select value={scope} onValueChange={(v) => setScope(v as TokenScope)}>
-                    <SelectTrigger id="tk-scope">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">{t('scopes.admin')}</SelectItem>
-                      <SelectItem value="mcp">{t('scopes.mcp')}</SelectItem>
-                      <SelectItem value="read_only">{t('scopes.read_only')}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+    <Card id="tokens">
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle>{t('title')}</CardTitle>
+          <CardDescription>{t('subtitle')}</CardDescription>
+        </div>
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="size-4" /> {t('create')}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t('create')}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tk-name">{t('name')}</Label>
+                <Input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-              <DialogFooter>
-                <Button
-                  disabled={!name || create.isPending}
-                  onClick={() => create.mutate({ name, scope })}
-                >
-                  {create.isPending && <Loader2 className="animate-spin" />}
-                  {t('create')}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
-      />
+              <div className="space-y-1.5">
+                <Label htmlFor="tk-scope">{t('scope')}</Label>
+                <Select value={scope} onValueChange={(v) => setScope(v as TokenScope)}>
+                  <SelectTrigger id="tk-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">{t('scopes.admin')}</SelectItem>
+                    <SelectItem value="mcp">{t('scopes.mcp')}</SelectItem>
+                    <SelectItem value="read_only">{t('scopes.read_only')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                disabled={!name || create.isPending}
+                onClick={() => create.mutate({ name, scope })}
+              >
+                {create.isPending && <Loader2 className="animate-spin" />}
+                {t('create')}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardHeader>
 
-      <div className="px-8 py-6">
+      <CardContent>
         <div className="rounded-lg border">
           <Table>
             <TableHeader>
@@ -181,7 +181,7 @@ export default function AdminTokensPage(): JSX.Element {
             </TableBody>
           </Table>
         </div>
-      </div>
+      </CardContent>
 
       <Dialog open={!!showToken} onOpenChange={() => setShowToken(null)}>
         <DialogContent>
@@ -199,6 +199,6 @@ export default function AdminTokensPage(): JSX.Element {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </Card>
   );
 }

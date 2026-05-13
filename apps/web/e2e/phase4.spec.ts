@@ -69,11 +69,14 @@ test('graph page renders filter sidebar and search bar', async ({ page, request 
   await expect(page.getByPlaceholder(/search/i).first()).toBeVisible();
 });
 
-test('/jobs surfaces the enrichment section and expandable stats', async ({ page, request }) => {
+test('/activity?tab=queue surfaces the enrichment section and expandable stats', async ({
+  page,
+  request,
+}) => {
   await loginOrSkip(page, request);
-  // /admin/jobs now redirects to /jobs; both URLs land on the same page.
+  // /admin/jobs and /jobs both redirect to /activity?tab=queue after v1 menu consolidation.
   await page.goto('/admin/jobs');
-  await expect(page).toHaveURL(/\/jobs$/, { timeout: 10_000 });
+  await expect(page).toHaveURL(/\/activity\?tab=queue$/, { timeout: 10_000 });
 
   // Top "Enrichment" section is always present.
   await expect(page.getByText(/^Enrichment$/).first()).toBeVisible({ timeout: 10_000 });

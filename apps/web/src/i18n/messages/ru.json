@@ -27,18 +27,14 @@
     "ask": "Спросить мозг",
     "documents": "Документы",
     "projects": "Проекты",
-    "decisions": "Решения",
     "graph": "Граф",
     "inbox": "Inbox",
-    "imports": "Импорты",
-    "jobs": "Задачи",
+    "review": "Ревью",
+    "activity": "Импорты и очереди",
     "admin": "Админ",
     "system": "Система",
-    "tokens": "Токены",
-    "claude": "Claude Code",
-    "backup": "Бэкап",
-    "knowledge": "Знания",
-    "operations": "Операции",
+    "workspace": "Рабочая область",
+    "library": "Библиотека",
     "jobsDashboard": "Статистика задач"
   },
   "login": {
@@ -133,6 +129,7 @@
   "documents": {
     "title": "Документы",
     "subtitle": "Всё, что попало в мозг.",
+    "openImports": "Импорты и очереди",
     "filters": {
       "status": "Статус",
       "source": "Источник",
@@ -286,6 +283,15 @@
       "decided": "Решено",
       "reverted": "Отменено",
       "superseded": "Заменено"
+    }
+  },
+  "activity": {
+    "title": "Импорты и очереди",
+    "subtitle": "Активные загрузки и фоновые задачи в одном месте.",
+    "newImport": "Новый импорт",
+    "tabs": {
+      "uploads": "Импорты",
+      "queue": "Очередь"
     }
   },
   "imports": {
@@ -663,7 +669,7 @@
         "apiKey": "API-ключ",
         "apiKeyPlaceholder": "(хранится зашифрованным)",
         "extra": "Дополнительно (JSON, опционально)",
-        "extraPlaceholder": "{\"headers\":{\"HTTP-Referer\":\"https://mnela.local\"}}",
+        "extraPlaceholder": "'{'\"headers\":'{'\"HTTP-Referer\":\"https://mnela.local\"'}}'",
         "extraInvalid": "extra должен быть валидным JSON",
         "cancel": "Отмена",
         "submit": "Добавить провайдера",
@@ -696,11 +702,6 @@
       "unavailable": "Недоступен",
       "test": "Тест",
       "phase5": "Появится в Фазе 5"
-    },
-    "backup": {
-      "title": "Бэкап",
-      "subtitle": "Снимок БД и vault.",
-      "phase10": "Появится в Фазе 10"
     },
     "jobs": {
       "title": "Статистика задач",
@@ -741,8 +742,8 @@
     "networkError": "Сетевая ошибка — проверьте, что API запущен"
   },
   "inbox": {
-    "title": "Inbox",
-    "subtitle": "Подсказки на ревью (слияние сущностей, новые связи).",
+    "title": "Ревью",
+    "subtitle": "Очередь системных подсказок — слияния сущностей, связи, дубли, конфликты.",
     "empty": "Пусто. Подсказки появляются, когда Claude обогащает документы.",
     "emptyHint": "Расширьте диапазон дат или сбросьте фильтры выше.",
     "loadError": "Не удалось загрузить inbox",

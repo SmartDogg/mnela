@@ -33,8 +33,10 @@ import type {
 import { formatBytes } from '@/lib/utils';
 
 import { AddProviderDialog } from './_components/add-provider-dialog';
+import { ClaudeStatusBlock } from './_components/claude-status-block';
 import { ProviderCard } from './_components/provider-card';
 import { PerFeatureSelector } from './_components/per-feature-selector';
+import { TokensSection } from './_components/tokens-section';
 
 const SECTION_ORDER: ConfigSection[] = [
   'providers',
@@ -146,6 +148,9 @@ export default function AdminSystemPage(): JSX.Element {
           );
         })}
 
+        {/* API tokens used to live at /admin/tokens; folded into System after v1 menu consolidation. */}
+        <TokensSection />
+
         {config.isLoading && <Skeleton className="h-24 w-full" />}
       </div>
     </div>
@@ -195,6 +200,8 @@ function ProvidersSection({
               providers={providers.providers}
               onChanged={onChanged}
             />
+            {/* Claude CLI is one of the built-in providers; its rate-limit + test surface is here. */}
+            <ClaudeStatusBlock />
           </>
         )}
       </CardContent>
