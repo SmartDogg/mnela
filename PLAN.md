@@ -164,6 +164,22 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 ---
 
+## Done after Phase 8 — ADR-0051: Auto-suggested projects (2026-05-13)
+
+**Acceptance:** Imports trigger post-enrichment debounced detector that proposes Projects without auto-creating them; user can accept/dismiss; /projects/new combines suggestions + manual create with optional autofill; Ask Brain supports `?scope=project:<slug>`; admin master gate kills all token spend when off.
+
+- [x] `ProjectStatus` / `ProjectSource` / `DocumentProjectLinkSource` enums + `signature` / `signatureMetrics` / `batchId` / `autoFill` columns
+- [x] Manual migration `20260514120000_auto_suggested_projects`
+- [x] `projects.suggestions.enabled` + `projects.autoSummary.enabled` SystemConfig keys with new `projects` admin section
+- [x] BullMQ `projects` queue + `SuggestionDetector` (batch + cluster, SQL-only) + `SuggestionNamer` (single Haiku call, heuristic fallback) + `ProjectsSuggesterService` with revival logic + `ProjectsAutofillService`
+- [x] Post-enrichment debounce trigger in `enrichment.consumer`
+- [x] API endpoints: `GET /projects?status=`, `GET /projects/suggestions`, `POST /projects/suggestions/rescan`, `POST /projects/preview`, `POST /projects/:slug/dismiss`, `POST /projects` accept-from-slug flow, `POST /projects/:slug/documents`
+- [x] Ask scope: `AskDto.scopeProjectSlug` plumbed through agent loop, search tool filters
+- [x] Web: /projects with Active/Suggested/Dismissed tabs, /projects/new (suggestion grid + manual form + preview + autofill), /projects/[slug] redesigned with Files/Timeline/Entities/Decisions/Questions, "Ask about this project" deep-link
+- [x] Tests: signature/revival unit + suggester gate-off short-circuit + revival path
+
+---
+
 ## Out of scope for v1 (TZ §18)
 
 Telegram bot, mobile app, public landing, multi-tenant, plugins API, marketplace, federated search, LLM proxy, TTS, image gen, realtime sync to Notion/Drive/GitHub.

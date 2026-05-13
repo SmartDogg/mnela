@@ -4,16 +4,24 @@ This file is read by Claude Code when working inside the Mnela repo. The Server-
 
 ## Architecture overview
 
-- `apps/api` — NestJS HTTP API. `/search/ask` SSE stream, `/admin/*` panels, `/system/config` typed registry, `/admin/providers` LLM CRUD.
-- `apps/orchestrator` — NestJS process running BullMQ consumers: enrichment, project-context, vision (analyze_attachment), claude-status boot.
+- `apps/api` — NestJS HTTP API. `/search/ask` SSE stream, `/admin/*` panels, `/system/config` typed registry, `/admin/providers` LLM CRUD, `/projects` (incl. suggestions + preview + dismiss).
+- `apps/orchestrator` — NestJS process running BullMQ consumers: enrichment, project-context, vision (analyze_attachment), claude-status boot, and the new `projects` consumer (project_suggest debounced post-enrichment + project_autofill). See [ADR-0051](./DECISIONS.md#adr-0051--auto-suggested-projects-post-import-detector--manual-create--ask-scope).
 - `apps/worker` — ingestion worker (parsers, attachment promotion).
 - `apps/mcp` — HTTP MCP transport for external tools.
-- `apps/web` — Next.js 15 UI.
+- `apps/web` — Next.js 15 UI. `/projects` (Active/Suggested/Dismissed tabs), `/projects/new` (suggestion grid + manual create + autofill), `/projects/[slug]` (Files/Timeline/Entities/Decisions/Questions + Ask-scope deep-link).
 - `packages/llm-providers` — **the only place** AI calls flow through. See [ADR-0049](./DECISIONS.md#adr-0049--pluggable-llm-provider-abstraction).
 - `packages/mcp-tools` — `@mnela/mcp-tools` registry. `invokeTool(name, input, ctx)` is the shared entry point for both the MCP host and the in-process agent loop.
 - `packages/core` — `system-registry.ts`: typed `SystemConfig` keys + `readRegistryValue` shared by api/orchestrator/worker.
 - `packages/db` — Prisma schema + repositories. Migrations are hand-written when `migrate dev` is impractical on Windows (see ADR-0048 stopgap pattern).
 - `packages/claude-runner` — low-level wrapper around the `claude` CLI subprocess. **Never import directly from app code** — go through `@mnela/llm-providers`.
+
+## Project suggestions (ADR-0051)
+
+- Every `enrich_document` success triggers `ProjectsQueueService.debounceBatchSuggest(batchId)` on the import's `__import.batchId`. Five-minute debounce coalesces all docs in one batch into a single detector run.
+- `SuggestionDetector` (SQL-only) finds two candidate shapes: `batch:<batchId>` (import batches) and `cluster:<sortedEntityHash>:<docBucket>` (entity co-occurrence). `SuggestionNamer` makes one Haiku-class call per emitted candidate; everything else is heuristic.
+- The master gate `projects.suggestions.enabled` (default `true`) lives in `packages/core/system-registry.ts`. When off, the suggester exits before any SQL/LLM. Surfaced under the `Projects` section of `/admin/system`.
+- Ask scope: `AskDto.scopeProjectSlug` + URL param `?scope=project:<slug>` on `/ask` plumbs through `ask.service.buildToolContext` so `mnela_find_similar` / `mnela_search` filter by project. The CLI provider gets the prefixed user turn but no filter shim (owns its own MCP).
+- Lifecycle: `ProjectStatus = active | suggested | dismissed`. Dismiss removes `linkSource=suggested` links but keeps the row + `signatureMetrics` snapshot. On the next detector pass, growth ≥ 50% docs **or** ≥ 2 new top entities mints a fresh suggestion row (the dismissed one stays as audit).
 
 ## AI call routing (must read before touching)
 

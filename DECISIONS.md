@@ -4,6 +4,44 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0051 — Auto-suggested projects (post-import detector + manual create + ask scope)
+
+**Context:** /projects was a manual-only feature: the only way to create a Project was via `POST /projects` (scope `mcp`) followed by `PATCH /documents/:id { projects: [...] }` for every doc you wanted attached. After thousands of files were imported (ChatGPT exports, Claude.ai exports, dropped folders) the page reliably showed **zero** projects. The brain knew which entities co-occurred in which documents, knew which docs came in the same import batch, knew their FTS profile — and surfaced none of it. Meanwhile, every Ask Brain query roamed the full corpus with no way to say "answer this with respect to the X project only".
+
+**Decision:** Combine **post-import auto-suggest** (proposals only, never auto-creates) with **manual create + optional auto-fill** and **Ask-scope by project**, gated by a single admin tumbler so the whole machinery can be turned off if the operator doesn't want any token spend on it.
+
+1. **Project lifecycle is now an enum.** `ProjectStatus = active | suggested | dismissed`. `active` covers manual + accepted suggestions; `suggested` is detector-emitted, awaiting user decision; `dismissed` is a previously-rejected suggestion (kept for the revival audit trail). The legacy free-string `archived`/`paused` values are folded into `active` on migration. A second enum, `ProjectSource = manual | suggested_batch | suggested_cluster`, records _how_ a project was born so the UI can render origin badges.
+
+2. **Detector is SQL-only.** Two complementary strategies, both pure Postgres:
+   - **Batch**: any import `__import.batchId` with ≥ `batchMinDocs` (default 5) documents AND ≥ `batchMinSharedEntities` (default 3) entities co-occurring across them becomes a single suggestion. Signature: `batch:<batchId>`.
+   - **Cluster**: aggregate `DocumentEntity` to find groups of ≥ `clusterTopN` (default 4) entities co-occurring in ≥ `clusterMinDocs` (default 6) documents regardless of import origin. Signature: `cluster:<sortedEntityHash>:<docCountBucket>` — bucketed so a cluster ticking from 12→13 docs doesn't mint a new row every enrichment cycle.
+
+   The detector runs in the new `projects` BullMQ queue. Two triggers:
+   - Post-enrichment: enrichment.consumer calls `ProjectsQueueService.debounceBatchSuggest(batchId)` after each successful `enrich_document`. A deterministic jobId + 5-minute delay coalesces all docs in the same batch into one scan once enrichment quiets down.
+   - Manual rescan: `POST /projects/suggestions/rescan` (button on /projects + /projects/new) sweeps recent batches + entity clusters with a date-stamped jobId so spammed clicks dedupe.
+
+3. **Exactly one cheap LLM call per emitted candidate.** Heuristic detection produces `{ name, description }` already (`"Import · 47 docs · top: X, Y"`). We then make one Haiku-class call via `@mnela/llm-providers` (feature `projectSuggest` → routes through `providers.enrichment` → `providers.default` → built-in CLI) to convert that into something human (3-6 word name, ≤ 280 char description). If the call fails / parses to garbage / the gate is off, the heuristic name ships as-is. **No LLM-judge over every cluster, no per-doc relevance ranking, no embedding pass.** Per-rescan cost is bounded at `maxCandidatesPerPass` (default 20) Haiku calls.
+
+4. **Dismiss with growth-based revival.** Dismiss flips status to `dismissed`, removes the `suggested`-source DocumentProject links (manual/autoFill links survive), and _keeps_ `signature` + `signatureMetrics` on the row. On every detector pass, if the same signature surfaces with **either** ≥ 50% more documents **or** ≥ 2 new top entities (compared to the snapshot stored on the dismissed row), a _fresh_ `status='suggested'` row is created — the dismissed row stays as an archive entry. This stops "I dismissed this once" from silencing a cluster that genuinely got more meaningful with time.
+
+5. **Manual creation is two flavours.** `/projects/new` shows the existing Suggested grid up top (one card per `status='suggested'` row, with Accept/Dismiss). Below it a free-form form (`name`, `description`, `auto-fill` checkbox). With auto-fill off you can click "Preview candidates" → synchronous embedding + entity-name match → list with checkboxes → submit creates an `active` project with those exact `linkSource=manual` links. With auto-fill on, the project is created empty and a background `project_autofill` job links candidates as `linkSource=autoFill`. `DocumentProjectLinkSource` distinguishes manual/suggested/autoFill so dismiss can selectively unlink the right subset.
+
+6. **Ask scope by project.** `AskDto.scopeProjectSlug` (URL param `?scope=project:<slug>` on /ask) is plumbed through `ask.service.runProviderForAsk`. The agent loop's MCP-tools context wraps `findSimilar` and `search` to prepend `{ projectSlug: <slug> }` to every filter. The user-turn message is prefixed with `[scope: project <slug> — restrict search to this project]` so the model also reasons in-scope rather than just being filtered behind the back. The CLI provider gets the prefixed user turn but no filter shim (it owns its own MCP).
+
+7. **Admin gate is the master switch.** `projects.suggestions.enabled` (default `true`) is checked **at the start** of the suggester run — when off, no detection SQL fires, no Haiku call is made, the job exits with `status: 'disabled'`. `projects.autoSummary.enabled` (default `true`) gates the optional summary refresh on the project detail page. Both surface under a new `Projects` section in `/admin/system`.
+
+**Alternatives considered:**
+
+- _LLM-judge on every candidate ("is this project-worthy?")_: cleanest Suggested feed, but on a 5k-document corpus the rescan would do hundreds of Haiku calls per pass. Rejected — the heuristic + bucketed signature gives 80% of the quality at 5% of the cost.
+- _Auto-accept suggestions (skip the Suggested tab)_: the user explicitly didn't want this. Auto-creating projects from every batch would flood /projects with junk like "Untitled batch 2026-04-13".
+- _Embed-everything ranking instead of entity overlap_: requires generating + storing embeddings for the full corpus, plus a vector index. Heavy lift for a feature whose primary signal (entity co-occurrence) we already have. Possible follow-up if user-research shows the heuristic misses important clusters.
+- _Continuous watcher that auto-links new docs to existing projects_: noisier and risks links the user didn't approve. Manual auto-fill on create is the explicit user-opt-in version of this.
+- _One `projects` provider routing key_: would mean adding another `providers.projectSuggest` SystemConfig row. We instead reuse `providers.enrichment` because every suggestion-naming call is a single-turn no-tool request — same shape as enrichment's text classification.
+
+**Status:** Accepted (2026-05-13).
+
+---
+
 ## ADR-0050 — Pinned chat turns become Documents; /daily merges into /ask
 
 **Context:** Two adjacent UX problems converged. (1) `/ask` was a black hole — answers streamed back, citations parsed via `<cite doc-id="…">…</cite>` regex from the body (`CitationParser`), and nothing in the brain could later remember "what did we discuss about Postgres FTS three weeks ago?". The Q&A existed as `Message` rows but never as graph-visible entities. (2) `/daily` was a separate Prisma model (`DailyNote { date, contentMd, mood }`) with its own controller, page, and editor — disjoint from `/graph`, with no enrichment path, no embeddings, no entity extraction. Two write-only logs of thinking that the brain itself couldn't reason over.
