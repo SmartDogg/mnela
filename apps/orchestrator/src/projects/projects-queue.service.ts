@@ -62,7 +62,10 @@ export class ProjectsQueueService implements OnModuleInit, OnModuleDestroy {
    */
   async debounceBatchSuggest(batchId: string): Promise<void> {
     if (!this.queue) return;
-    const jobId = `suggest:batch:${batchId}`;
+    // BullMQ rejects ':' inside `jobId` (validateOptions throws "Custom Id
+    // cannot contain :"). The batchId itself is a cuid (safe chars) so a
+    // simple '-' separator gives us the same dedupe semantics.
+    const jobId = `suggest-batch-${batchId}`;
     const existing = await this.queue.getJob(jobId);
     if (existing) {
       const state = await existing.getState().catch(() => undefined);
@@ -103,7 +106,8 @@ export class ProjectsQueueService implements OnModuleInit, OnModuleDestroy {
    */
   async enqueueRescan(): Promise<{ jobId: string }> {
     if (!this.queue) throw new Error('projects queue not ready');
-    const jobId = `suggest:rescan:${new Date().toISOString().slice(0, 16)}`;
+    // BullMQ rejects ':' inside `jobId` — see debounceBatchSuggest comment.
+    const jobId = `suggest-rescan-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}`;
     const existing = await this.queue.getJob(jobId);
     if (existing) {
       return { jobId: existing.id ?? jobId };

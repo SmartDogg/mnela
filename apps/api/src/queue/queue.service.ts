@@ -81,7 +81,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
    */
   async enqueueProjectRescan(): Promise<{ jobId: string }> {
     if (!this.projectsQueue) throw new Error('projects queue not initialized');
-    const jobId = `suggest:rescan:${new Date().toISOString().slice(0, 16)}`;
+    // BullMQ rejects ':' inside `jobId` (validateOptions), so the dedupe key
+    // uses '-' instead. The minute-precision suffix still gives us idempotent
+    // burst-click protection.
+    const jobId = `suggest-rescan-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}`;
     const existing = await this.projectsQueue.getJob(jobId);
     if (existing) return { jobId: existing.id ?? jobId };
     const dbJob = await this.jobs.create({
