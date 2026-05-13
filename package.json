@@ -57,6 +57,7 @@
       "@swc/core",
       "argon2",
       "esbuild",
+      "ffmpeg-static",
       "msgpackr-extract",
       "prisma",
       "sharp"

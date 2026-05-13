@@ -27,8 +27,15 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
+# Force static linkage (`BUILD_SHARED_LIBS=OFF`) so the runtime stage only
+# needs the single `whisper-server` binary — without this, recent
+# whisper.cpp builds emit `libwhisper.so.1` + `libggml*.so` that the
+# minimal runtime image is missing.
 RUN git clone --depth 1 --branch ${WHISPER_REF} ${WHISPER_REPO} . \
- && cmake -B build -DWHISPER_BUILD_SERVER=ON -DCMAKE_BUILD_TYPE=Release \
+ && cmake -B build \
+      -DWHISPER_BUILD_SERVER=ON \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=OFF \
  && cmake --build build --target whisper-server -j"$(nproc)"
 
 RUN mkdir -p /models \

@@ -1,0 +1,17 @@
+name: mnela-dev
+
+# Host-port override for the optional whisper service. The base optional
+# compose file uses `expose` (visible only inside docker network) since
+# its intended consumer is the workerized api/worker stack running on
+# the same network. When apps/worker is run on the host (pnpm dev), we
+# need an actual host port — this overlay adds `ports: 127.0.0.1:8090`.
+# Bring up with:
+#   docker compose -f infra/docker/docker-compose.yml \
+#     -f infra/docker/docker-compose.optional.yml \
+#     -f infra/docker/docker-compose.whisper-host.yml \
+#     --profile optional up -d whisper
+
+services:
+  whisper:
+    ports:
+      - '127.0.0.1:${WHISPER_HOST_PORT:-8090}:8080'
