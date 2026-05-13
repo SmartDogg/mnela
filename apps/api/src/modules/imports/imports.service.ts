@@ -6,7 +6,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { JobRepository, PrismaService } from '@mnela/db';
 import type { Job, Prisma } from '@prisma/client';
 
-import { loadEnv } from '../../env.js';
+import { loadEnv, resolvedDataDir } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { JobsService } from '../jobs/jobs.service.js';
 import { SystemService } from '../system/system.service.js';
@@ -29,6 +29,9 @@ interface ImportPayload {
   contentHash: string;
   receivedAt: string;
   origin: 'upload' | 'dropbox' | 'api_ingest';
+  /** Initial provenance for the activity-page filter. Parsers may still
+   * override the resulting Document.source (e.g. detected chatgpt_export). */
+  source: string;
   status: 'received' | 'processing' | 'paused' | 'completed' | 'failed' | 'cancelled';
 }
 
@@ -44,7 +47,7 @@ export class ImportsService {
     private readonly system: SystemService,
   ) {
     const env = loadEnv();
-    this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
+    this.uploadsDir = path.resolve(resolvedDataDir(env), 'uploads');
   }
 
   async createFromUpload(file: ImportFileInput): Promise<Job> {
@@ -87,6 +90,7 @@ export class ImportsService {
       contentHash,
       receivedAt: new Date().toISOString(),
       origin: 'upload',
+      source: 'manual_upload',
       status: 'received',
     };
 
@@ -110,8 +114,31 @@ export class ImportsService {
     return job;
   }
 
-  async list(page?: number, limit?: number) {
-    return this.jobs.list({ type: 'ingest_file' }, { page, limit });
+  async list(page?: number, limit?: number, source?: string) {
+    const filters: Parameters<typeof this.jobs.list>[0] = { type: 'ingest_file' };
+    if (source) filters.payloadSource = source;
+    return this.jobs.list(filters, { page, limit });
+  }
+
+  /**
+   * Distinct provenance values found on `Job.payload.source` for
+   * ingest_file jobs. Aggregates with counts so the UI can label
+   * "Telegram (3)" / "Manual upload (42)" without paginating the whole
+   * jobs table. Rows with no `source` key fall under `manual_upload` so
+   * legacy uploads (pre ADR-0053) still show up in the filter.
+   */
+  async sources(): Promise<{ source: string; count: number }[]> {
+    const rows = await this.prisma.active().$queryRaw<{ source: string | null; count: bigint }[]>`
+      SELECT COALESCE("payload"->>'source', 'manual_upload') AS source, COUNT(*)::bigint AS count
+      FROM "Job"
+      WHERE "type" = 'ingest_file'
+      GROUP BY source
+      ORDER BY count DESC
+    `;
+    return rows.map((r) => ({
+      source: r.source ?? 'manual_upload',
+      count: Number(r.count),
+    }));
   }
 
   async findOne(id: string) {

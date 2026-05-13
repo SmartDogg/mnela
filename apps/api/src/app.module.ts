@@ -19,6 +19,7 @@ import { ProjectsModule } from './modules/projects/projects.module.js';
 import { ProvidersModule } from './modules/providers/providers.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
+import { TelegramModule } from './modules/telegram/telegram.module.js';
 import { PrismaModule, RepositoriesModule } from '@mnela/db';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis.module.js';
@@ -73,6 +74,7 @@ const env = loadEnv();
     ProvidersModule,
     SearchModule,
     SystemModule,
+    TelegramModule,
   ],
   providers: [
     { provide: APP_PIPE, useClass: ZodValidationPipe },

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { diskStorage } from 'multer';
 
-import { loadEnv } from '../../env.js';
+import { loadEnv, resolvedDataDir } from '../../env.js';
 
 /**
  * 50 GiB raw upper bound at the Multer transport layer. The real configurable
@@ -16,7 +16,7 @@ import { loadEnv } from '../../env.js';
 export const MULTER_RAW_CEILING_BYTES = 50 * 1024 * 1024 * 1024;
 
 const env = loadEnv();
-const incomingDir = path.resolve(env.MNELA_DATA_DIR, 'uploads', '.incoming');
+const incomingDir = path.resolve(resolvedDataDir(env), 'uploads', '.incoming');
 mkdirSync(incomingDir, { recursive: true });
 
 /**

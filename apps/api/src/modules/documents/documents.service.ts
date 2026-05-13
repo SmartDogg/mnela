@@ -21,15 +21,24 @@ import {
   ProjectRepository,
   type UpdateDocumentInput,
 } from '@mnela/db';
-import { readClaudeStatus, readWhisperStatus } from '@mnela/queue';
+import { readClaudeStatus, readWhisperStatus, type IngestFileJob } from '@mnela/queue';
 import { Prisma } from '@prisma/client';
 import type { Attachment, Document, Job } from '@prisma/client';
 
-import { loadEnv } from '../../env.js';
+import { loadEnv, resolvedDataDir } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { RedisService } from '../../redis.service.js';
 
 const PHASE2_MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB; ZIP imports go through /imports.
+
+const ACCEPTABLE_UPLOAD_SOURCES = new Set([
+  'manual_upload',
+  'api_ingest',
+  'telegram',
+  'voice_note',
+  'email',
+  'web_clip',
+]);
 
 export interface UploadFileInput {
   /** Absolute path where Multer streamed the upload. */
@@ -37,6 +46,11 @@ export interface UploadFileInput {
   originalname: string;
   mimetype: string;
   size: number;
+  /** Caller-supplied `Document.source`. Filtered against
+   * `ACCEPTABLE_UPLOAD_SOURCES` so callers can't forge provenance like
+   * `chatgpt_export` (those are parser-detected only). Falls back to
+   * `manual_upload` when missing/invalid. */
+  source?: string;
 }
 
 export interface UploadAccepted {
@@ -77,7 +91,7 @@ export class DocumentsService {
   ) {
     void this.projects;
     const env = loadEnv();
-    this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
+    this.uploadsDir = path.resolve(resolvedDataDir(env), 'uploads');
   }
 
   /**
@@ -115,6 +129,9 @@ export class DocumentsService {
       }
     }
 
+    const resolvedSource =
+      file.source && ACCEPTABLE_UPLOAD_SOURCES.has(file.source) ? file.source : 'manual_upload';
+
     const job = await this.jobs.create({
       type: 'ingest_file',
       payload: {
@@ -126,6 +143,7 @@ export class DocumentsService {
         contentHash,
         receivedAt: new Date().toISOString(),
         origin: 'upload',
+        source: resolvedSource,
         status: 'received',
       } as unknown as Prisma.InputJsonValue,
       priority: 50,
@@ -139,6 +157,7 @@ export class DocumentsService {
       size: file.size,
       contentHash,
       origin: 'upload',
+      source: resolvedSource as IngestFileJob['source'],
       importBatchId,
     });
 

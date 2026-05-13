@@ -10,7 +10,7 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 
-import { loadEnv } from '../../env.js';
+import { loadEnv, resolvedDataDir } from '../../env.js';
 import { sha256File } from '../imports/upload.config.js';
 
 export interface StagedAttachment {
@@ -62,7 +62,7 @@ export class AskAttachmentsService implements OnModuleDestroy {
 
   constructor() {
     const env = loadEnv();
-    this.stagingDir = path.resolve(env.MNELA_DATA_DIR, 'uploads', '.chat-staging');
+    this.stagingDir = path.resolve(resolvedDataDir(env), 'uploads', '.chat-staging');
     mkdirSync(this.stagingDir, { recursive: true });
     this.sweeper = setInterval(() => {
       void this.sweep();

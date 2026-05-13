@@ -23,6 +23,8 @@ import { MULTER_RAW_CEILING_BYTES, incomingUploadStorage } from './upload.config
 const PaginationSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
+  /** Filter by Job.payload.source — see /activity?tab=uploads. */
+  source: z.string().min(1).max(40).optional(),
 });
 
 class PaginationQuery extends createZodDto(PaginationSchema) {}
@@ -38,7 +40,17 @@ export class ImportsController {
   @RequiredScope('read_only')
   @ApiOperation({ summary: 'List import jobs' })
   list(@Query() query: PaginationQuery) {
-    return this.imports.list(query.page, query.limit);
+    return this.imports.list(query.page, query.limit, query.source);
+  }
+
+  @Get('sources')
+  @RequiredScope('read_only')
+  @ApiOperation({
+    summary:
+      'Distinct Job.payload.source values present across ingest_file jobs, with counts. Used by /activity?tab=uploads to render only the source filters that actually exist.',
+  })
+  sources(): Promise<{ source: string; count: number }[]> {
+    return this.imports.sources();
   }
 
   @Get(':id')

@@ -38,7 +38,7 @@ import type { Prisma } from '@prisma/client';
 import type { McpToolContext } from '@mnela/mcp-tools';
 
 import type { Principal } from '../../auth/types.js';
-import { loadEnv } from '../../env.js';
+import { loadEnv, resolvedDataDir } from '../../env.js';
 import { QueueService } from '../../queue/queue.service.js';
 import { RedisService } from '../../redis.service.js';
 import { sha256File } from '../imports/upload.config.js';
@@ -191,7 +191,7 @@ export class AskService {
     private readonly jobs: JobRepository,
   ) {
     const env = loadEnv();
-    this.uploadsDir = path.resolve(env.MNELA_DATA_DIR, 'uploads');
+    this.uploadsDir = path.resolve(resolvedDataDir(env), 'uploads');
   }
 
   /**
@@ -1110,6 +1110,14 @@ function askSystemPrompt(): string {
     'If the user attached files, treat their contents (when inlined in the prompt) as primary context to draw on.',
     'If evidence is insufficient, say so plainly. Do not guess.',
     "Answer in the user's language (Russian if the question is in Russian, English otherwise).",
+    // Hard guardrails against meta-talk leaking into the final answer.
+    // Without these, claude-cli sometimes prefaces its response with
+    // process narration like "I will NOT use TodoWrite for this..." or
+    // "Let me read the missing chunks..." which is noise to the end
+    // user. Only `mcp__mnela__*` is relevant; everything else (TodoWrite,
+    // Skill, environment metadata) is invisible runtime plumbing.
+    'Do NOT mention or narrate your tool choices, planning steps, or any tool that is not an `mcp__mnela__*` tool. Do not say things like "I will not use TodoWrite" or "Let me read the next part" — just produce the answer.',
+    'No preamble, no recap of what you are about to do. Start with the answer; finish at the end.',
   ].join('\n');
 }
 

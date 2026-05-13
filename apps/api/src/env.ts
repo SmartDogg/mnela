@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { resolveDataDir } from '@mnela/llm-providers';
 import { z } from 'zod';
 
 const EnvSchema = z.object({
@@ -60,12 +61,28 @@ export function resetEnvCache(): void {
   cached = undefined;
 }
 
+/**
+ * Resolves `MNELA_DATA_DIR` relative to the **repo root** (where
+ * `pnpm-workspace.yaml` lives), not the per-process cwd. Without this,
+ * `pnpm --filter @mnela/api dev` lands in `apps/api/` and `./data`
+ * becomes `apps/api/data/` — a nonexistent path that breaks claude
+ * subprocess MCP wiring. The walker mirrors `@mnela/llm-providers`
+ * `resolveDataDir` so api/orchestrator/worker all share one data dir
+ * out of the box (override with an absolute `MNELA_DATA_DIR` for prod).
+ */
+export function resolvedDataDir(env: AppEnv = loadEnv()): string {
+  return path.isAbsolute(env.MNELA_DATA_DIR)
+    ? env.MNELA_DATA_DIR
+    : resolveDataDir(env.MNELA_DATA_DIR);
+}
+
 export function claudeVaultDir(env: AppEnv = loadEnv()): string {
-  return env.MNELA_CLAUDE_VAULT_DIR ?? path.resolve(env.MNELA_DATA_DIR, 'vault');
+  return env.MNELA_CLAUDE_VAULT_DIR ?? path.resolve(resolvedDataDir(env), 'vault');
 }
 
 export function claudeMcpConfigPath(env: AppEnv = loadEnv()): string {
   return (
-    env.MNELA_CLAUDE_MCP_CONFIG ?? path.resolve(env.MNELA_DATA_DIR, 'claude/claude-mcp-config.json')
+    env.MNELA_CLAUDE_MCP_CONFIG ??
+    path.resolve(resolvedDataDir(env), 'claude/claude-mcp-config.json')
   );
 }

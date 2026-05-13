@@ -70,16 +70,18 @@ export class DocumentsController {
     summary:
       'Upload any supported file. Streams to disk, returns a Job; the worker parses asynchronously. Audit is non-transactional — same rationale as POST /imports.',
   })
-  upload(@UploadedFile() file: Express.Multer.File | undefined) {
+  upload(@UploadedFile() file: Express.Multer.File | undefined, @Body() body: { source?: string }) {
     if (!file) {
       throw new BadRequestException('Missing file field "file"');
     }
-    return this.documents.upload({
+    const input: Parameters<DocumentsService['upload']>[0] = {
       path: file.path,
       originalname: file.originalname,
       mimetype: file.mimetype,
       size: file.size,
-    });
+    };
+    if (body?.source && typeof body.source === 'string') input.source = body.source;
+    return this.documents.upload(input);
   }
 
   @Patch(':id')
