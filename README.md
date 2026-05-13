@@ -3,8 +3,8 @@
 Self-hosted personal second brain that exposes itself as an MCP server.
 
 - Source of truth: PostgreSQL. Markdown vault is generated as an export.
-- Enrichment uses a server-side `claude` CLI subprocess (no third-party LLM API keys).
-- Falls back to "Dumb Mode" (FTS-only) if Claude Code isn't installed.
+- AI calls (Ask Brain, enrichment, vision, project-context) route through a pluggable provider layer (ADR-0049). The built-in **Claude Code (CLI) subprocess** works out of the box with a Claude Max subscription — no API key required. **Anthropic API** and any **OpenAI-compatible endpoint** (OpenAI, DeepSeek, Grok, Gemini-via-OpenRouter, Ollama, LM Studio) can be added in `/admin/system → AI Providers`.
+- Falls back to "Dumb Mode" (FTS-only) if no provider is reachable.
 
 > Status: under construction. See [`PLAN.md`](./PLAN.md) for phase-by-phase progress.
 

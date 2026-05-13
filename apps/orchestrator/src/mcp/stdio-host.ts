@@ -14,7 +14,6 @@ import 'reflect-metadata';
 import {
   AttachmentRepository,
   AuditLogRepository,
-  DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
@@ -53,7 +52,6 @@ async function main(): Promise<void> {
   const audit = new AuditLogRepository(() => prisma);
   const projects = new ProjectRepository(() => prisma);
   const decisions = new DecisionRepository(() => prisma);
-  const daily = new DailyNoteRepository(() => prisma);
   const jobs = new JobRepository(() => prisma);
   const attachments = new AttachmentRepository(() => prisma);
   const search = new HybridSearchAdapter(() => prisma);
@@ -75,7 +73,6 @@ async function main(): Promise<void> {
     audit,
     projects,
     decisions,
-    daily,
     jobs,
     auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
     principal,

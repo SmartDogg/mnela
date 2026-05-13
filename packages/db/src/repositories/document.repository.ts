@@ -75,6 +75,33 @@ export interface ReplaceContentInput {
   chunks: { chunkIndex: number; text: string; tokenCount: number }[];
 }
 
+/**
+ * Explicit Document columns for raw-SQL paths. Mirrors the Prisma
+ * `Document` model field-by-field MINUS `search_vector` (generated
+ * tsvector that Prisma's $queryRaw deserialiser can't unpack —
+ * including it makes any SELECT * silently return an empty row set).
+ */
+const DOCUMENT_COLUMNS = [
+  '"id"',
+  '"source"',
+  '"sourceId"',
+  '"title"',
+  '"rawText"',
+  '"cleanText"',
+  '"contentHash"',
+  '"tokenCount"',
+  '"language"',
+  '"type"',
+  '"metadata"',
+  '"status"',
+  '"createdAt"',
+  '"updatedAt"',
+  '"ingestedAt"',
+  '"enrichedAt"',
+  '"archivedAt"',
+  '"vaultPath"',
+].join(', ');
+
 export class DocumentRepository {
   constructor(private readonly getPrisma: PrismaProvider) {}
 
@@ -104,6 +131,119 @@ export class DocumentRepository {
       where: { source, sourceId },
       orderBy: { createdAt: 'asc' },
     });
+  }
+
+  /**
+   * ADR-0050: daily notes are Documents with source='daily' and sourceId
+   * holding the YYYY-MM-DD key. Uses raw SQL because the generated
+   * Prisma client may not yet know about the new SourceType values
+   * after migration 20260513150000 — its enum validator would reject
+   * 'daily' before the query reaches the DB.
+   *
+   * The explicit column list deliberately excludes `search_vector` —
+   * Prisma can't deserialise tsvector via $queryRaw and silently fails
+   * the whole row read.
+   */
+  async findDailyByDate(date: string): Promise<Document | null> {
+    try {
+      const rows = await this.getPrisma().$queryRawUnsafe<Document[]>(
+        `SELECT ${DOCUMENT_COLUMNS} FROM "Document"
+         WHERE source = 'daily' AND "sourceId" = $1 AND "archivedAt" IS NULL
+         ORDER BY "createdAt" DESC
+         LIMIT 1`,
+        date,
+      );
+      return rows[0] ?? null;
+    } catch {
+      // SourceType.daily not in DB yet — pretend no notes exist.
+      return null;
+    }
+  }
+
+  /**
+   * ADR-0050: list daily notes in a date window for /ask's Memory
+   * sidebar. Same source/archived filter as findDailyByDate, but ranged
+   * via sourceId lex order (YYYY-MM-DD sorts naturally).
+   */
+  async listDaily(
+    from: string | undefined,
+    to: string | undefined,
+    limit = 50,
+  ): Promise<Document[]> {
+    try {
+      const filters: string[] = [`source = 'daily'`, '"archivedAt" IS NULL'];
+      const args: unknown[] = [];
+      if (from !== undefined) {
+        args.push(from);
+        filters.push(`"sourceId" >= $${args.length}`);
+      }
+      if (to !== undefined) {
+        args.push(to);
+        filters.push(`"sourceId" <= $${args.length}`);
+      }
+      args.push(limit);
+      const sql = `SELECT ${DOCUMENT_COLUMNS} FROM "Document" WHERE ${filters.join(' AND ')} ORDER BY "sourceId" DESC LIMIT $${args.length}`;
+      return await this.getPrisma().$queryRawUnsafe<Document[]>(sql, ...args);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * ADR-0050: ingested /ask messages also produce Documents. The Memory
+   * sidebar groups source IN ('chat','daily') by the day they were
+   * ingested. Raw SQL for the same reason as findDailyByDate.
+   */
+  async listPinnedAndDaily(from: Date | undefined, limit = 100): Promise<Document[]> {
+    try {
+      const filters: string[] = [`source IN ('chat', 'daily')`, '"archivedAt" IS NULL'];
+      const args: unknown[] = [];
+      if (from !== undefined) {
+        args.push(from);
+        filters.push(`"createdAt" >= $${args.length}`);
+      }
+      args.push(limit);
+      const sql = `SELECT ${DOCUMENT_COLUMNS} FROM "Document" WHERE ${filters.join(' AND ')} ORDER BY "createdAt" DESC LIMIT $${args.length}`;
+      return await this.getPrisma().$queryRawUnsafe<Document[]>(sql, ...args);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Insert a Document(source='chat') for a pinned /ask turn. Goes
+   * through raw SQL so the generated client doesn't need to know about
+   * the new SourceType.chat label. Returns the freshly-inserted row.
+   * Caller supplies the `id` because `@default(cuid())` is enforced by
+   * Prisma client (not the DB), so a raw INSERT must provide one.
+   */
+  async createChatPin(args: {
+    id: string;
+    sourceId: string;
+    title: string;
+    rawText: string;
+    contentHash: string;
+    metadata: Record<string, unknown>;
+  }): Promise<Document> {
+    const rows = await this.getPrisma().$queryRawUnsafe<Document[]>(
+      `INSERT INTO "Document" (
+         "id", "source", "sourceId", "title", "rawText", "contentHash",
+         "type", "status", "metadata", "createdAt", "updatedAt", "ingestedAt"
+       ) VALUES (
+         $1, 'chat', $2, $3, $4, $5,
+         'conversation', 'parsed', $6::jsonb, now(), now(), now()
+       )
+       ON CONFLICT ("contentHash") DO UPDATE SET "updatedAt" = now()
+       RETURNING ${DOCUMENT_COLUMNS}`,
+      args.id,
+      args.sourceId,
+      args.title,
+      args.rawText,
+      args.contentHash,
+      JSON.stringify(args.metadata),
+    );
+    if (!rows[0]) throw new Error('createChatPin: insert returned no row');
+    return rows[0];
   }
 
   findManyByIds(ids: readonly string[]): Promise<Document[]> {

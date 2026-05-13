@@ -4,6 +4,79 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 
 ---
 
+## ADR-0050 — Pinned chat turns become Documents; /daily merges into /ask
+
+**Context:** Two adjacent UX problems converged. (1) `/ask` was a black hole — answers streamed back, citations parsed via `<cite doc-id="…">…</cite>` regex from the body (`CitationParser`), and nothing in the brain could later remember "what did we discuss about Postgres FTS three weeks ago?". The Q&A existed as `Message` rows but never as graph-visible entities. (2) `/daily` was a separate Prisma model (`DailyNote { date, contentMd, mood }`) with its own controller, page, and editor — disjoint from `/graph`, with no enrichment path, no embeddings, no entity extraction. Two write-only logs of thinking that the brain itself couldn't reason over.
+
+**Decision:** Unify both under the existing Document pipeline and let the user opt one-shot Q&A turns into the graph.
+
+1. **`Message.kind = ephemeral | pinned`.** New Prisma enum (`MessageKind`). Default is `ephemeral` — pure chat, zero graph footprint, zero cost beyond the LLM call. The chat composer surfaces a 2-state toggle (📌 Pin / 💬 Ask) that defaults to `ephemeral` after every send so pinning is always an explicit act.
+
+2. **Pinned → Document(source='chat') → enrichment.** When the assistant finishes a pinned turn, `AskService.promoteToDocument` bundles `# Question\n…\n# Answer\n…` into a single Document (sourceId = assistantMessageId, contentHash = `chat:` + sha256, metadata records the conversation/message ids and the cited docIds), then enqueues the same `enrich_document` BullMQ job that imported documents go through. Entity extraction, edge proposals, embeddings — all flow uniformly. The `Message.pinnedDocumentId` back-reference lets the UI render a "📌 saved to documents" link next to the bubble.
+
+3. **`SourceType.daily` + DailyNote → Document migration.** Two new SourceType values (`chat`, `daily`). The old `DailyNote` table is read once during migration and each row becomes a `Document(source='daily', sourceId=YYYY-MM-DD, contentHash='daily:'+date, metadata={date,mood,migratedFrom:'DailyNote'}, status='raw')`. Then the table is dropped. Migration is split into two SQL files because Postgres forbids using a freshly-added enum label inside the same transaction.
+
+   The daily rows are migrated **as `status='raw'`, not enriched** — kicking the entire backlog into the enrichment queue would burn the Claude slot for hours. Users re-enrich on demand from the new Daily sidebar in `/ask`.
+
+4. **Citations are tool-derived, not body-parsed.** The old `<cite doc-id="…">…</cite>` regex (`CitationParser`) is deleted. `AskService.streamSmart` now watches `tool_result` frames: for `mnela_find_similar` / `mnela_search` it captures every returned doc-id, for `mnela_get_document` the single doc, for `mnela_get_chunks` the input.documentId. Each unique docId becomes one citation chip with a snippet pulled from the tool output. The model's prose body is shipped as-is (with a residual `<cite>`/`[N]` stripper on the client for graceful degradation if a model still emits them). Chips render as a strip below the answer body — never inline — so the answer reads as natural prose.
+
+5. **Stream reliability.** The SSE generator emits a synthetic `heartbeat` frame every 15 s so reverse proxies don't drop a quiet stream. An idle-timeout watcher aborts the upstream provider if no frame (including the heartbeats) arrives for 60 s, emitting an `error:'timeout'` frame instead of hanging forever. On the frontend, `useAskStream` retries once with the same payload if `fetch`/reader tears down before a terminal `done`/`error` — the UI surfaces a "Reconnecting…" indicator.
+
+6. **`/ask` Daily sidebar replaces `/daily`.** A new `AskSidebar` hosts two tabs: Chats (existing conversations list) and Daily (groups Document(source IN 'chat','daily') by day, served by `GET /search/pinned-by-day`). Daily-sourced documents deep-link to `/documents/:id`; pinned-chat rows deep-link back into the originating conversation. The standalone `/daily` route, the `DailyModule` on the API, and the `DailyNoteRepository` are deleted. The `mnela_get_daily_note` MCP tool is preserved (date in, daily Document or null out) — the contract stays stable, only the backing store moves.
+
+7. **Save Synthesis stays.** Pin = one Q&A turn → one chat-typed Document. Save Synthesis (the existing post-hoc "save this whole conversation as a single note") writes a synthesis-typed Document covering the full conversation. Different scopes, both kept. The composer pin toggle and the synthesis-button-in-the-header serve different intentions.
+
+**Alternatives:**
+
+- _Pin → two Documents (Q + A separately):_ duplicates the data, doubles entity extraction cost, and creates two graph nodes for one thought — rejected.
+- _Pin → Document but skip enrichment by default, let user trigger it:_ loses the "pinned things just appear in the graph" promise; the whole point of pinning is the implicit upgrade — rejected.
+- _Keep DailyNote table as-is, expose it through a different UI shell:_ leaves daily notes graph-invisible (no embeddings, no entity links, no edges). The "second brain" claim only works if everything you write is queryable. Rejected.
+- _Migrate DailyNote rows + immediately enqueue enrichment for all:_ one user with 365 daily notes would saturate the Claude slot for an hour and block normal `/ask` traffic. Lazy re-enrich is safer.
+- _Keep the regex `<cite>` parser AND derive from tools:_ dual sources race each other and the model sometimes hallucinates cuids inside `<cite>`. Tool-result is the single source of truth.
+- _Server-side stream resume by message id:_ the LLM call isn't resumable mid-stream (token billing would re-trigger). One client-side retry on transport drop is the best we can do without rebuilding the provider contract.
+
+**Status:** Accepted (2026-05-13).
+
+---
+
+## ADR-0049 — Pluggable LLM provider abstraction
+
+**Context:** Every AI-touched feature in Mnela (Ask Brain, document enrichment, project-context refresh, image vision) was hard-wired to the Claude Code subprocess via `@mnela/claude-runner`'s `streamClaude` / `runClaude`. Vision had a half-baked dual backend (`attachments.imageAnalysisBackend = 'claude-code' | 'anthropic-api'`) but the rest of the codebase couldn't talk to anything other than the CLI. For the OSS release we needed a uniform plug surface so users without a Claude Max subscription can bring their own Anthropic key, an OpenAI key, a self-hosted Ollama, etc., without losing tool-grounded behaviour (`mnela_find_similar`, `mnela_get_chunks`, `mnela_add_entities`, …).
+
+**Decision:** One shared abstraction in a new `@mnela/llm-providers` package, with three implementations and a database-backed registry.
+
+1. **`LLMProvider` interface.** One method (`stream(req): AsyncIterable<ProviderFrame>`) plus a `test()` health probe. Frames are a discriminated union: `start | token | tool_call | tool_result | done | error`. Vision and enrichment use a `completeProvider(...)` helper that drains the stream into a final text. `complete` and `stream` agree on the same union so the SSE layer relays everything 1:1.
+
+2. **Three providers.**
+   - `ClaudeCliProvider` — wraps `streamClaude` / `runClaude` / `claudeTest` from `@mnela/claude-runner`. The CLI handles its own multi-turn MCP tool use, so this provider ignores `req.tools` (Claude loads them via `--mcp-config`). It's the **built-in** provider — never persisted, always present in `/admin/providers` as a virtual row with id `builtin:claude-cli`.
+   - `AnthropicApiProvider` — `@anthropic-ai/sdk` loaded via `Function('return import(...)')` so the package compiles without the optional dep. Native `tool_use` schema. Emits per-block tool_call frames; the agent loop runs them.
+   - `OpenAiCompatibleProvider` — `fetch` against any `/v1/chat/completions` endpoint. SSE accumulator + per-index tool_call partial JSON. Image inputs go in as `image_url` data-URLs. Configured by `{ baseUrl, apiKey, model, extra }`. Presets in the UI cover OpenAI, DeepSeek, Grok, Gemini-via-OpenAI-mode, OpenRouter, Ollama, LM Studio.
+
+3. **In-process agent loop.** Non-CLI providers run a multi-turn tool-use loop in-process (`@mnela/llm-providers/agent-loop`). Each turn: stream tokens through, accumulate tool_call frames, on `done` either return (no calls) or execute every call via `invokeTool(name, input, ctx)` from `@mnela/mcp-tools`, append a `tool` message per result, loop. Bounded at 8 turns. Tool schemas are derived from each `ToolDefinition.inputSchema` (zod) via a tight in-package converter (we don't depend on `zod-to-json-schema` — it covers more drafts than we need and ships ESM/CJS conflicts).
+
+4. **Encryption at rest.** API keys live in `LlmProvider.apiKeyEnc BYTEA` as AES-256-GCM ciphertext (12B IV ‖ 16B tag ‖ ct). The 32-byte master key is sourced from `MNELA_PROVIDER_SECRET` (env, preferred) or auto-generated to `<MNELA_DATA_DIR>/keystore/provider.key` (mode 0600) on first boot. The admin UI surfaces the active source and the last4 chars of every saved key but never round-trips plaintext.
+
+5. **Routing.** `SystemConfig` carries `providers.default` (defaults to `builtin:claude-cli`) plus per-feature overrides `providers.ask | enrichment | vision | projectContext`. Empty overrides fall through to default. The router is intentionally tiny — no caching across requests so admin tweaks take effect immediately. Resolution falls back to the built-in CLI on any miss (deleted provider row, decrypt failure, instantiation error) so a misconfigured Anthropic provider can't kill `/ask`.
+
+6. **REST surface.** `/admin/providers` exposes CRUD plus `/:id/test` (1-shot "say ok" probe) and `/defaults`, `/defaults/apply-all` (set every override to one provider in a click). `claude_cli` is forbidden at POST; the built-in row only shows up in `GET`. `apiKey` is write-only.
+
+7. **UI redesign.** `/admin/system` now opens with an **AI Providers** hero card (provider grid + per-feature selectors + "Apply default to all" button + an "Add provider" dialog with the preset list) and groups the remaining tunables into Ingestion / Enrichment / Storage & Backup / Advanced sections. The old free-list-of-groups layout is gone. The `attachments.imageAnalysisBackend` and `attachments.imageAnalysisModel` keys are removed by migration; vision routing now flows through `providers.vision` + the chosen provider's `model` field.
+
+8. **Chat tool timeline.** `/ask` SSE forwards `tool_call` / `tool_result` frames; the chat panel renders them as a compact inline timeline above each assistant bubble (`🔧 mnela_find_similar(query=…)` with a spinner → ✓ / ✗). Works uniformly for the CLI (parsed out of stream-json `content_block_start`) and API providers (emitted directly).
+
+**Schema changes:** new `enum LlmProviderKind` and `model LlmProvider`. Migration `20260513120000_llm_providers` adds the table + drops the now-obsolete vision keys from `SystemConfig`. `SystemConfig` gains five `providers.*` keys via the registry (no migration needed — registry-backed). `system-registry.ts` gains an optional `section` field used by the UI.
+
+**Alternatives:**
+
+- **Provider-per-feature backend interface (the legacy `ImageAnalysisBackend`).** Worked for vision but doesn't scale: every new feature would invent its own shape and there'd be no shared streaming/abort semantics. Replaced.
+- **Run the MCP HTTP server in-process for API providers.** Considered. Rejected because api + orchestrator already hold the same Prisma + Redis dependencies the MCP host needs; calling `invokeTool()` directly is one network hop fewer and removes a moving part.
+- **Cache provider instances.** Constructor calls are cheap (no HTTP work until `stream()`), and tight resolution-per-request means admin changes take effect without a restart. Caches can be added later if profiling shows hotspot.
+- **Pull `@anthropic-ai/sdk` and an OpenAI SDK into hard deps.** Increases install size for users on a pure Claude Max setup. Both are loaded dynamically; the package compiles even when neither is present.
+
+**Status:** Accepted. Default route (`builtin:claude-cli`) preserves the prior behaviour; adding an API provider in `/admin/system` is the new opt-in lever.
+
+---
+
 ## ADR-0048 — Streaming imports + image attachment analysis pipeline
 
 **Context:** A 1.4 GB ChatGPT export couldn't be imported: Multer held the upload in `file.buffer` (≈1.4 GB heap), the API then `fs.writeFile`'d it back to disk (peak 2.8 GB), and the worker re-read the whole file into memory via `fs.readFile(filePath)` before handing the buffer to the parser. The import cap was hardcoded at 1 GB in two places (`MAX_IMPORT_BYTES` + `FileInterceptor.limits.fileSize`). Separately, both parsers (ChatGPT + Claude.ai) only extracted text — images, DALL-E renders, file attachments referenced by `asset_pointer` and `attachments[*]` were dropped on the floor or inlined as `[attachment: name]` text markers. There was no image-vision pass at all, and the `/admin/system` page was a free-form key/value editor that no service actually read.
@@ -25,7 +98,7 @@ Each entry: context, decision, alternatives considered, status. Reverse-chronolo
 - **Each image as Attachment only (no companion Document).** Considered — simpler, less write amplification. Rejected because the user specifically wanted images to be first-class entries in `/documents` with their own entity links, searchable description, and graph nodes. Promoting to `Document(type=image)` is what makes that possible without a separate `ImageContent` table.
 - **Streaming hash of attachment via crypto stream piped into createReadStream → write copy in one pass.** Cleaner, but the current `persistAttachments` already hashes then copies; the disk hit is negligible for image-sized files (≪100 MB) and the simpler code reads better. We'll switch only if attachments routinely exceed a few hundred MB.
 
-**Status:** Accepted. Verifying end-to-end against the 1.4 GB OpenAI-export.zip is the immediate next step after the dev-server restarts (so the Prisma client regenerates and the parser's typed `linkedDocumentId` writes can replace the raw SQL stopgap).
+**Status:** Accepted. **Superseded in part by ADR-0049:** the dual-backend `attachments.imageAnalysisBackend` enum and the `claudeCodeImageBackend` / `anthropicApiImageBackend` files no longer exist — vision now routes through the unified `LLMProvider` abstraction (`providers.vision` SystemConfig key + the provider's own `model` field). The streaming-import + parser + image-promotion pieces of ADR-0048 are unchanged and remain in effect.
 
 ---
 

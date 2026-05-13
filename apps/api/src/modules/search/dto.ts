@@ -13,6 +13,8 @@ const SourceTypeEnum = z.enum([
   'voice_note',
   'email',
   'web_clip',
+  'chat',
+  'daily',
 ]);
 
 export const SearchSchema = z.object({
@@ -36,6 +38,24 @@ export const AskSchema = z.object({
   query: z.string().min(1).max(4000),
   conversationId: z.string().min(1).optional(),
   mode: z.enum(['auto', 'fts']).default('auto'),
+  /**
+   * `ingest` turns are promoted to Document(source='chat') and run
+   * through the standard enrichment pipeline so they (and any attached
+   * files) feed the brain graph. `chat` is the default — files attached
+   * in this mode are read-only context for the answer and discarded
+   * once the stream ends.
+   *
+   * App-level vocabulary; the DB enum still stores `ephemeral|pinned`
+   * (translated inside AskService).
+   */
+  kind: z.enum(['chat', 'ingest']).default('chat'),
+  /**
+   * IDs returned by POST /search/ask/attachments. The server validates
+   * each against the in-memory staging map (one-shot ownership check),
+   * inlines text-like files into the LLM prompt, and — in ingest mode —
+   * enqueues them through the normal /imports ingestion pipeline.
+   */
+  attachmentIds: z.array(z.string().min(1)).max(20).optional(),
 });
 
 export class AskDto extends createZodDto(AskSchema) {}

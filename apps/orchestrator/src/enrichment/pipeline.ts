@@ -1,4 +1,3 @@
-import { runClaude } from '@mnela/claude-runner';
 import { readRegistryValue } from '@mnela/core';
 import {
   AttachmentRepository,
@@ -8,19 +7,18 @@ import {
   SystemConfigRepository,
   normalizeEntityName,
 } from '@mnela/db';
+import { type ClaudeCliProvider, completeProvider, type LLMProvider } from '@mnela/llm-providers';
 import { peekSlot, publishEvent, recordEnrichmentCompletion } from '@mnela/queue';
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ClaudeStatusService } from '../claude-status/claude-status.service.js';
-import { loadEnv, mcpConfigPath, vaultDir } from '../env.js';
+import { OrchestratorProvidersService } from '../providers/providers.service.js';
 import { RateLimitService } from '../rate-limit/rate-limit.service.js';
 import { RedisService } from '../redis.service.js';
-import { anthropicApiImageBackend } from './image-analysis/anthropic-api-backend.js';
 import {
-  type ImageAnalysisBackend,
-  type ImageAnalysisInput as BackendInput,
-} from './image-analysis/backend.js';
-import { claudeCodeImageBackend } from './image-analysis/claude-code-backend.js';
+  parseImageAnalysisOutput,
+  IMAGE_ANALYSIS_OUTPUT_INSTRUCTION,
+} from './image-analysis/output.js';
 import { enrichmentPromptFor, projectContextRefreshPromptFor } from './prompts.js';
 
 export interface EnrichmentInput {
@@ -61,20 +59,24 @@ export class EnrichmentPipeline {
     private readonly claudeStatus: ClaudeStatusService,
     private readonly rateLimit: RateLimitService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly providers: OrchestratorProvidersService,
   ) {}
 
   async run(input: EnrichmentInput): Promise<EnrichmentOutcome> {
-    const env = loadEnv();
-    const status = await this.claudeStatus.get();
-    if (!status.available) {
-      this.logger.debug(`skip ${input.documentId}: claude unavailable (${status.reason ?? '?'})`);
-      return {
-        status: 'skipped',
-        addedEntities: 0,
-        addedEdges: 0,
-        droppedLowConfidence: 0,
-        reason: status.reason ?? 'unavailable',
-      };
+    const provider = await this.providers.resolveForFeature('enrichment');
+    const usingCli = provider.config.kind === 'claude_cli';
+    if (usingCli) {
+      const status = await this.claudeStatus.get();
+      if (!status.available) {
+        this.logger.debug(`skip ${input.documentId}: claude unavailable (${status.reason ?? '?'})`);
+        return {
+          status: 'skipped',
+          addedEntities: 0,
+          addedEdges: 0,
+          droppedLowConfidence: 0,
+          reason: status.reason ?? 'unavailable',
+        };
+      }
     }
     const respectRateLimit = await readRegistryValue<boolean>(
       this.systemConfig,
@@ -91,7 +93,7 @@ export class EnrichmentPipeline {
     }
 
     const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
-    if (useSlot) {
+    if (usingCli && useSlot) {
       const slot = await peekSlot(this.redis.client);
       if (slot && slot.owner !== 'enrichment') {
         this.logger.debug(`yielding to ${slot.owner} slot for ${input.documentId}`);
@@ -107,10 +109,6 @@ export class EnrichmentPipeline {
 
     await this.documents.update(input.documentId, { status: 'enriching' });
     const startedAtMs = Date.now();
-    // The web client already has the title cached from `document.created`
-    // (emitted at ingestion time and persisted via cacheSync), so this event
-    // can stay slim — payload skips title here. Image analysis below does
-    // include filename because that path already loaded the attachment.
     await publishEvent(this.redis.client, {
       type: 'enrichment.document.started',
       payload: {
@@ -136,8 +134,6 @@ export class EnrichmentPipeline {
           ...(outcome.reason ? { reason: outcome.reason } : {}),
         },
       });
-      // Only successful runs count toward p50/ratePerMinute — a failed
-      // 30-second Claude crash shouldn't drag the success-time stats up.
       if (ok) {
         await recordEnrichmentCompletion(this.redis.client, {
           jobId: input.dbJobId,
@@ -147,70 +143,59 @@ export class EnrichmentPipeline {
       return outcome;
     };
 
-    const result = await runClaude({
-      prompt: enrichmentPromptFor(input.documentId),
-      mcpConfig: mcpConfigPath(env),
-      addDirs: [vaultDir(env)],
-      bin: env.MNELA_CLAUDE_BIN,
-      timeoutMs: env.MNELA_CLAUDE_TIMEOUT_MS,
-      outputFormat: 'stream-json',
-      env: {
-        DATABASE_URL: env.DATABASE_URL,
-        REDIS_URL: env.REDIS_URL,
-        MNELA_DATA_DIR: env.MNELA_DATA_DIR,
-        MNELA_LOG_LEVEL: env.MNELA_LOG_LEVEL,
-      },
-    });
+    const { text, final } = await this.runEnrichmentPrompt(
+      provider,
+      enrichmentPromptFor(input.documentId),
+    );
 
-    if (result.rateLimitHit) {
-      await this.rateLimit.pause(result.rateLimitHit.resetAt);
-      const reason = 'rate-limit' as const;
-      await this.claudeStatus.set({
-        available: false,
-        reason,
-        checkedAt: new Date().toISOString(),
-        ...(result.rateLimitHit.resetAt
-          ? { resetAt: result.rateLimitHit.resetAt.toISOString() }
-          : {}),
-      });
+    if (final.type === 'error' && final.reason === 'rate-limit') {
+      if (final.resetAt) await this.rateLimit.pause(final.resetAt);
+      if (usingCli) {
+        await this.claudeStatus.set({
+          available: false,
+          reason: 'rate-limit',
+          checkedAt: new Date().toISOString(),
+          ...(final.resetAt ? { resetAt: final.resetAt.toISOString() } : {}),
+        });
+      }
       await this.documents.update(input.documentId, { status: 'parsed' });
       return finish({
         status: 'rate-limited',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
-        reason,
+        reason: 'rate-limit',
       });
     }
-
-    if (result.authError) {
-      await this.claudeStatus.set({
-        available: false,
-        reason: result.authError === 'invalid-key' ? 'no-binary' : 'not-logged-in',
-        checkedAt: new Date().toISOString(),
-      });
+    if (final.type === 'error' && final.reason === 'auth') {
+      if (usingCli) {
+        await this.claudeStatus.set({
+          available: false,
+          reason: 'not-logged-in',
+          checkedAt: new Date().toISOString(),
+        });
+      }
       await this.documents.update(input.documentId, { status: 'parsed' });
       return finish({
         status: 'auth-error',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
-        reason: result.authError,
+        reason: 'auth',
       });
     }
-
-    if (result.exitCode !== 0 || result.timedOut) {
+    if (final.type === 'error') {
       await this.documents.update(input.documentId, { status: 'failed' });
       return finish({
         status: 'failed',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
-        reason: result.timedOut ? 'timeout' : `exit ${result.exitCode}`,
+        reason: final.message ?? final.reason,
       });
     }
 
-    const summary = parseStructured(result.result?.result ?? '');
+    const summary = parseStructured(text);
     await this.documents.update(input.documentId, { status: 'enriched' });
     await publishEvent(this.redis.client, {
       type: 'document.enriched',
@@ -235,25 +220,26 @@ export class EnrichmentPipeline {
   }
 
   /**
-   * Project context refresh — Claude reads mnela_get_project_context and
-   * writes a fresh contextMd back via mnela_update_project_context. Shares
-   * the same Claude availability + rate-limit + slot gates as document
-   * enrichment so both task families respect the single Max budget.
+   * Project context refresh — same provider routing as text enrichment,
+   * minus the document.update bookkeeping.
    */
   async runProjectContext(input: ProjectContextRefreshInput): Promise<EnrichmentOutcome> {
-    const env = loadEnv();
-    const status = await this.claudeStatus.get();
-    if (!status.available) {
-      this.logger.debug(
-        `skip project ${input.projectSlug}: claude unavailable (${status.reason ?? '?'})`,
-      );
-      return {
-        status: 'skipped',
-        addedEntities: 0,
-        addedEdges: 0,
-        droppedLowConfidence: 0,
-        reason: status.reason ?? 'unavailable',
-      };
+    const provider = await this.providers.resolveForFeature('projectContext');
+    const usingCli = provider.config.kind === 'claude_cli';
+    if (usingCli) {
+      const status = await this.claudeStatus.get();
+      if (!status.available) {
+        this.logger.debug(
+          `skip project ${input.projectSlug}: claude unavailable (${status.reason ?? '?'})`,
+        );
+        return {
+          status: 'skipped',
+          addedEntities: 0,
+          addedEdges: 0,
+          droppedLowConfidence: 0,
+          reason: status.reason ?? 'unavailable',
+        };
+      }
     }
     const respectRateLimit = await readRegistryValue<boolean>(
       this.systemConfig,
@@ -269,7 +255,7 @@ export class EnrichmentPipeline {
       };
     }
     const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
-    if (useSlot) {
+    if (usingCli && useSlot) {
       const slot = await peekSlot(this.redis.client);
       if (slot && slot.owner !== 'enrichment') {
         return {
@@ -282,31 +268,21 @@ export class EnrichmentPipeline {
       }
     }
 
-    const result = await runClaude({
-      prompt: projectContextRefreshPromptFor(input.projectSlug),
-      mcpConfig: mcpConfigPath(env),
-      addDirs: [vaultDir(env)],
-      bin: env.MNELA_CLAUDE_BIN,
-      timeoutMs: env.MNELA_CLAUDE_TIMEOUT_MS,
-      outputFormat: 'stream-json',
-      env: {
-        DATABASE_URL: env.DATABASE_URL,
-        REDIS_URL: env.REDIS_URL,
-        MNELA_DATA_DIR: env.MNELA_DATA_DIR,
-        MNELA_LOG_LEVEL: env.MNELA_LOG_LEVEL,
-      },
-    });
+    const { final } = await this.runEnrichmentPrompt(
+      provider,
+      projectContextRefreshPromptFor(input.projectSlug),
+    );
 
-    if (result.rateLimitHit) {
-      await this.rateLimit.pause(result.rateLimitHit.resetAt);
-      await this.claudeStatus.set({
-        available: false,
-        reason: 'rate-limit',
-        checkedAt: new Date().toISOString(),
-        ...(result.rateLimitHit.resetAt
-          ? { resetAt: result.rateLimitHit.resetAt.toISOString() }
-          : {}),
-      });
+    if (final.type === 'error' && final.reason === 'rate-limit') {
+      if (final.resetAt) await this.rateLimit.pause(final.resetAt);
+      if (usingCli) {
+        await this.claudeStatus.set({
+          available: false,
+          reason: 'rate-limit',
+          checkedAt: new Date().toISOString(),
+          ...(final.resetAt ? { resetAt: final.resetAt.toISOString() } : {}),
+        });
+      }
       return {
         status: 'rate-limited',
         addedEntities: 0,
@@ -315,27 +291,29 @@ export class EnrichmentPipeline {
         reason: 'rate-limit',
       };
     }
-    if (result.authError) {
-      await this.claudeStatus.set({
-        available: false,
-        reason: result.authError === 'invalid-key' ? 'no-binary' : 'not-logged-in',
-        checkedAt: new Date().toISOString(),
-      });
+    if (final.type === 'error' && final.reason === 'auth') {
+      if (usingCli) {
+        await this.claudeStatus.set({
+          available: false,
+          reason: 'not-logged-in',
+          checkedAt: new Date().toISOString(),
+        });
+      }
       return {
         status: 'auth-error',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
-        reason: result.authError,
+        reason: 'auth',
       };
     }
-    if (result.exitCode !== 0 || result.timedOut) {
+    if (final.type === 'error') {
       return {
         status: 'failed',
         addedEntities: 0,
         addedEdges: 0,
         droppedLowConfidence: 0,
-        reason: result.timedOut ? 'timeout' : `exit ${result.exitCode}`,
+        reason: final.message ?? final.reason,
       };
     }
 
@@ -349,11 +327,10 @@ export class EnrichmentPipeline {
   }
 
   /**
-   * Vision pipeline for an image Attachment. Routes through the SystemConfig-
-   * selected backend, parses the structured output, and writes
-   * Attachment.description / ocrText / analyzedAt + entity links on the
-   * companion Document(type=image). Status mapping mirrors `run`:
-   * `enriched`/`skipped` → DB Job completed; everything else → failed.
+   * Vision pipeline for an image Attachment. Routes through the
+   * SystemConfig-selected provider with a single-turn image+text prompt;
+   * parses the structured output, writes Attachment.description / ocrText /
+   * analyzedAt + entity links.
    */
   async runImageAnalysis(input: ImageAnalysisInput): Promise<EnrichmentOutcome> {
     const enabled = await readRegistryValue<boolean>(
@@ -364,9 +341,13 @@ export class EnrichmentPipeline {
       return zeroOutcome('skipped', 'image-analysis-disabled');
     }
 
-    const status = await this.claudeStatus.get();
-    if (!status.available) {
-      return zeroOutcome('skipped', status.reason ?? 'unavailable');
+    const provider = await this.providers.resolveForFeature('vision');
+    const usingCli = provider.config.kind === 'claude_cli';
+    if (usingCli) {
+      const status = await this.claudeStatus.get();
+      if (!status.available) {
+        return zeroOutcome('skipped', status.reason ?? 'unavailable');
+      }
     }
     const respectRateLimit = await readRegistryValue<boolean>(
       this.systemConfig,
@@ -376,7 +357,7 @@ export class EnrichmentPipeline {
       return zeroOutcome('rate-limited', 'queue-paused');
     }
     const useSlot = await readRegistryValue<boolean>(this.systemConfig, 'enrichment.useSlot');
-    if (useSlot) {
+    if (usingCli && useSlot) {
       const slot = await peekSlot(this.redis.client);
       if (slot && slot.owner !== 'enrichment') {
         return zeroOutcome('skipped', `slot-held-by-${slot.owner}`);
@@ -427,33 +408,39 @@ export class EnrichmentPipeline {
       return outcome;
     };
 
-    const backendName = await readRegistryValue<'claude-code' | 'anthropic-api'>(
-      this.systemConfig,
-      'attachments.imageAnalysisBackend',
-    );
-    const model = await readRegistryValue<'opus' | 'sonnet' | 'haiku'>(
-      this.systemConfig,
-      'attachments.imageAnalysisModel',
-    );
-    const backend: ImageAnalysisBackend =
-      backendName === 'anthropic-api' ? anthropicApiImageBackend : claudeCodeImageBackend;
-
-    const backendInput: BackendInput = {
+    // For the CLI we send the absolute path inline (the CLI's filesystem
+    // tool reads it); for API providers we attach the image bytes as a
+    // user-message image part — handled by the provider's buildArgs.
+    const visionPrompt = buildVisionPrompt({
       attachmentPath: attachment.path,
       mimeType: attachment.mimeType,
       documentId: attachment.linkedDocumentId ?? '',
-      model,
+      includePathInPrompt: usingCli,
+    });
+
+    const req: Parameters<LLMProvider['stream']>[0] = {
+      messages: [{ role: 'user', content: visionPrompt }],
     };
-
-    const result = await backend.analyze(backendInput);
-    if (result.status === 'unavailable') {
-      return finishImage(zeroOutcome('skipped', `${backend.name}: ${result.reason}`));
+    if (!usingCli) {
+      req.image = { path: attachment.path, mimeType: attachment.mimeType };
     }
-    if (result.status === 'failed') {
-      return finishImage(zeroOutcome('failed', `${backend.name}: ${result.reason}`));
+    const { text, final } = await completeProvider(provider, req);
+
+    if (final.type === 'error') {
+      const reason = final.message ?? final.reason;
+      if (
+        final.reason === 'rate-limit' ||
+        final.reason === 'auth' ||
+        final.reason === 'unavailable'
+      ) {
+        return finishImage(zeroOutcome('skipped', `${provider.config.name}: ${reason}`));
+      }
+      return finishImage(zeroOutcome('failed', `${provider.config.name}: ${reason}`));
     }
 
-    const { output } = result;
+    const output = parseImageAnalysisOutput(text);
+    if (!output) return finishImage(zeroOutcome('failed', 'unstructured-output'));
+
     await this.attachments.setAnalysis(input.attachmentId, {
       description: output.description,
       ocrText: output.ocrText,
@@ -462,8 +449,6 @@ export class EnrichmentPipeline {
     let addedEntities = 0;
     let droppedLowConfidence = 0;
     if (attachment.linkedDocumentId) {
-      // Flip the image Document from raw -> enriched and seed its body so the
-      // /documents detail page and search both surface the description.
       await this.documents.update(attachment.linkedDocumentId, {
         rawText: output.description,
         cleanText: output.description,
@@ -509,7 +494,7 @@ export class EnrichmentPipeline {
     });
 
     this.logger.log(
-      `analyzed image ${input.attachmentId} via ${backend.name}: +${addedEntities} entities, -${droppedLowConfidence} dropped`,
+      `analyzed image ${input.attachmentId} via ${provider.config.name}: +${addedEntities} entities, -${droppedLowConfidence} dropped`,
     );
 
     return finishImage({
@@ -517,6 +502,31 @@ export class EnrichmentPipeline {
       addedEntities,
       addedEdges: 0,
       droppedLowConfidence,
+    });
+  }
+
+  /**
+   * For text enrichment / project-context we drain the provider into a
+   * single text answer. The CLI path stays subprocess-based via the
+   * provider's `.run()` shortcut to avoid the streaming overhead; API
+   * providers go through `stream()` and accumulate.
+   */
+  private async runEnrichmentPrompt(
+    provider: LLMProvider,
+    prompt: string,
+  ): Promise<{
+    text: string;
+    final: Parameters<typeof completeProvider>[1] extends infer _
+      ? Awaited<ReturnType<typeof completeProvider>>['final']
+      : never;
+  }> {
+    if (provider.config.kind === 'claude_cli') {
+      const cli = provider as ClaudeCliProvider;
+      const r = await cli.run({ prompt });
+      return r;
+    }
+    return completeProvider(provider, {
+      messages: [{ role: 'user', content: prompt }],
     });
   }
 }
@@ -554,4 +564,37 @@ function parseStructured(text: string): StructuredSummary {
   } catch {
     return { addedEntitiesCount: 0, addedEdgesCount: 0, droppedLowConfidence: 0 };
   }
+}
+
+function buildVisionPrompt(args: {
+  attachmentPath: string;
+  mimeType: string;
+  documentId: string;
+  includePathInPrompt: boolean;
+}): string {
+  const lines: string[] = [
+    'You are analyzing an image attachment for the Mnela knowledge graph.',
+    '',
+  ];
+  if (args.includePathInPrompt) {
+    lines.push('Read the image at this path:');
+    lines.push(`  ${args.attachmentPath}`);
+    lines.push(`MIME type: ${args.mimeType}`);
+    if (args.documentId) {
+      lines.push(
+        'Companion Document id (for trace only — DO NOT call any MCP tool, just emit JSON):',
+      );
+      lines.push(`  ${args.documentId}`);
+    }
+    lines.push('');
+  } else if (args.documentId) {
+    lines.push(`Companion Document id (for trace only): ${args.documentId}`);
+    lines.push('');
+  }
+  lines.push(
+    'Describe what you see. Extract people, organizations, products, technologies, concepts and any other entities visible. Be conservative: only include an entity if you are reasonably confident it is genuinely depicted (vs. coincidentally pattern-matched).',
+  );
+  lines.push('');
+  lines.push(IMAGE_ANALYSIS_OUTPUT_INSTRUCTION);
+  return lines.join('\n');
 }

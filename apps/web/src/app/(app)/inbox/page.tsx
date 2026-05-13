@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
 import { KeyboardShortcutsOverlay } from '@/components/keyboard-shortcuts-overlay';
 import { PageHeader } from '@/components/page-header';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api/client';
 import { useInboxKeyboard } from '@/lib/keyboard/useInboxKeyboard';
@@ -29,15 +30,19 @@ import {
 } from './filters';
 import { InboxCard } from './inbox-card';
 
+// Backend cap on `limit` is 100 (apps/api inbox dto). Don't raise above that —
+// raising the cap is a separate decision (bulk endpoint is capped at 100 too).
 const PAGE_LIMIT = 100;
 
 export default function InboxPage(): JSX.Element {
   const t = useTranslations('inbox');
   const tBulk = useTranslations('inbox.bulk');
+  const tPage = useTranslations('inbox.pagination');
   const queryClient = useQueryClient();
   const router = useRouter();
   const searchParams = useSearchParams();
   const selection = useInboxSelection();
+  const [page, setPage] = useState(1);
 
   const filters = useMemo(
     () => filtersFromSearchParams(new URLSearchParams(searchParams.toString())),
@@ -51,11 +56,11 @@ export default function InboxPage(): JSX.Element {
   });
 
   const inboxQuery = useQuery({
-    queryKey: ['inbox', filters.status, filters.type, filters.projectSlug, filters.range],
+    queryKey: ['inbox', page, filters.status, filters.type, filters.projectSlug, filters.range],
     queryFn: () =>
       api.get<Paginated<InboxSummary>>('/inbox', {
         query: {
-          page: 1,
+          page,
           limit: PAGE_LIMIT,
           status: filters.status,
           type: filters.type,
@@ -89,7 +94,22 @@ export default function InboxPage(): JSX.Element {
     clearSelection();
     setEditingId(null);
     setFocusedId(null);
+    setPage(1);
   }, [filters.status, filters.type, filters.projectSlug, filters.range, clearSelection]);
+
+  // After a bulk accept/reject, the current page may have drained — if so,
+  // step back so the user isn't stranded on an empty page. Guard on
+  // isFetching to avoid fighting with an in-flight refetch.
+  useEffect(() => {
+    if (
+      !inboxQuery.isFetching &&
+      inboxQuery.data &&
+      inboxQuery.data.items.length === 0 &&
+      page > 1
+    ) {
+      setPage((p) => Math.max(1, p - 1));
+    }
+  }, [inboxQuery.data, inboxQuery.isFetching, page]);
 
   const handleFilterChange = (next: typeof DEFAULT_FILTERS): void => {
     const params = filtersToSearchParams(next).toString();
@@ -194,6 +214,8 @@ export default function InboxPage(): JSX.Element {
   );
 
   const totalShown = filtered.length;
+  const totalAll = inboxQuery.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(totalAll / PAGE_LIMIT));
 
   return (
     <div>
@@ -202,7 +224,8 @@ export default function InboxPage(): JSX.Element {
         value={filters}
         onChange={handleFilterChange}
         projects={projectsQuery.data?.items ?? []}
-        total={totalShown}
+        visibleCount={totalShown}
+        totalCount={totalAll}
         selectedCount={selection.selectedIds.size}
         onSelectAllVisible={() => selection.selectAll(filtered.map((i) => i.id))}
         onClearSelection={() => selection.clear()}
@@ -251,6 +274,30 @@ export default function InboxPage(): JSX.Element {
             />
           );
         })}
+
+        {totalAll > PAGE_LIMIT && (
+          <div className="flex items-center justify-between pt-2 text-sm text-muted-foreground">
+            <span>{tPage('summary', { page, pages: pageCount, total: totalAll })}</span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || inboxQuery.isFetching}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                {tPage('prev')}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= pageCount || inboxQuery.isFetching}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                {tPage('next')}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       <BulkActionBar
         selectedCount={selection.selectedIds.size}

@@ -5,7 +5,7 @@ import {
   type RecentActivityOutput,
   RecentActivityOutputSchema,
 } from '../schemas.js';
-import { serializeDailyNote } from './get-daily-note.js';
+import { serializeDailyDocument } from './get-daily-note.js';
 import { serializeDecision } from './get-project-context.js';
 
 const DEFAULT_DAYS = 7;
@@ -25,12 +25,15 @@ export async function recentActivity(
 ): Promise<RecentActivityOutput> {
   const days = input.days ?? DEFAULT_DAYS;
   const from = new Date(Date.now() - days * MS_PER_DAY);
+  // ADR-0050: daily notes are Document(source='daily'); query by the
+  // ISO-date sourceId so naive lex-comparison matches a real time window.
+  const fromDate = from.toISOString().slice(0, 10);
 
-  const [docsPage, decisionsPage, notes] = await Promise.all([
+  const [docsPage, decisionsPage, dailyDocs] = await Promise.all([
     ctx.documents.list({ dateFrom: from }, { page: 1, limit: 20 }),
     // DecisionListFilters has no date axis; pull the recent page and filter by decidedAt.
     ctx.decisions.list({}, { page: 1, limit: 50 }),
-    ctx.daily.list(from, undefined),
+    ctx.documents.listDaily(fromDate, undefined, 50),
   ]);
 
   return {
@@ -41,6 +44,6 @@ export async function recentActivity(
       createdAt: d.createdAt.toISOString(),
     })),
     decisions: decisionsPage.items.filter((d) => d.decidedAt >= from).map(serializeDecision),
-    notes: notes.map(serializeDailyNote),
+    notes: dailyDocs.map(serializeDailyDocument),
   };
 }

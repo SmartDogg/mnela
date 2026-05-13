@@ -198,16 +198,20 @@ async function main() {
     upsertEdge(eClaudeCode.id, eMcp.id, 'speaks', 0.95, doc3.id),
   ]);
 
-  console.info('Seeding daily note…');
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  await prisma.dailyNote.upsert({
-    where: { date: today },
+  console.info('Seeding daily note (Document(source=daily) per ADR-0050)…');
+  const todayKey = new Date().toISOString().slice(0, 10);
+  await prisma.document.upsert({
+    where: { contentHash: `daily:${todayKey}` },
     create: {
-      date: today,
-      contentMd:
+      source: 'daily',
+      sourceId: todayKey,
+      title: `Daily ${todayKey}`,
+      rawText:
         '## Today\n\n- Sketched Mnela schema\n- Decided on Postgres-first storage\n- Wrote seed data',
-      mood: 'focused',
+      contentHash: `daily:${todayKey}`,
+      type: 'note',
+      status: 'raw',
+      metadata: { date: todayKey, mood: 'focused' },
     },
     update: {},
   });

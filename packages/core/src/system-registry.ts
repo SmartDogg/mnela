@@ -13,9 +13,30 @@
 
 export type ConfigType = 'bytes' | 'int' | 'bool' | 'enum' | 'string';
 
+/**
+ * UI-level grouping used by /admin/system cards. `providers` and `storage`
+ * are new with ADR-0049; the older `imports | parsers | …` bucket survives
+ * for backwards compatibility but is now subordinate to `section`.
+ */
+export type ConfigSection = 'providers' | 'ingestion' | 'enrichment' | 'storage' | 'advanced';
+
 export interface ConfigSpecBase {
   key: string;
-  group: 'imports' | 'parsers' | 'enrichment' | 'vision' | 'whisper' | 'claude' | 'worker';
+  group:
+    | 'imports'
+    | 'parsers'
+    | 'enrichment'
+    | 'vision'
+    | 'whisper'
+    | 'claude'
+    | 'worker'
+    | 'providers';
+  /**
+   * Top-level card the key renders under in /admin/system. Defaults are
+   * derived from `group` so existing specs keep working without explicit
+   * sections.
+   */
+  section?: ConfigSection;
   description: string;
   /** True if changing this requires an app restart to take effect. */
   requiresRestart?: boolean;
@@ -71,6 +92,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'imports.maxBytes',
     type: 'bytes',
     group: 'imports',
+    section: 'ingestion',
     description:
       'Maximum upload size for /imports. Files larger than this are rejected before the worker picks them up. No hard ceiling — set as high as your disk allows.',
     default: GiB(5),
@@ -84,6 +106,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'chatgpt.extractAttachments',
     type: 'bool',
     group: 'parsers',
+    section: 'ingestion',
     description:
       'Match `file-service://file-XXX` asset pointers in ChatGPT conversations against files inside the ZIP and persist them as Attachments + image Documents.',
     default: true,
@@ -92,6 +115,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'chatgpt.linkProjects',
     type: 'bool',
     group: 'parsers',
+    section: 'ingestion',
     description:
       'Promote ChatGPT `conversation_template_id` / `gizmo_id` to project Entities with a `belongs_to` edge to each conversation.',
     default: true,
@@ -100,6 +124,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'claude.extractBinaryAttachments',
     type: 'bool',
     group: 'parsers',
+    section: 'ingestion',
     description:
       'Pull non-text attachments (images, PDFs, binaries) from inside Claude.ai export ZIPs as separate Attachment rows.',
     default: true,
@@ -110,6 +135,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.parallelism',
     type: 'int',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'How many enrichment jobs the orchestrator runs in parallel. Default 1 is safe for Claude Max (one subprocess at a time). Raise it only if you have headroom — multiple parallel `claude` subprocesses each count against your Anthropic quota and can trip rate-limits faster. Effective only after orchestrator restart.',
     default: 1,
@@ -121,6 +147,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.useSlot',
     type: 'bool',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'ADR-0027 single-slot mutex: when enabled, enrichment yields to "Ask Brain" if it holds the shared Claude slot, and Ask yields back. Disable only if you run a setup where enrichment should not pause for chat (e.g. dedicated API key or a separate Claude session). Re-queues yielded jobs with a 30s delay.',
     default: true,
@@ -129,6 +156,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.respectRateLimit',
     type: 'bool',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'Honor the per-session rate-limit pause: when Claude reports a rate-limit hit, the whole enrichment queue pauses until the reset window. Disabling lets jobs keep retrying immediately — useful if you are on a non-Claude backend with its own throttling.',
     default: true,
@@ -137,6 +165,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.attempts',
     type: 'int',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'BullMQ retry attempts for enrich_document jobs. After this many consecutive failures the job moves to "failed" and stops retrying.',
     default: 3,
@@ -147,6 +176,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.backoffMs',
     type: 'int',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'Initial exponential-backoff delay between retries for enrich_document jobs, in milliseconds. Each subsequent retry doubles this.',
     default: 1000,
@@ -157,6 +187,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.imageAttempts',
     type: 'int',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'BullMQ retry attempts for analyze_attachment (image vision) jobs. Separate from text-enrichment because image jobs include disk I/O on top of Claude calls.',
     default: 3,
@@ -167,6 +198,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'enrichment.imageBackoffMs',
     type: 'int',
     group: 'enrichment',
+    section: 'enrichment',
     description:
       'Initial exponential-backoff delay between retries for analyze_attachment jobs, in milliseconds.',
     default: 2000,
@@ -179,6 +211,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'worker.ingestion.concurrency',
     type: 'int',
     group: 'worker',
+    section: 'advanced',
     description:
       'Parallel ingestion jobs the worker runs. Default 2 keeps memory predictable for multi-GB ChatGPT account exports (~1 GB peak per job). Raise on a beefier host; lower if the worker OOMs on large parses. Effective only after worker restart.',
     default: 2,
@@ -190,6 +223,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'worker.transcription.concurrency',
     type: 'int',
     group: 'worker',
+    section: 'advanced',
     description:
       'Parallel transcription jobs the worker runs. Default 1 is recommended — whisper.cpp pegs CPU and parallel transcriptions thrash. Effective only after worker restart.',
     default: 1,
@@ -201,6 +235,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'worker.transcription.attempts',
     type: 'int',
     group: 'worker',
+    section: 'advanced',
     description:
       'BullMQ retry attempts for transcribe_audio jobs (transient whisper.cpp / network errors).',
     default: 3,
@@ -211,6 +246,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'worker.transcription.backoffMs',
     type: 'int',
     group: 'worker',
+    section: 'advanced',
     description:
       'Initial exponential-backoff delay between retries for transcribe_audio jobs, in milliseconds.',
     default: 1000,
@@ -223,27 +259,60 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'attachments.imageAnalysisEnabled',
     type: 'bool',
     group: 'vision',
+    section: 'enrichment',
     description:
       'Run vision analysis on every image attachment after ingestion to populate description + extracted entities.',
     default: true,
   },
-  'attachments.imageAnalysisBackend': {
-    key: 'attachments.imageAnalysisBackend',
-    type: 'enum',
-    group: 'vision',
+
+  // ---- AI providers (ADR-0049) ----
+  // Per-feature provider routing. The value is a provider id from the
+  // LlmProvider table OR the sentinel `builtin:claude-cli` (always
+  // available — the OOTB native Claude Code subprocess path).
+  'providers.default': {
+    key: 'providers.default',
+    type: 'string',
+    group: 'providers',
+    section: 'providers',
     description:
-      'Which Claude entry point to use. `claude-code` reuses the Claude Code CLI (same ADR-0027 slot as text enrichment, no extra credentials). `anthropic-api` calls the SDK directly — faster + cheaper but needs `ANTHROPIC_API_KEY`.',
-    default: 'claude-code',
-    options: ['claude-code', 'anthropic-api'],
+      'Default LLM provider id used when a feature-specific override is unset. Use the built-in sentinel `builtin:claude-cli` to route through the local Claude Code subprocess.',
+    default: 'builtin:claude-cli',
   },
-  'attachments.imageAnalysisModel': {
-    key: 'attachments.imageAnalysisModel',
-    type: 'enum',
-    group: 'vision',
+  'providers.ask': {
+    key: 'providers.ask',
+    type: 'string',
+    group: 'providers',
+    section: 'providers',
     description:
-      'Model id passed to the chosen backend. Sonnet is the default cost/quality balance; Opus is best at detailed scenes; Haiku is fastest.',
-    default: 'sonnet',
-    options: ['opus', 'sonnet', 'haiku'],
+      'Provider override for Ask Brain (/ask). Empty string falls back to providers.default.',
+    default: '',
+  },
+  'providers.enrichment': {
+    key: 'providers.enrichment',
+    type: 'string',
+    group: 'providers',
+    section: 'providers',
+    description:
+      'Provider override for document enrichment + project-context refresh. Empty string falls back to providers.default.',
+    default: '',
+  },
+  'providers.vision': {
+    key: 'providers.vision',
+    type: 'string',
+    group: 'providers',
+    section: 'providers',
+    description:
+      'Provider override for image attachment vision analysis. Empty string falls back to providers.default.',
+    default: '',
+  },
+  'providers.projectContext': {
+    key: 'providers.projectContext',
+    type: 'string',
+    group: 'providers',
+    section: 'providers',
+    description:
+      'Provider override for project-context refresh jobs. Empty string falls back to providers.enrichment then providers.default.',
+    default: '',
   },
 };
 

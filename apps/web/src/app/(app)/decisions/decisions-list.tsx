@@ -32,6 +32,15 @@ import { ApiError, api } from '@/lib/api/client';
 import type { DecisionSummary, Paginated } from '@/lib/api/types';
 import { relativeTime } from '@/lib/utils';
 
+// Status is `String` in Prisma (default 'active') — not an enum, so any
+// value can land here. Render whatever the API returns: localized when we
+// have a translation, otherwise the raw value beautified. This keeps a
+// stray status from the DB from blowing up the whole page (next-intl
+// throws MISSING_MESSAGE on `t('status.unknown')`).
+function statusLabel(t: ReturnType<typeof useTranslations>, status: string): string {
+  return t.has(`status.${status}`) ? t(`status.${status}`) : status.replace(/_/g, ' ');
+}
+
 export function DecisionsList(): JSX.Element {
   const t = useTranslations('decisions');
   const queryClient = useQueryClient();
@@ -166,7 +175,7 @@ export function DecisionsList(): JSX.Element {
               <TableRow key={d.id}>
                 <TableCell className="font-medium">{d.title}</TableCell>
                 <TableCell>
-                  <Badge variant="outline">{t(`status.${d.status}`)}</Badge>
+                  <Badge variant="outline">{statusLabel(t, d.status)}</Badge>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {d.projectId ? (

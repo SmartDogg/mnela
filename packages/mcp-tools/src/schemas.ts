@@ -176,6 +176,9 @@ const SOURCE_TYPES = [
   'voice_note',
   'email',
   'web_clip',
+  // ADR-0050: pinned /ask Q&A turns and migrated daily notes.
+  'chat',
+  'daily',
 ] as const;
 export const SourceTypeSchema = z.enum(SOURCE_TYPES);
 

@@ -1,4 +1,4 @@
-import type { DailyNote } from '@prisma/client';
+import type { Document } from '@prisma/client';
 
 import type { McpToolContext } from '../context.js';
 import {
@@ -17,13 +17,19 @@ export const GET_DAILY_NOTE_TOOL = {
   outputSchema: GetDailyNoteOutputSchema,
 };
 
-export function serializeDailyNote(n: DailyNote): DailyNoteOut {
+/**
+ * After ADR-0050 daily notes are stored as Document(source='daily') —
+ * the sourceId holds the YYYY-MM-DD key. Mood lives in metadata so we
+ * pull it from there for the legacy MCP output shape.
+ */
+export function serializeDailyDocument(doc: Document): DailyNoteOut {
+  const metadata = (doc.metadata ?? {}) as { date?: string; mood?: string | null };
   return {
-    id: n.id,
-    date: n.date.toISOString().slice(0, 10),
-    contentMd: n.contentMd,
-    mood: n.mood,
-    createdAt: n.createdAt.toISOString(),
+    id: doc.id,
+    date: metadata.date ?? doc.sourceId ?? doc.createdAt.toISOString().slice(0, 10),
+    contentMd: doc.rawText,
+    mood: metadata.mood ?? null,
+    createdAt: doc.createdAt.toISOString(),
   };
 }
 
@@ -31,8 +37,6 @@ export async function getDailyNote(
   input: GetDailyNoteInput,
   ctx: McpToolContext,
 ): Promise<GetDailyNoteOutput> {
-  // Date col is stored as @db.Date; constructing a UTC midnight date matches the unique key.
-  const date = new Date(`${input.date}T00:00:00.000Z`);
-  const note = await ctx.daily.findByDate(date);
-  return note ? serializeDailyNote(note) : null;
+  const doc = await ctx.documents.findDailyByDate(input.date);
+  return doc ? serializeDailyDocument(doc) : null;
 }

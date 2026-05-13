@@ -1405,11 +1405,16 @@ REDIS_PASSWORD=<generated>
 JWT_SECRET=<generated>
 ADMIN_INITIAL_TOKEN=<generated, single-use>
 
-# Claude Code
+# Claude Code (built-in subprocess provider — ADR-0049)
 MNELA_CLAUDE_MODE=enabled                 # enabled | disabled (Dumb Mode)
 MNELA_CLAUDE_MAX_CONCURRENT=1
 MNELA_CLAUDE_RATE_LIMIT_PER_HOUR=30      # safety, ниже реального лимита Max
 MNELA_CLAUDE_TIMEOUT_SECONDS=180
+
+# Pluggable LLM providers (ADR-0049)
+# Optional: 32-byte master key for encrypting LlmProvider.apiKeyEnc at rest.
+# Если не задано — генерируется автоматически в MNELA_DATA_DIR/keystore/provider.key.
+MNELA_PROVIDER_SECRET=                    # hex|base64|passphrase
 
 # Опциональные модули
 MNELA_TRANSCRIPTION=disabled              # enabled поднимает whisper
@@ -1431,6 +1436,33 @@ CF_TUNNEL_TOKEN=
 # Logging
 MNELA_LOG_LEVEL=info
 ```
+
+---
+
+## 14a. AI Providers (ADR-0049)
+
+Все AI-вызовы в Mnela идут через пакет `@mnela/llm-providers`. Никакой код приложения не должен звать `streamClaude` / `runClaude` напрямую — только через `LLMProvider.stream(...)`. Прикладные точки, попадающие под абстракцию:
+
+1. **Ask Brain** (`apps/api/src/modules/search/ask.service.ts`) — `providers.ask` или `providers.default`.
+2. **Document enrichment** (`apps/orchestrator/src/enrichment/pipeline.ts → run`) — `providers.enrichment`.
+3. **Project context refresh** (`pipeline.ts → runProjectContext`) — `providers.projectContext` → `providers.enrichment` → `providers.default`.
+4. **Image vision** (`pipeline.ts → runImageAnalysis`) — `providers.vision`.
+
+Реализации:
+
+- **`ClaudeCliProvider`** — built-in. Обёртка над `@mnela/claude-runner` (subprocess + MCP via `--mcp-config`). Работает из коробки без API-ключа, использует подписку Claude Max. Id — sentinel `builtin:claude-cli`, не лежит в БД.
+- **`AnthropicApiProvider`** — `@anthropic-ai/sdk`, динамический import. Native tool_use, streaming.
+- **`OpenAiCompatibleProvider`** — fetch к `/v1/chat/completions`. Покрывает OpenAI, DeepSeek, xAI Grok, Gemini-via-OpenAI-mode, OpenRouter, Ollama, LM Studio. Function-calling формат.
+
+Для не-CLI провайдеров в `@mnela/llm-providers/agent-loop` крутится многоходовой tool-use loop, дергающий MCP-tools через `invokeTool()` из `@mnela/mcp-tools` напрямую в процессе api/orchestrator (без HTTP).
+
+**Хранение и шифрование.** Модель `LlmProvider {id, name, kind, model, baseUrl?, apiKeyEnc Bytes?, extra Json?, apiKeyLast4?, createdAt, updatedAt}`. `apiKeyEnc` — AES-256-GCM (`12B IV ‖ 16B tag ‖ ciphertext`). Master key — `MNELA_PROVIDER_SECRET` (env) или auto-generated `$MNELA_DATA_DIR/keystore/provider.key` (mode 0600).
+
+**Маршрутизация.** `SystemConfig` хранит `providers.default` + `providers.{ask,enrichment,vision,projectContext}`. Пустое значение overrides → fallback на default → fallback на `builtin:claude-cli`. Резолвер per-request (нет кеширования), любой error в инстанцировании молча падает на built-in CLI.
+
+**UI.** `/admin/system → AI Providers` (главная карточка): grid провайдеров с card-кнопками Test/Delete, dialog "Add provider" с пресетами (Anthropic / OpenAI / DeepSeek / Grok / Gemini / OpenRouter / Ollama / LM Studio), per-feature селекторы + кнопка "Apply default to all".
+
+**Chat-таймлайн.** `/ask` SSE передаёт `tool_call` / `tool_result` фреймы. `chat-panel.tsx` рендерит их компактной хронологией над ответом ассистента (`🔧 mnela_find_similar(query=…) → ✓`).
 
 ---
 

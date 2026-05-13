@@ -6,6 +6,7 @@ import {
   EntityRepository,
   InboxRepository,
   JobRepository,
+  LlmProviderRepository,
   PrismaService,
   SystemConfigRepository,
 } from '@mnela/db';
@@ -21,6 +22,7 @@ const REPO_CLASSES = [
   InboxRepository,
   JobRepository,
   AttachmentRepository,
+  LlmProviderRepository,
   SystemConfigRepository,
 ] as const satisfies readonly RepoCtor[];
 

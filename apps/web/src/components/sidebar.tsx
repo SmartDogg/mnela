@@ -3,7 +3,6 @@
 import {
   BookOpen,
   Boxes,
-  CalendarDays,
   Cloud,
   CloudUpload,
   Cog,
@@ -58,7 +57,6 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
         { href: '/documents', label: t('documents'), icon: BookOpen },
         { href: '/projects', label: t('projects'), icon: Boxes },
         { href: '/decisions', label: t('decisions'), icon: ListChecks },
-        { href: '/daily', label: t('daily'), icon: CalendarDays },
         { href: '/inbox', label: t('inbox'), icon: InboxIcon },
       ],
     },

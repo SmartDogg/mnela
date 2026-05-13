@@ -28,7 +28,6 @@
     "documents": "Documents",
     "projects": "Projects",
     "decisions": "Decisions",
-    "daily": "Daily",
     "graph": "Graph",
     "inbox": "Inbox",
     "imports": "Imports",
@@ -237,16 +236,6 @@
       "superseded": "Superseded"
     }
   },
-  "daily": {
-    "title": "Daily",
-    "subtitle": "One note per day.",
-    "today": "Today",
-    "missing": "No note for this day yet.",
-    "create": "Create note",
-    "content": "Content",
-    "mood": "Mood",
-    "saving": "Saving…"
-  },
   "imports": {
     "title": "Imports",
     "subtitle": "Bulk uploads of exports and folders.",
@@ -299,27 +288,55 @@
     "placeholder": "Ask anything about your notes…",
     "send": "Send",
     "sending": "Streaming…",
+    "reconnecting": "Reconnecting…",
     "stop": "Stop",
     "newChat": "New conversation",
     "saveSynthesis": "Save as note",
     "input": {
       "hint": "Enter to send · Cmd+Enter for newline"
     },
+    "composer": {
+      "chatLabel": "Ask",
+      "chatTooltip": "Conversation only — files (if any) are read as context but nothing is added to the brain.",
+      "chatHint": "Just a question — files are temporary context, nothing is stored in the brain.",
+      "ingestLabel": "Feed brain",
+      "ingestTooltip": "Save the Q&A + any attached files into the knowledge graph. Files run through the same ingestion pipeline as /imports.",
+      "ingestHint": "Q&A + uploaded files become Documents and enrich the graph — visible in /graph and /jobs in a minute.",
+      "attachAria": "Attach files to this message",
+      "dropHere": "Drop files to attach",
+      "waitForUploads": "Waiting for attachments to finish uploading…",
+      "emptyHint": "Type a question first.",
+      "removeAttachment": "Remove attachment"
+    },
     "empty": {
       "title": "Ask anything",
-      "subtitle": "Your answer streams back with inline citations to the source notes.",
+      "subtitle": "Your answer streams back with citation chips for every source note.",
       "examples": "Try \"What did I decide about Postgres FTS?\" or \"Summarize my Linear ideas from the last month\"."
     },
     "messages": {
       "you": "You",
       "assistant": "Brain",
-      "system": "System"
+      "system": "System",
+      "ingested": "In brain",
+      "ingestSavedAs": "Open in documents"
     },
     "toolCalls": {
-      "label": "Tool calls"
+      "label": "Tool calls",
+      "verbs": {
+        "findSimilar": "Searching",
+        "search": "Searching docs",
+        "getChunks": "Reading chunks",
+        "getDocument": "Opening document",
+        "getDailyNote": "Opening daily note",
+        "getDecisions": "Listing decisions",
+        "getEntity": "Looking up entity",
+        "traverseGraph": "Traversing graph",
+        "recentActivity": "Loading recent activity"
+      }
     },
     "citation": {
-      "tooltipMissing": "Source not found"
+      "tooltipMissing": "Source not found",
+      "openDocument": "Open document"
     },
     "dumbMode": {
       "banner": "AI Smart Mode disabled — showing keyword search results only."
@@ -327,11 +344,21 @@
     "rateLimit": {
       "banner": "Claude rate limit reached. Resumes at {resetAt}."
     },
+    "sidebar": {
+      "chats": "Chats",
+      "memory": "Memory"
+    },
+    "memorySidebar": {
+      "loading": "Loading days…",
+      "empty": "The brain hasn't been fed yet.",
+      "emptyHint": "Switch the composer to \"Feed brain\" to save a Q&A and any attached files here."
+    },
     "error": {
       "generic": "The assistant couldn't answer right now. Try again in a moment — your question wasn't lost. If this keeps happening, check the server logs.",
       "auth": "The assistant is signed out. An administrator needs to sign it in on the server.",
       "noBinary": "The assistant isn't installed on this server. An administrator needs to install Claude Code.",
-      "rateLimit": "Rate limit reached for the assistant. Wait for the window to reset, then try again."
+      "rateLimit": "Rate limit reached for the assistant. Wait for the window to reset, then try again.",
+      "timeout": "The assistant went quiet for too long. The request was cancelled — please try again."
     },
     "conversations": {
       "title": "Conversations",
@@ -340,7 +367,8 @@
       "deleteConfirm": "Delete this conversation?",
       "synthesisBadge": "Saved as note",
       "rename": "Rename",
-      "delete": "Delete"
+      "delete": "Delete",
+      "loading": "Loading…"
     },
     "save": {
       "dialogTitle": "Save as synthesis",

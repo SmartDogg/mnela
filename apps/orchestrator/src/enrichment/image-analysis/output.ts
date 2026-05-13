@@ -1,34 +1,19 @@
 /**
- * Image-analysis backend contract. Two implementations live next to this
- * file: `claude-code-backend.ts` (default — runs through the Claude Code CLI
- * subprocess that text enrichment already uses) and `anthropic-api-backend.ts`
- * (direct @anthropic-ai/sdk vision call). The pipeline selects between them
- * at consume time based on SystemConfig `attachments.imageAnalysisBackend`.
+ * Vision-pipeline output shape and parser.
+ *
+ * The previous per-backend `backend.ts` split has been collapsed: vision now
+ * goes through the unified LLMProvider abstraction (ADR-0049). Both built-in
+ * Claude CLI and any database-configured Anthropic/OpenAI-compatible
+ * provider answer the same JSON schema described by IMAGE_ANALYSIS_OUTPUT_INSTRUCTION.
  */
 
 import type { EntityType } from '@prisma/client';
-
-export interface ImageAnalysisInput {
-  /** Absolute path to the image file on disk. */
-  attachmentPath: string;
-  mimeType: string;
-  /**
-   * The companion Document(type=image) id. Included so the prompt can mention
-   * it for trace correlation (the actual DB write happens in the pipeline,
-   * not the backend).
-   */
-  documentId: string;
-  /** Model name (opus/sonnet/haiku) from SystemConfig. */
-  model: 'opus' | 'sonnet' | 'haiku';
-}
 
 export interface ImageAnalysisOutput {
   description: string;
   /** Null if no readable text was visible. */
   ocrText: string | null;
   entities: ImageEntity[];
-  /** Reason field set when the backend declined / failed gracefully. */
-  reason?: string;
 }
 
 export interface ImageEntity {
@@ -38,17 +23,6 @@ export interface ImageEntity {
   aliases?: string[];
 }
 
-export type ImageAnalysisBackendResult =
-  | { status: 'ok'; output: ImageAnalysisOutput }
-  | { status: 'unavailable'; reason: string }
-  | { status: 'failed'; reason: string };
-
-export interface ImageAnalysisBackend {
-  readonly name: 'claude-code' | 'anthropic-api';
-  analyze(input: ImageAnalysisInput): Promise<ImageAnalysisBackendResult>;
-}
-
-/** Shared output schema text the prompt instructs Claude to follow. */
 export const IMAGE_ANALYSIS_OUTPUT_INSTRUCTION = `Respond with **exactly one** JSON object — no markdown fence, no preamble — with this shape:
 
 {
@@ -63,11 +37,6 @@ Confidence below 0.5 is dropped server-side. Limit entities to 20. Use \`null\` 
 
 const STRUCTURED_RE = /\{[\s\S]*"description"[\s\S]*\}/;
 
-/**
- * Parse the JSON object out of a model-emitted blob. Both backends produce
- * `description` + `ocrText` + `entities`; the structured response often
- * comes wrapped in chatty text so we extract by regex first.
- */
 export function parseImageAnalysisOutput(raw: string): ImageAnalysisOutput | null {
   const match = STRUCTURED_RE.exec(raw);
   if (!match) return null;

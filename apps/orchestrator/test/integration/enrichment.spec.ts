@@ -8,7 +8,6 @@
  */
 import {
   AuditLogRepository,
-  DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
@@ -25,12 +24,20 @@ import { PrismaClient } from '@prisma/client';
 import { Redis } from 'ioredis';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const runClaudeMock = vi.fn();
-vi.mock('@mnela/claude-runner', () => ({
-  runClaude: runClaudeMock,
-  claudeAvailable: vi.fn(async () => true),
-  claudeTest: vi.fn(async () => ({ ok: true, version: '1.0.0', loggedIn: true, latencyMs: 1 })),
-}));
+// We no longer mock @mnela/claude-runner directly — the pipeline now talks
+// to LLMProvider instances built by OrchestratorProvidersService. Tests
+// supply a fake provider that implements the `.run(...)` shortcut.
+
+interface FakeRun {
+  text: string;
+  final:
+    | { type: 'done' }
+    | { type: 'error'; reason: 'rate-limit'; resetAt?: Date }
+    | { type: 'error'; reason: 'auth' }
+    | { type: 'error'; reason: 'generic'; message?: string };
+}
+
+const runMock = vi.fn<(args: { prompt: string }) => Promise<FakeRun>>();
 
 const { EnrichmentPipeline } = await import('../../src/enrichment/pipeline.js');
 const { ClaudeStatusService } = await import('../../src/claude-status/claude-status.service.js');
@@ -60,7 +67,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await prisma.$disconnect();
   redis.disconnect();
-  runClaudeMock.mockReset();
+  runMock.mockReset();
 });
 
 function buildCtx(): McpToolContext {
@@ -72,7 +79,6 @@ function buildCtx(): McpToolContext {
   const audit = new AuditLogRepository(() => prisma);
   const projects = new ProjectRepository(() => prisma);
   const decisions = new DecisionRepository(() => prisma);
-  const daily = new DailyNoteRepository(() => prisma);
   const jobs = new JobRepository(() => prisma);
   const principal: Principal = {
     kind: 'token',
@@ -89,7 +95,6 @@ function buildCtx(): McpToolContext {
     audit,
     projects,
     decisions,
-    daily,
     jobs,
     auditTx: (fn) => prisma.$transaction((tx) => fn(tx)),
     principal,
@@ -131,6 +136,23 @@ function buildPipeline() {
   // Skip the BullMQ wiring (we're not actually pumping the queue here).
   Object.defineProperty(rateLimit, 'isPaused', { value: vi.fn(async () => false) });
   Object.defineProperty(rateLimit, 'pause', { value: vi.fn(async () => undefined) });
+  const fakeProvider = {
+    config: { id: 'builtin:claude-cli', kind: 'claude_cli', name: 'cli', model: '' },
+    supportsTools: true,
+    supportsVision: true,
+    // eslint-disable-next-line require-yield
+    async *stream(): AsyncGenerator<never> {
+      // unused — tests drive the fake provider via .run()
+      return;
+    },
+    async test() {
+      return { ok: true, latencyMs: 1 };
+    },
+    run: (args: { prompt: string }) => runMock(args),
+  };
+  const providers = {
+    resolveForFeature: vi.fn(async () => fakeProvider),
+  };
   return new EnrichmentPipeline(
     new DocumentRepository(() => prisma),
     {} as never, // attachments — image-analysis path is not exercised by these tests
@@ -140,6 +162,7 @@ function buildPipeline() {
     claudeStatus,
     rateLimit as never,
     { get: vi.fn(async () => null) } as never, // systemConfig
+    providers as never,
   );
 }
 
@@ -147,7 +170,7 @@ describe('enrichment pipeline (integration)', () => {
   it('writes entities, auto-confirmed edges, and Inbox suggestions through mcp-tools', async () => {
     const documentId = await createDoc();
 
-    runClaudeMock.mockImplementationOnce(async () => {
+    runMock.mockImplementationOnce(async () => {
       const ctx = buildCtx();
       // Simulate what server-side Claude would do via stdio MCP.
       await addEntities(
@@ -184,20 +207,8 @@ describe('enrichment pipeline (integration)', () => {
         ctx,
       );
       return {
-        exitCode: 0,
-        signal: null,
-        stdout: '',
-        stderr: '',
-        frames: [],
-        result: {
-          type: 'result' as const,
-          session_id: 's',
-          result:
-            'done. {"summary":"two pairs","addedEntitiesCount":4,"addedEdgesCount":1,"droppedLowConfidence":0}',
-        },
-        rateLimitHit: null,
-        authError: null,
-        timedOut: false,
+        text: 'done. {"summary":"two pairs","addedEntitiesCount":4,"addedEdgesCount":1,"droppedLowConfidence":0}',
+        final: { type: 'done' as const },
       };
     });
 
@@ -227,21 +238,9 @@ describe('enrichment pipeline (integration)', () => {
   it('on rate-limit hit, marks document parsed and pauses (no graph writes)', async () => {
     const documentId = await createDoc();
 
-    runClaudeMock.mockResolvedValueOnce({
-      exitCode: 1,
-      signal: null,
-      stdout: '',
-      stderr: '',
-      frames: [],
-      result: {
-        type: 'result' as const,
-        session_id: 's',
-        result: "You've hit your session limit · resets 3:45pm",
-        is_error: true,
-      },
-      rateLimitHit: { resetAt: new Date(Date.now() + 60_000), raw: '...', source: 'result_text' },
-      authError: null,
-      timedOut: false,
+    runMock.mockResolvedValueOnce({
+      text: '',
+      final: { type: 'error', reason: 'rate-limit', resetAt: new Date(Date.now() + 60_000) },
     });
 
     const pipeline = buildPipeline();

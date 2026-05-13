@@ -9,6 +9,7 @@ import { EnrichmentPipeline } from './enrichment/pipeline.js';
 import { EnrichmentQueueStateService } from './enrichment/queue-state.service.js';
 import { loadEnv } from './env.js';
 import { McpConfigBoot } from './mcp/mcp-config.boot.js';
+import { OrchestratorProvidersService } from './providers/providers.service.js';
 import { RateLimitService } from './rate-limit/rate-limit.service.js';
 import { RedisService } from './redis.service.js';
 import { RepositoriesModule } from './repositories.module.js';
@@ -38,6 +39,7 @@ const env = loadEnv();
     McpConfigBoot,
     ClaudeStatusBoot,
     RateLimitService,
+    OrchestratorProvidersService,
     EnrichmentPipeline,
     EnrichmentConsumer,
     EnrichmentQueueStateService,

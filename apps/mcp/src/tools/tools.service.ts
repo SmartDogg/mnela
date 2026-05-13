@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import {
   AttachmentRepository,
   AuditLogRepository,
-  DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
@@ -36,7 +35,6 @@ export class ToolsService {
     private readonly inbox: InboxRepository,
     private readonly projects: ProjectRepository,
     private readonly decisions: DecisionRepository,
-    private readonly daily: DailyNoteRepository,
     private readonly jobs: JobRepository,
     private readonly audit: AuditLogRepository,
     private readonly attachments: AttachmentRepository,
@@ -91,7 +89,6 @@ export class ToolsService {
       inbox: this.inbox,
       projects: this.projects,
       decisions: this.decisions,
-      daily: this.daily,
       jobs: this.jobs,
       audit: this.audit,
       auditTx: (fn) => this.prisma.runInTx(fn),

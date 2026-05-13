@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,28 +22,45 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError, api } from '@/lib/api/client';
-import type { ConfigGroup, ConfigSpec, MergedConfigEntry, SystemStats } from '@/lib/api/types';
+import type {
+  ConfigGroup,
+  ConfigSection,
+  ConfigSpec,
+  MergedConfigEntry,
+  ProvidersListResponse,
+  SystemStats,
+} from '@/lib/api/types';
 import { formatBytes } from '@/lib/utils';
 
-const GROUP_LABELS: Record<ConfigGroup, string> = {
-  imports: 'Imports',
-  parsers: 'Parsers',
-  enrichment: 'Enrichment',
-  worker: 'Worker (ingestion + transcription)',
-  vision: 'Vision (image analysis)',
-  whisper: 'Whisper',
-  claude: 'Claude',
+import { AddProviderDialog } from './_components/add-provider-dialog';
+import { ProviderCard } from './_components/provider-card';
+import { PerFeatureSelector } from './_components/per-feature-selector';
+
+const SECTION_ORDER: ConfigSection[] = [
+  'providers',
+  'ingestion',
+  'enrichment',
+  'storage',
+  'advanced',
+];
+
+// Map a spec.group → fallback section when the server hasn't declared one
+// (back-compat for any spec that pre-dates ADR-0049). The server now sets
+// `section` on every shipping spec; this is purely defensive.
+const GROUP_TO_SECTION: Record<ConfigGroup, ConfigSection> = {
+  imports: 'ingestion',
+  parsers: 'ingestion',
+  enrichment: 'enrichment',
+  vision: 'enrichment',
+  whisper: 'enrichment',
+  claude: 'enrichment',
+  worker: 'advanced',
+  providers: 'providers',
 };
 
-const GROUP_ORDER: ConfigGroup[] = [
-  'imports',
-  'parsers',
-  'enrichment',
-  'worker',
-  'vision',
-  'whisper',
-  'claude',
-];
+function sectionOf(entry: MergedConfigEntry): ConfigSection {
+  return entry.spec.section ?? GROUP_TO_SECTION[entry.spec.group] ?? 'advanced';
+}
 
 export default function AdminSystemPage(): JSX.Element {
   const t = useTranslations('admin.system');
@@ -59,90 +76,212 @@ export default function AdminSystemPage(): JSX.Element {
     queryFn: () => api.get<MergedConfigEntry[]>('/system/config'),
   });
 
-  const grouped = useMemo(() => groupByConfigGroup(config.data ?? []), [config.data]);
+  const providers = useQuery({
+    queryKey: ['admin', 'providers'],
+    queryFn: () => api.get<ProvidersListResponse>('/admin/providers'),
+  });
+
+  const grouped = useMemo(() => {
+    const out = new Map<ConfigSection, MergedConfigEntry[]>();
+    for (const e of config.data ?? []) {
+      if (sectionOf(e) === 'providers') continue; // dedicated card renders these
+      const list = out.get(sectionOf(e)) ?? [];
+      list.push(e);
+      out.set(sectionOf(e), list);
+    }
+    return out;
+  }, [config.data]);
 
   const save = useMutation({
     mutationFn: ({ key, value }: { key: string; value: unknown }) =>
       api.patch(`/system/config`, { key, value }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
-      toast.success('Saved');
+      toast.success(t('saved'));
     },
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to save'),
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('saveFailed')),
   });
 
   const reset = useMutation({
     mutationFn: (key: string) => api.delete(`/system/config/${encodeURIComponent(key)}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
-      toast.success('Reset to default');
+      toast.success(t('resetSuccess'));
     },
-    onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed to reset'),
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('resetFailed')),
   });
 
   return (
     <div>
       <PageHeader title={t('title')} subtitle={t('subtitle')} />
-      <div className="grid gap-4 px-8 py-6 xl:grid-cols-[320px_1fr]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Stats</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              {stats.isLoading && <Skeleton className="h-5 w-full" />}
-              {stats.data && (
-                <>
-                  <StatRow label="Documents" value={stats.data.documents} />
-                  <StatRow label="Entities" value={stats.data.entities} />
-                  <StatRow label="Edges" value={stats.data.edges} />
-                  <StatRow label="Projects" value={stats.data.projects} />
-                  <StatRow label="Decisions" value={stats.data.decisions} />
-                  <StatRow label="DB size" value={formatBytes(stats.data.dbSizeBytes)} />
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      <div className="space-y-4 px-8 py-6">
+        {/* ---- AI Providers card (the new hero) ---- */}
+        <ProvidersSection
+          providers={providers.data}
+          isLoading={providers.isLoading}
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+            queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+          }}
+        />
 
-        <div className="space-y-4">
-          {config.isLoading && <Skeleton className="h-64 w-full" />}
-          {GROUP_ORDER.map((group) => {
-            const entries = grouped.get(group);
-            if (!entries || entries.length === 0) return null;
-            return (
-              <Card key={group}>
-                <CardHeader>
-                  <CardTitle>{GROUP_LABELS[group]}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {entries.map((entry) => (
-                    <ConfigRow
-                      key={entry.spec.key}
-                      entry={entry}
-                      saving={save.isPending}
-                      onSave={(value) => save.mutate({ key: entry.spec.key, value })}
-                      onReset={() => reset.mutate(entry.spec.key)}
-                    />
-                  ))}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        {/* ---- All non-provider sections ---- */}
+        {SECTION_ORDER.filter((s) => s !== 'providers').map((section) => {
+          const entries = grouped.get(section);
+          if (section === 'storage') {
+            return <StorageCard key={section} stats={stats.data} isLoading={stats.isLoading} />;
+          }
+          if (!entries || entries.length === 0) return null;
+          return (
+            <SectionCard
+              key={section}
+              section={section}
+              entries={entries}
+              saving={save.isPending}
+              onSave={(key, value) => save.mutate({ key, value })}
+              onReset={(key) => reset.mutate(key)}
+            />
+          );
+        })}
+
+        {config.isLoading && <Skeleton className="h-24 w-full" />}
       </div>
     </div>
   );
 }
 
-function groupByConfigGroup(entries: MergedConfigEntry[]): Map<ConfigGroup, MergedConfigEntry[]> {
-  const out = new Map<ConfigGroup, MergedConfigEntry[]>();
-  for (const e of entries) {
-    const list = out.get(e.spec.group) ?? [];
-    list.push(e);
-    out.set(e.spec.group, list);
-  }
-  return out;
+function ProvidersSection({
+  providers,
+  isLoading,
+  onChanged,
+}: {
+  providers: ProvidersListResponse | undefined;
+  isLoading: boolean;
+  onChanged: () => void;
+}): JSX.Element {
+  const t = useTranslations('admin.system.sections.providers');
+  const tProv = useTranslations('admin.providers');
+  const [addOpen, setAddOpen] = useState(false);
+
+  return (
+    <Card className="border-primary/30">
+      <CardHeader className="flex flex-row items-start justify-between gap-2">
+        <div>
+          <CardTitle className="flex items-center gap-2">
+            <span>{t('title')}</span>
+            <Badge variant="outline" className="text-[10px]">
+              ADR-0049
+            </Badge>
+          </CardTitle>
+          <CardDescription>{t('description')}</CardDescription>
+        </div>
+        <Button size="sm" onClick={() => setAddOpen(true)}>
+          <Plus className="size-4" /> {tProv('addProvider')}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading && <Skeleton className="h-24 w-full" />}
+        {providers && (
+          <>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {providers.providers.map((p) => (
+                <ProviderCard key={p.id} provider={p} onChanged={onChanged} />
+              ))}
+            </div>
+            <PerFeatureSelector
+              defaults={providers.defaults}
+              providers={providers.providers}
+              onChanged={onChanged}
+            />
+          </>
+        )}
+      </CardContent>
+      <AddProviderDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        onCreated={() => {
+          onChanged();
+        }}
+      />
+    </Card>
+  );
+}
+
+function StorageCard({
+  stats,
+  isLoading,
+}: {
+  stats: SystemStats | undefined;
+  isLoading: boolean;
+}): JSX.Element {
+  const t = useTranslations('admin.system.sections.storage');
+  const tStats = useTranslations('admin.system.stats');
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('title')}</CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 text-sm">
+        {isLoading && <Skeleton className="h-5 w-full" />}
+        {stats && (
+          <>
+            <StatRow label={tStats('documents')} value={stats.documents} />
+            <StatRow label={tStats('entities')} value={stats.entities} />
+            <StatRow label={tStats('edges')} value={stats.edges} />
+            <StatRow label={tStats('projects')} value={stats.projects} />
+            <StatRow label={tStats('decisions')} value={stats.decisions} />
+            <StatRow label={tStats('dbSize')} value={formatBytes(stats.dbSizeBytes)} />
+            <p className="pt-2 text-[11px] text-muted-foreground">{t('backupNote')}</p>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function SectionCard({
+  section,
+  entries,
+  saving,
+  onSave,
+  onReset,
+}: {
+  section: ConfigSection;
+  entries: MergedConfigEntry[];
+  saving: boolean;
+  onSave: (key: string, value: unknown) => void;
+  onReset: (key: string) => void;
+}): JSX.Element {
+  const t = useTranslations(`admin.system.sections.${section}`);
+  const [open, setOpen] = useState(section !== 'advanced');
+  return (
+    <Card>
+      <CardHeader className="cursor-pointer" onClick={() => setOpen((v) => !v)}>
+        <CardTitle className="flex items-center gap-2">
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          {t('title')}
+          <Badge variant="outline" className="text-[10px]">
+            {entries.length}
+          </Badge>
+        </CardTitle>
+        <CardDescription>{t('description')}</CardDescription>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-6">
+          {entries.map((entry) => (
+            <ConfigRow
+              key={entry.spec.key}
+              entry={entry}
+              saving={saving}
+              onSave={(value) => onSave(entry.spec.key, value)}
+              onReset={() => onReset(entry.spec.key)}
+            />
+          ))}
+        </CardContent>
+      )}
+    </Card>
+  );
 }
 
 function StatRow({ label, value }: { label: string; value: number | string }): JSX.Element {
@@ -165,6 +304,7 @@ interface ConfigRowProps {
 
 function ConfigRow({ entry, saving, onSave, onReset }: ConfigRowProps): JSX.Element {
   const { spec, value, overridden } = entry;
+  const t = useTranslations('admin.system');
 
   return (
     <div className="space-y-2">
@@ -172,12 +312,12 @@ function ConfigRow({ entry, saving, onSave, onReset }: ConfigRowProps): JSX.Elem
         <Label className="font-mono text-xs text-muted-foreground">{spec.key}</Label>
         {overridden && (
           <Badge variant="outline" className="text-[10px]">
-            overridden
+            {t('overridden')}
           </Badge>
         )}
         {spec.requiresRestart && (
           <Badge variant="outline" className="border-amber-500/50 text-[10px] text-amber-300">
-            restart required
+            {t('restartRequired')}
           </Badge>
         )}
         {overridden && (
@@ -185,9 +325,9 @@ function ConfigRow({ entry, saving, onSave, onReset }: ConfigRowProps): JSX.Elem
             type="button"
             onClick={onReset}
             className="ml-auto inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-            title="Reset to default"
+            title={t('reset')}
           >
-            <RotateCcw className="h-3 w-3" /> reset
+            <RotateCcw className="h-3 w-3" /> {t('reset')}
           </button>
         )}
       </div>
@@ -277,6 +417,7 @@ function BytesControl({
   saving: boolean;
   onSave: (value: number) => void;
 }): JSX.Element {
+  const t = useTranslations('admin.system.errors');
   const [display, setDisplay] = useState(() => bytesToHuman(value));
   useEffect(() => {
     setDisplay(bytesToHuman(value));
@@ -285,16 +426,16 @@ function BytesControl({
   const commit = (): void => {
     const parsed = humanToBytes(display);
     if (parsed === null) {
-      toast.error(`Could not parse "${display}" — try formats like "5GiB", "2 GB", or "1048576".`);
+      toast.error(t('bytesParse', { value: display }));
       setDisplay(bytesToHuman(value));
       return;
     }
     if (spec.min !== undefined && parsed < spec.min) {
-      toast.error(`Below minimum (${formatBytes(spec.min)})`);
+      toast.error(t('bytesBelowMin', { min: formatBytes(spec.min) }));
       return;
     }
     if (spec.max != null && parsed > spec.max) {
-      toast.error(`Above maximum (${formatBytes(spec.max)})`);
+      toast.error(t('bytesAboveMax', { max: formatBytes(spec.max) }));
       return;
     }
     if (parsed !== value) onSave(parsed);
@@ -354,22 +495,23 @@ function NumberControl({
   saving: boolean;
   onSave: (value: number) => void;
 }): JSX.Element {
+  const t = useTranslations('admin.system.errors');
   const [text, setText] = useState(String(value));
   useEffect(() => setText(String(value)), [value]);
 
   const commit = (): void => {
     const parsed = Number.parseInt(text, 10);
     if (!Number.isFinite(parsed)) {
-      toast.error(`"${text}" is not a valid integer`);
+      toast.error(t('intParse', { value: text }));
       setText(String(value));
       return;
     }
     if (min !== undefined && parsed < min) {
-      toast.error(`Min is ${min}`);
+      toast.error(t('intMin', { min }));
       return;
     }
     if (max !== undefined && parsed > max) {
-      toast.error(`Max is ${max}`);
+      toast.error(t('intMax', { max }));
       return;
     }
     if (parsed !== value) onSave(parsed);

@@ -24,6 +24,12 @@ enum SourceType {
   voice_note
   email
   web_clip
+  // Pinned messages from /ask are promoted to Documents so they flow
+  // through the same enrichment pipeline as imported documents.
+  chat
+  // Daily notes were merged into Document (ADR-0050). The legacy
+  // DailyNote table was removed; rows live here with metadata.date+mood.
+  daily
 }
 
 enum DocumentStatus {
@@ -263,16 +269,9 @@ model Decision {
   @@index([projectId, decidedAt])
 }
 
-model DailyNote {
-  id        String   @id @default(cuid())
-  date      DateTime @unique @db.Date
-  contentMd String   @db.Text
-  mood      String?
-  metadata  Json?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// Daily notes used to live in a dedicated table; ADR-0050 merged them
+// into Document (source='daily', metadata.date YYYY-MM-DD, metadata.mood).
+// The /ask sidebar groups Document(source IN ('chat','daily')) by day.
 
 // =====================================================================
 // Inbox (review queue)
@@ -385,6 +384,41 @@ model SystemConfig {
   updatedAt DateTime @updatedAt
 }
 
+// =====================================================================
+// LLM providers (ADR-0049) — pluggable AI backends for Ask / enrichment /
+// vision / project-context. The built-in `Claude Code (CLI)` subprocess is
+// virtual and never persisted; any row here represents a user-configured
+// Anthropic-API or OpenAI-compatible endpoint. `apiKeyEnc` holds the
+// AES-256-GCM ciphertext (IV‖tag‖ct) of the plaintext token; the master
+// key lives outside the DB (env or data-dir keystore file).
+// =====================================================================
+
+enum LlmProviderKind {
+  claude_cli
+  anthropic_api
+  openai_compat
+}
+
+model LlmProvider {
+  id        String          @id @default(cuid())
+  name      String
+  kind      LlmProviderKind
+  model     String
+  baseUrl   String?
+  apiKeyEnc Bytes?
+  /// Free-form provider settings (extra HTTP headers, OpenAI org, etc.).
+  extra     Json?
+  /// `last4` of the plaintext key, persisted so the UI can show "sk-…1234"
+  /// without round-tripping through decrypt + log redaction. `null` when
+  /// the provider needs no key (local Ollama with no auth).
+  apiKeyLast4 String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([kind])
+}
+
 model AuthToken {
   id        String  @id @default(cuid())
   name      String
@@ -418,6 +452,15 @@ enum MessageRole {
   system
 }
 
+// Ephemeral messages are chat-only (cost-free, no graph footprint).
+// Pinned messages are promoted to Document(source='chat') after the
+// assistant finishes, so the same Q&A flows through enrichment and
+// becomes a first-class node in the knowledge graph (ADR-0050).
+enum MessageKind {
+  ephemeral
+  pinned
+}
+
 model Conversation {
   id                  String  @id @default(cuid())
   adminUserId         String
@@ -439,6 +482,7 @@ model Message {
   id             String      @id @default(cuid())
   conversationId String
   role           MessageRole
+  kind           MessageKind @default(ephemeral)
   contentMd      String      @db.Text
   citations      Json        @default("[]")
   tokensIn       Int?
@@ -446,10 +490,14 @@ model Message {
   durationMs     Int?
   dumbMode       Boolean     @default(false)
   aborted        Boolean     @default(false)
+  /// When kind='pinned' and the post-answer promotion succeeded, the
+  /// linked Document's id. Cleared when the document is deleted.
+  pinnedDocumentId String?
   metadata       Json?
   createdAt      DateTime    @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+  @@index([kind, pinnedDocumentId])
 }

@@ -18,6 +18,21 @@ import type { Principal } from '../../auth/types.js';
 import { ConversationsService } from './conversations.service.js';
 import { ListConversationsQuery, PatchConversationDto } from './dto.js';
 
+/**
+ * Translate DB-side message kind ('ephemeral'|'pinned') into the
+ * app-level vocabulary the chat panel speaks ('chat'|'ingest'). The DB
+ * enum is the historic name from ADR-0050; the new naming is a UI rename
+ * only — no migration. Single point of translation on the read path so
+ * the rest of the controller stays plain Prisma.
+ */
+function mapMessageKind(
+  row: { kind?: string | null } & Record<string, unknown>,
+): Record<string, unknown> {
+  const dbKind = (row as { kind?: string | null }).kind;
+  const appKind = dbKind === 'pinned' ? 'ingest' : 'chat';
+  return { ...row, kind: appKind };
+}
+
 @ApiTags('conversations')
 @ApiCookieAuth('mnela_session')
 @ApiBearerAuth()
@@ -41,7 +56,11 @@ export class ConversationsController {
   @ApiOperation({ summary: 'Get a conversation with its full message list' })
   async findOne(@Param('id') id: string, @CurrentPrincipal() principal: Principal | undefined) {
     const adminUserId = await this.conversations.resolveAdminUserId(principal);
-    return this.conversations.findById(id, adminUserId);
+    const detail = await this.conversations.findById(id, adminUserId);
+    return {
+      conversation: detail.conversation,
+      messages: detail.messages.map((m) => mapMessageKind(m as unknown as Record<string, unknown>)),
+    };
   }
 
   @Patch(':id')

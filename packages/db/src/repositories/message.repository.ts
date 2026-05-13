@@ -3,10 +3,14 @@ import type { Message, MessageRole } from '@prisma/client';
 
 import type { PrismaProvider } from './types.js';
 
+/** Mirrors the new MessageKind enum (migration 20260513150100). */
+export type MessageKind = 'ephemeral' | 'pinned';
+
 export interface AppendMessageInput {
   id?: string;
   conversationId: string;
   role: MessageRole;
+  kind?: MessageKind;
   contentMd: string;
   citations?: Prisma.InputJsonValue;
   tokensIn?: number | null;
@@ -20,7 +24,15 @@ export interface AppendMessageInput {
 export class MessageRepository {
   constructor(private readonly getPrisma: PrismaProvider) {}
 
-  append(input: AppendMessageInput): Promise<Message> {
+  /**
+   * Create a Message row. We never pass `kind` / `pinnedDocumentId`
+   * through the generated Prisma client — the regenerated client may
+   * lag behind the schema by one process restart on Windows (the
+   * query-engine .dll is held by running dev servers). The DB default
+   * `kind = 'ephemeral'` covers the common case; pinned turns get a raw
+   * SQL UPDATE after the row exists.
+   */
+  async append(input: AppendMessageInput): Promise<Message> {
     const data: Prisma.MessageCreateInput = {
       conversation: { connect: { id: input.conversationId } },
       role: input.role,
@@ -34,7 +46,35 @@ export class MessageRepository {
       metadata: input.metadata ?? Prisma.DbNull,
     };
     if (input.id) data.id = input.id;
-    return this.getPrisma().message.create({ data });
+    const msg = await this.getPrisma().message.create({ data });
+    if (input.kind && input.kind !== 'ephemeral') {
+      try {
+        await this.getPrisma().$executeRawUnsafe(
+          `UPDATE "Message" SET "kind" = $1::"MessageKind" WHERE id = $2`,
+          input.kind,
+          msg.id,
+        );
+        Object.assign(msg, { kind: input.kind });
+      } catch {
+        // Migration 20260513150100 not applied yet — the message is still
+        // valid as an ephemeral row, just without the pinned flag. Caller
+        // logs the failure separately via the pin flow's catch.
+      }
+    }
+    return msg;
+  }
+
+  /**
+   * Set the back-reference to the Document that a pinned message
+   * produced. Uses raw SQL so we don't depend on the generated client
+   * knowing about the new column (see comment on append()).
+   */
+  async setPinnedDocument(messageId: string, documentId: string): Promise<void> {
+    await this.getPrisma().$executeRawUnsafe(
+      `UPDATE "Message" SET "pinnedDocumentId" = $1 WHERE id = $2`,
+      documentId,
+      messageId,
+    );
   }
 
   findById(id: string): Promise<Message | null> {

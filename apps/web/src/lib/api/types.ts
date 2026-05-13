@@ -110,13 +110,9 @@ export interface DecisionDetail extends DecisionSummary {
   sourceDocumentId: string | null;
 }
 
-export interface DailyNote {
-  date: string;
-  contentMd: string;
-  mood: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+// ADR-0050: DailyNote was merged into Document(source='daily'). The
+// /ask Daily sidebar queries `/search/pinned-by-day` and renders
+// Document rows grouped by metadata.date / createdAt.
 
 export type JobStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
 
@@ -295,11 +291,15 @@ export type ConfigGroup =
   | 'vision'
   | 'whisper'
   | 'claude'
-  | 'worker';
+  | 'worker'
+  | 'providers';
+
+export type ConfigSection = 'providers' | 'ingestion' | 'enrichment' | 'storage' | 'advanced';
 
 interface ConfigSpecCommon {
   key: string;
   group: ConfigGroup;
+  section?: ConfigSection;
   description: string;
   requiresRestart?: boolean;
 }
@@ -467,4 +467,36 @@ export interface ProblemDetails {
   status: number;
   detail?: string;
   instance?: string;
+}
+
+// ---- LLM providers (ADR-0049) ----------------------------------------------
+
+export type LlmProviderKind = 'claude_cli' | 'anthropic_api' | 'openai_compat';
+
+export interface LlmProviderRow {
+  id: string;
+  name: string;
+  kind: LlmProviderKind;
+  model: string;
+  baseUrl: string | null;
+  hasKey: boolean;
+  apiKeyLast4: string | null;
+  extra: Record<string, unknown> | null;
+  builtin: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export type ProviderFeatureKey = 'default' | 'ask' | 'enrichment' | 'vision' | 'projectContext';
+
+export interface ProvidersListResponse {
+  providers: LlmProviderRow[];
+  defaults: Record<ProviderFeatureKey, string>;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  latencyMs: number;
+  version?: string;
+  error?: string;
 }

@@ -8,7 +8,6 @@ import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { loadEnv } from './env.js';
 import { ConversationsModule } from './modules/conversations/conversations.module.js';
-import { DailyModule } from './modules/daily/daily.module.js';
 import { DecisionsModule } from './modules/decisions/decisions.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
 import { GraphModule } from './modules/graph/graph.module.js';
@@ -17,6 +16,7 @@ import { InboxModule } from './modules/inbox/inbox.module.js';
 import { JobsModule } from './modules/jobs/jobs.module.js';
 import { LiveModule } from './live/live.module.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
+import { ProvidersModule } from './modules/providers/providers.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { PrismaModule, RepositoriesModule } from '@mnela/db';
@@ -62,7 +62,6 @@ const env = loadEnv();
     AuditModule,
     AuthModule,
     ConversationsModule,
-    DailyModule,
     DecisionsModule,
     DocumentsModule,
     GraphModule,
@@ -71,6 +70,7 @@ const env = loadEnv();
     JobsModule,
     LiveModule,
     ProjectsModule,
+    ProvidersModule,
     SearchModule,
     SystemModule,
   ],

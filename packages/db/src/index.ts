@@ -15,11 +15,16 @@ export type {
   DocumentProject,
   Project,
   Decision,
-  DailyNote,
   InboxItem,
   Job,
   AuditLog,
   SystemConfig,
   AuthToken,
   AdminUser,
+  LlmProvider,
 } from '@prisma/client';
+export { LlmProviderKind } from '@prisma/client';
+// MessageKind ships in the next prisma generate (migration
+// 20260513150100). Re-export for app code that doesn't import @prisma/client
+// directly. Once the client regenerates, replace with a plain re-export.
+export type MessageKind = 'ephemeral' | 'pinned';

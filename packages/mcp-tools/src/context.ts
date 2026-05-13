@@ -1,7 +1,6 @@
 import type {
   AttachmentRepository,
   AuditLogRepository,
-  DailyNoteRepository,
   DecisionRepository,
   DocumentEntityRepository,
   DocumentRepository,
@@ -64,7 +63,15 @@ export interface QueueAdder<T> {
 export interface McpToolContext {
   documents: Pick<
     DocumentRepository,
-    'findById' | 'getChunks' | 'list' | 'create' | 'update' | 'setProjects' | 'findByContentHash'
+    | 'findById'
+    | 'getChunks'
+    | 'list'
+    | 'create'
+    | 'update'
+    | 'setProjects'
+    | 'findByContentHash'
+    | 'findDailyByDate'
+    | 'listDaily'
   >;
   attachments: Pick<AttachmentRepository, 'findById' | 'setAnalysis' | 'listForDocument'>;
   entities: Pick<
@@ -76,7 +83,6 @@ export interface McpToolContext {
   inbox: Pick<InboxRepository, 'create'>;
   projects: Pick<ProjectRepository, 'list' | 'findBySlug' | 'findByIds' | 'update'>;
   decisions: Pick<DecisionRepository, 'list' | 'create'>;
-  daily: Pick<DailyNoteRepository, 'findByDate' | 'list'>;
   jobs: Pick<JobRepository, 'create'>;
   search: SimilarSearcher & FullSearcher;
   events: EventSink;

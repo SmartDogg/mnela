@@ -4,7 +4,6 @@ import type { SearchFilters, SearchResult } from '@mnela/search';
 import type {
   AuditLog,
   Decision,
-  DailyNote,
   Document,
   DocumentChunk,
   DocumentEntity,
@@ -15,6 +14,7 @@ import type {
   Job,
   Prisma,
   Project,
+  SourceType,
 } from '@prisma/client';
 import { vi } from 'vitest';
 
@@ -36,7 +36,8 @@ export interface MockBag {
   inboxItems: InboxItem[];
   projects: Map<string, Project>;
   decisions: Decision[];
-  dailyNotes: DailyNote[];
+  /** Daily notes — represented as Document(source='daily') after ADR-0050. */
+  dailyDocs: Document[];
   jobsCreated: Job[];
   enrichmentJobsAdded: QueuedJobRecord<EnrichmentJob>[];
   indexingJobsAdded: QueuedJobRecord<IndexingJob>[];
@@ -81,7 +82,8 @@ export function buildMockCtx(
     documents?: Document[];
     projects?: Project[];
     decisions?: Decision[];
-    dailyNotes?: DailyNote[];
+    /** Daily notes are Document(source='daily') after ADR-0050. */
+    dailyDocs?: Document[];
     edges?: Edge[];
     principalScope?: TokenScope;
     principalName?: string;
@@ -96,7 +98,7 @@ export function buildMockCtx(
   const inboxItems: InboxItem[] = [];
   const projects = new Map<string, Project>();
   const decisions: Decision[] = [];
-  const dailyNotes: DailyNote[] = [];
+  const dailyDocs: Document[] = [];
   const jobsCreated: Job[] = [];
   const enrichmentJobsAdded: QueuedJobRecord<EnrichmentJob>[] = [];
   const indexingJobsAdded: QueuedJobRecord<IndexingJob>[] = [];
@@ -120,7 +122,10 @@ export function buildMockCtx(
   }
   for (const p of seed.projects ?? []) projects.set(p.slug, p);
   for (const d of seed.decisions ?? []) decisions.push(d);
-  for (const n of seed.dailyNotes ?? []) dailyNotes.push(n);
+  for (const n of seed.dailyDocs ?? []) {
+    dailyDocs.push(n);
+    docs.set(n.id, n);
+  }
   for (const e of seed.edges ?? []) edges.push(e);
 
   const ctx: McpToolContext = {
@@ -180,6 +185,30 @@ export function buildMockCtx(
       findByContentHash: vi.fn(async (hash: string) => {
         for (const doc of docs.values()) if (doc.contentHash === hash) return doc;
         return null;
+      }),
+      findDailyByDate: vi.fn(async (date: string) => {
+        return (
+          dailyDocs.find((d) => {
+            const meta = (d.metadata ?? {}) as { date?: string };
+            return (meta.date ?? d.sourceId ?? null) === date;
+          }) ?? null
+        );
+      }),
+      listDaily: vi.fn(async (from?: string, to?: string, limit?: number) => {
+        let items = dailyDocs.slice();
+        if (from) {
+          items = items.filter((d) => {
+            const key = ((d.metadata ?? {}) as { date?: string }).date ?? d.sourceId ?? '';
+            return key >= from;
+          });
+        }
+        if (to) {
+          items = items.filter((d) => {
+            const key = ((d.metadata ?? {}) as { date?: string }).date ?? d.sourceId ?? '';
+            return key <= to;
+          });
+        }
+        return items.slice(0, limit ?? items.length);
       }),
     },
     attachments: {
@@ -348,18 +377,6 @@ export function buildMockCtx(
         return d;
       }),
     },
-    daily: {
-      findByDate: vi.fn(async (date: Date) => {
-        const target = date.toISOString().slice(0, 10);
-        return dailyNotes.find((n) => n.date.toISOString().slice(0, 10) === target) ?? null;
-      }),
-      list: vi.fn(async (from?: Date, to?: Date) => {
-        let items = dailyNotes.slice();
-        if (from) items = items.filter((n) => n.date >= from);
-        if (to) items = items.filter((n) => n.date <= to);
-        return items;
-      }),
-    },
     jobs: {
       create: vi.fn(async (input): Promise<Job> => {
         const job: Job = {
@@ -445,7 +462,7 @@ export function buildMockCtx(
     inboxItems,
     projects,
     decisions,
-    dailyNotes,
+    dailyDocs,
     jobsCreated,
     enrichmentJobsAdded,
     indexingJobsAdded,
@@ -507,17 +524,36 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
   };
 }
 
-export function makeDailyNote(overrides: Partial<DailyNote> = {}): DailyNote {
-  return {
+/**
+ * ADR-0050: daily notes are Document(source='daily') rows with the
+ * YYYY-MM-DD string in sourceId and `{date, mood}` in metadata. The
+ * helper mirrors that shape so tool tests can seed `dailyDocs` and have
+ * `findDailyByDate`/`listDaily` work like real data.
+ */
+export function makeDailyDoc(overrides: Partial<Document> & { date?: string } = {}): Document {
+  const date = overrides.date ?? '2026-05-08';
+  const base: Document = {
     id: nextId('daily'),
-    date: new Date('2026-05-08T00:00:00.000Z'),
-    contentMd: 'note',
-    mood: null,
-    metadata: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    ...overrides,
+    source: 'daily' as SourceType,
+    sourceId: date,
+    title: `Daily ${date}`,
+    rawText: 'note',
+    cleanText: null,
+    contentHash: `daily:${date}`,
+    tokenCount: null,
+    language: null,
+    type: 'note',
+    metadata: { date, mood: null } as Prisma.JsonValue,
+    status: 'raw',
+    createdAt: new Date(`${date}T00:00:00.000Z`),
+    updatedAt: new Date(`${date}T00:00:00.000Z`),
+    ingestedAt: new Date(`${date}T00:00:00.000Z`),
+    enrichedAt: null,
+    archivedAt: null,
+    vaultPath: null,
   };
+  const { date: _drop, ...rest } = overrides;
+  return { ...base, ...rest };
 }
 
 export function seedEntity(name: string, type: EntityType): Entity {

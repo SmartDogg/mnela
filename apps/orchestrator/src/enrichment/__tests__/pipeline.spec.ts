@@ -1,8 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const runClaudeMock = vi.fn();
-vi.mock('@mnela/claude-runner', () => ({ runClaude: runClaudeMock }));
-
 const publishEventMock = vi.fn();
 const peekSlotMock = vi.fn().mockResolvedValue(null);
 const recordCompletionMock = vi.fn().mockResolvedValue(undefined);
@@ -14,30 +11,49 @@ vi.mock('@mnela/queue', () => ({
 
 const { EnrichmentPipeline } = await import('../pipeline.js');
 
-interface FakeRunOpts {
-  result?: { result?: string };
-  rateLimitHit?: { resetAt: Date | null; raw: string; source: string };
-  authError?: 'invalid-key' | 'not-logged-in' | 'oauth-revoked' | null;
-  exitCode?: number | null;
-  timedOut?: boolean;
+interface FakeProviderResult {
+  text?: string;
+  final?: { type: 'done' } | { type: 'error'; reason: string; message?: string; resetAt?: Date };
 }
 
-function fakeRun(opts: FakeRunOpts = {}) {
+function makeCliProvider(result: FakeProviderResult = {}): {
+  config: { id: string; kind: 'claude_cli'; name: string; model: string };
+  supportsTools: true;
+  supportsVision: true;
+  stream: () => AsyncGenerator<never>;
+  test: () => Promise<{ ok: true; latencyMs: number }>;
+  run: (args: { prompt: string }) => Promise<{
+    text: string;
+    final: { type: 'done' } | { type: 'error'; reason: string; message?: string; resetAt?: Date };
+  }>;
+} {
   return {
-    exitCode: opts.exitCode ?? 0,
-    signal: null,
-    stdout: '',
-    stderr: '',
-    frames: [],
-    result: opts.result ?? { type: 'result', session_id: 's', result: '' },
-    rateLimitHit: opts.rateLimitHit ?? null,
-    authError: opts.authError ?? null,
-    timedOut: opts.timedOut ?? false,
+    config: {
+      id: 'builtin:claude-cli',
+      kind: 'claude_cli',
+      name: 'Claude Code (built-in)',
+      model: '',
+    },
+    supportsTools: true,
+    supportsVision: true,
+    // eslint-disable-next-line require-yield
+    async *stream(): AsyncGenerator<never> {
+      // unused — tests drive the fake provider via .run()
+      return;
+    },
+    async test() {
+      return { ok: true, latencyMs: 1 };
+    },
+    async run() {
+      return {
+        text: result.text ?? '',
+        final: result.final ?? { type: 'done' as const },
+      };
+    },
   };
 }
 
 beforeEach(() => {
-  runClaudeMock.mockReset();
   publishEventMock.mockReset();
   process.env['DATABASE_URL'] ||= 'postgres://x:x@127.0.0.1:5432/mnela';
   process.env['REDIS_URL'] ||= 'redis://127.0.0.1:6379';
@@ -58,6 +74,7 @@ interface PipelineDeps {
     isPaused: (...args: unknown[]) => Promise<unknown>;
     pause: (...args: unknown[]) => Promise<unknown>;
   };
+  providerResult?: FakeProviderResult;
 }
 
 function makePipeline(overrides: PipelineDeps = {}) {
@@ -73,6 +90,10 @@ function makePipeline(overrides: PipelineDeps = {}) {
     isPaused: vi.fn(async () => false),
     pause: vi.fn(async () => undefined),
   };
+  const provider = makeCliProvider(overrides.providerResult);
+  const providers = {
+    resolveForFeature: vi.fn(async () => provider),
+  };
   const pipeline = new EnrichmentPipeline(
     documents as never,
     {} as never, // attachments — not exercised by existing tests
@@ -82,12 +103,13 @@ function makePipeline(overrides: PipelineDeps = {}) {
     claudeStatus as never,
     rateLimit as never,
     { get: vi.fn(async () => null) } as never, // systemConfig
+    providers as never,
   );
-  return { pipeline, documents, claudeStatus, rateLimit };
+  return { pipeline, documents, claudeStatus, rateLimit, providers, provider };
 }
 
 describe('EnrichmentPipeline', () => {
-  it('skips when claude is unavailable', async () => {
+  it('skips when claude is unavailable (CLI provider)', async () => {
     const { pipeline, claudeStatus, documents } = makePipeline({
       claudeStatus: {
         get: vi.fn(async () => ({
@@ -102,7 +124,6 @@ describe('EnrichmentPipeline', () => {
     expect(outcome.status).toBe('skipped');
     expect(claudeStatus.get).toHaveBeenCalled();
     expect(documents.update).not.toHaveBeenCalled();
-    expect(runClaudeMock).not.toHaveBeenCalled();
   });
 
   it('returns rate-limited when queue is already paused', async () => {
@@ -114,23 +135,22 @@ describe('EnrichmentPipeline', () => {
     });
     const outcome = await pipeline.run({ dbJobId: 'j', documentId: 'd' });
     expect(outcome.status).toBe('rate-limited');
-    expect(runClaudeMock).not.toHaveBeenCalled();
   });
 
-  it('on rate-limit hit, pauses queue and reverts document status', async () => {
+  it('on rate-limit error, pauses queue and reverts document status', async () => {
     const reset = new Date(Date.now() + 60_000);
-    runClaudeMock.mockResolvedValueOnce(
-      fakeRun({
-        rateLimitHit: { resetAt: reset, raw: 'rate', source: 'api_retry_frame' },
-      }),
-    );
     const documents = { update: vi.fn(async () => ({})) };
     const rateLimit = { isPaused: vi.fn(async () => false), pause: vi.fn(async () => undefined) };
     const claudeStatus = {
       get: vi.fn(async () => ({ available: true, checkedAt: new Date().toISOString() })),
       set: vi.fn(async () => undefined),
     };
-    const { pipeline } = makePipeline({ documents, rateLimit, claudeStatus });
+    const { pipeline } = makePipeline({
+      documents,
+      rateLimit,
+      claudeStatus,
+      providerResult: { final: { type: 'error', reason: 'rate-limit', resetAt: reset } },
+    });
 
     const outcome = await pipeline.run({ dbJobId: 'j', documentId: 'd' });
     expect(outcome.status).toBe('rate-limited');
@@ -141,13 +161,16 @@ describe('EnrichmentPipeline', () => {
   });
 
   it('on auth error, marks claude unavailable and document parsed', async () => {
-    runClaudeMock.mockResolvedValueOnce(fakeRun({ authError: 'not-logged-in' }));
     const documents = { update: vi.fn(async () => ({})) };
     const claudeStatus = {
       get: vi.fn(async () => ({ available: true, checkedAt: new Date().toISOString() })),
       set: vi.fn(async () => undefined),
     };
-    const { pipeline } = makePipeline({ documents, claudeStatus });
+    const { pipeline } = makePipeline({
+      documents,
+      claudeStatus,
+      providerResult: { final: { type: 'error', reason: 'auth' } },
+    });
 
     const outcome = await pipeline.run({ dbJobId: 'j', documentId: 'd' });
     expect(outcome.status).toBe('auth-error');
@@ -155,16 +178,13 @@ describe('EnrichmentPipeline', () => {
   });
 
   it('on success, parses structured output and emits document.enriched', async () => {
-    runClaudeMock.mockResolvedValueOnce(
-      fakeRun({
-        result: {
-          result:
-            'Here is the work I did. {"summary":"all good","addedEntitiesCount":3,"addedEdgesCount":5,"droppedLowConfidence":1}',
-        },
-      }),
-    );
     const documents = { update: vi.fn(async () => ({})) };
-    const { pipeline } = makePipeline({ documents });
+    const { pipeline } = makePipeline({
+      documents,
+      providerResult: {
+        text: 'Here is the work I did. {"summary":"all good","addedEntitiesCount":3,"addedEdgesCount":5,"droppedLowConfidence":1}',
+      },
+    });
 
     const outcome = await pipeline.run({ dbJobId: 'j7', documentId: 'docZ' });
     expect(outcome.status).toBe('enriched');
@@ -186,10 +206,12 @@ describe('EnrichmentPipeline', () => {
     );
   });
 
-  it('marks document failed on non-zero exit', async () => {
-    runClaudeMock.mockResolvedValueOnce(fakeRun({ exitCode: 1 }));
+  it('marks document failed on provider error', async () => {
     const documents = { update: vi.fn(async () => ({})) };
-    const { pipeline } = makePipeline({ documents });
+    const { pipeline } = makePipeline({
+      documents,
+      providerResult: { final: { type: 'error', reason: 'generic', message: 'exit 1' } },
+    });
 
     const outcome = await pipeline.run({ dbJobId: 'j', documentId: 'd' });
     expect(outcome.status).toBe('failed');

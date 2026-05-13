@@ -13,7 +13,10 @@ interface InboxFiltersProps {
   value: InboxFilters;
   onChange: (next: InboxFilters) => void;
   projects: { slug: string; name: string }[];
-  total: number;
+  /** Items on the current page (what "select all" actually selects). */
+  visibleCount: number;
+  /** Total items matching filters across all pages (from API meta). */
+  totalCount: number;
   selectedCount: number;
   onSelectAllVisible: () => void;
   onClearSelection: () => void;
@@ -34,13 +37,15 @@ export function InboxFiltersBar({
   value,
   onChange,
   projects,
-  total,
+  visibleCount,
+  totalCount,
   selectedCount,
   onSelectAllVisible,
   onClearSelection,
 }: InboxFiltersProps): JSX.Element {
   const t = useTranslations('inbox.filters');
   const tTypes = useTranslations('inbox.types');
+  const hasMore = totalCount > visibleCount;
 
   const isDefault =
     !value.type && value.status === 'pending' && !value.projectSlug && value.range === 'all';
@@ -115,18 +120,24 @@ export function InboxFiltersBar({
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {total > 0 && (
+          {visibleCount > 0 && (
             <Button
               variant="ghost"
               size="sm"
               className="h-7 px-2 text-xs"
-              onClick={selectedCount === total ? onClearSelection : onSelectAllVisible}
+              onClick={selectedCount === visibleCount ? onClearSelection : onSelectAllVisible}
             >
-              {selectedCount === total ? t('deselectAll') : t('selectAllVisible', { count: total })}
+              {selectedCount === visibleCount
+                ? t('deselectAll')
+                : t('selectAllVisible', { count: visibleCount })}
             </Button>
           )}
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {total}
+          <Badge
+            variant="outline"
+            className="font-mono text-[10px]"
+            title={hasMore ? t('totalHint', { total: totalCount }) : undefined}
+          >
+            {hasMore ? `${visibleCount} / ${totalCount}` : totalCount}
           </Badge>
         </div>
       </div>
