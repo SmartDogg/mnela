@@ -2,11 +2,17 @@ import 'reflect-metadata';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 
 import { OrchestratorModule } from './orchestrator.module.js';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(OrchestratorModule, { bufferLogs: true });
+  // Same pattern the api uses: bufferLogs=true + useLogger(pino) flushes
+  // anything Nest queued during module init through pino. Without this, the
+  // pre-existing main.ts swallowed every log line — including the very
+  // useful "worker ready" / "enrichment job N failed" entries.
+  app.useLogger(app.get(PinoLogger));
   const logger = new Logger('orchestrator');
   app.enableShutdownHooks();
   logger.log('mnela orchestrator started');
