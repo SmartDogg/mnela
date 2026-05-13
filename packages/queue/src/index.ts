@@ -11,11 +11,14 @@ export {
   type IndexingJob,
   type MaintenanceJob,
   type TranscribeAudioJob,
+  type ProjectSuggestJob,
+  type ProjectAutofillJob,
   type IngestionJobName,
   type EnrichmentJobName,
   type IndexingJobName,
   type MaintenanceJobName,
   type TranscriptionJobName,
+  type ProjectsJobName,
 } from './jobs.js';
 export {
   type MnelaEvent,

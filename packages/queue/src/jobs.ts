@@ -20,6 +20,7 @@ export type EnrichmentJobName =
 export type IndexingJobName = 'rebuild_index' | 'export_vault';
 export type MaintenanceJobName = 'backup' | 'cleanup';
 export type TranscriptionJobName = 'transcribe_audio';
+export type ProjectsJobName = 'project_suggest' | 'project_autofill';
 
 export interface IngestFileJob {
   dbJobId: string;
@@ -62,4 +63,36 @@ export interface MaintenanceJob {
 export interface TranscribeAudioJob {
   dbJobId: string;
   documentId: string;
+}
+
+/**
+ * ADR-0051 — project_suggest job.
+ *
+ * `mode='batch'` runs the post-enrichment detector for a single import
+ * `batchId` (debounced 5 min after the last doc in that batch finished
+ * enriching). `mode='rescan'` does a full sweep over recent batches +
+ * entity clusters and is enqueued by the API when the user clicks "Rescan
+ * suggestions" on /projects/new.
+ *
+ * The detector reads `SystemConfig.projects.suggestions.enabled` first and
+ * short-circuits when the gate is off, so a `mode='rescan'` job with
+ * suggestions disabled is a no-op (no detection SQL, no Haiku tokens).
+ */
+export interface ProjectSuggestJob {
+  dbJobId: string;
+  mode: 'batch' | 'rescan';
+  /** Required when mode='batch'. */
+  batchId?: string;
+}
+
+/**
+ * ADR-0051 — project_autofill job. The user created (or edited) a manual
+ * project and ticked the auto-fill checkbox; this job pulls candidates via
+ * embedding match on the description + entity-name match and writes
+ * DocumentProject links with linkSource=autoFill. Always idempotent: re-runs
+ * upsert and won't downgrade an existing manual link.
+ */
+export interface ProjectAutofillJob {
+  dbJobId: string;
+  projectId: string;
 }

@@ -6,6 +6,11 @@ export const QUEUE_NAMES = [
   'indexing',
   'maintenance',
   'transcription',
+  // ADR-0051: auto-suggested projects detector + manual project autofill.
+  // Kept separate from `enrichment` so the slot-mutex + rate-limit logic
+  // around Claude doesn't gate every cluster scan, and so a stuck Ask Brain
+  // doesn't starve out the post-import detector.
+  'projects',
 ] as const;
 export type QueueName = (typeof QUEUE_NAMES)[number];
 
