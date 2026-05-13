@@ -47,6 +47,13 @@ yield * provider.stream({ messages, tools, signal, image });
 - Master key: `MNELA_PROVIDER_SECRET` env (preferred) or `$MNELA_DATA_DIR/keystore/provider.key` auto-generated at boot.
 - Admin UI exposes per-feature routing + "Apply default to all" in `/admin/system → AI Providers`.
 
+## SystemConfig & hot-reload
+
+- User-facing knobs live in the typed registry at `packages/core/system-registry.ts` (SystemConfig table holds overrides). Sections: `providers / ingestion / enrichment / whisper / search / api / projects / telegram / storage / advanced`. Every spec has `type` + `default`; `requiresRestart: true` flags entries whose runtime consumer is constructed once at boot (BullMQ worker concurrency, ThrottlerModule, dropbox watcher feature flag).
+- **"Restart Services" button** (top of `/admin/system`) → `POST /system/restart` → publishes `system.service_reload` on Redis pubsub → each subscriber (`ReloadService` in `apps/worker` and `apps/orchestrator`) calls its registered hot-reload callbacks. **No `process.exit`** — the consumers close + recreate their BullMQ Workers in-process, so the same one-click flow works under docker / systemd / `pnpm dev` identically.
+- Env vars are reserved for boot-critical / secret / deploy-infra values: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `COOKIE_SECRET`, `MNELA_DATA_DIR`, `WHISPER_URL`, `MNELA_INTERNAL_TOKEN`, `MNELA_PROVIDER_SECRET`. Everything tunable from the admin UI is in SystemConfig.
+- All cards on `/admin/system` are collapsible and remember their open/closed state via `useCollapsibleSection` (localStorage `mnela:admin-system:open:<section>`). Default is closed for every card so first-visit isn't a wall of settings.
+
 ## Project conventions
 
 - TypeScript strict, no `any`, no implicit unknowns.
