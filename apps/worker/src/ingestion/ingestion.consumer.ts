@@ -36,6 +36,7 @@ import { type Redis } from 'ioredis';
 
 import { attachmentsDir, loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
+import { ReloadService } from '../reload/reload.service.js';
 import { EnrichmentEnqueueService } from '../shared/enrichment-enqueue.service.js';
 
 @Injectable()
@@ -55,9 +56,21 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly entities: EntityRepository,
     private readonly enrichmentEnqueue: EnrichmentEnqueueService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly reload: ReloadService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.startWorker();
+    this.reload.register('ingestion.worker', () => this.restartWorker());
+  }
+
+  /**
+   * Idempotent BullMQ Worker bootstrap. Called from onModuleInit and
+   * again on every `system.service_reload` so the post-toggle
+   * concurrency value (registry key `worker.ingestion.concurrency`)
+   * takes effect without a process restart.
+   */
+  private async startWorker(): Promise<void> {
     const env = loadEnv();
     // BullMQ requires a dedicated connection because it issues blocking
     // commands (BRPOPLPUSH); sharing with the pubsub-publishing client
@@ -92,15 +105,29 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`ingestion worker ready (concurrency=${concurrency})`);
   }
 
-  async onModuleDestroy(): Promise<void> {
+  private async restartWorker(): Promise<void> {
+    this.logger.log('reloading ingestion worker');
+    await this.shutdown();
+    await this.startWorker();
+  }
+
+  private async shutdown(): Promise<void> {
     await this.worker?.close().catch(() => undefined);
+    this.worker = undefined;
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+    this.bullConnection = undefined;
     await this.transcriptionQueue?.close().catch(() => undefined);
+    this.transcriptionQueue = undefined;
     if (this.transcriptionConnection && this.transcriptionConnection.status !== 'end') {
       await this.transcriptionConnection.quit().catch(() => undefined);
     }
+    this.transcriptionConnection = undefined;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdown();
   }
 
   private async handleJob(bullJob: BullJob<IngestFileJob>): Promise<{

@@ -18,12 +18,9 @@ const EnvSchema = z.object({
   // on top of streaming several hundred MB of nested ZIPs to disk). At
   // concurrency=4 four parallel runs blow past Node's 4 GB heap and the
   // worker OOMs silently. 2 strikes a balance between throughput on
-  // small files and safety on multi-GB exports; override per-deploy.
+  // small files and safety on multi-GB exports. Live tuning lives at
+  // `worker.ingestion.concurrency` — this is just the boot fallback.
   WORKER_INGESTION_CONCURRENCY: z.coerce.number().int().positive().default(2),
-  WORKER_DROPBOX_DISABLED: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
 });
 
 export type WorkerEnv = z.infer<typeof EnvSchema>;

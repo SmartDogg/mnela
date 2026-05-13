@@ -3,8 +3,11 @@ import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { JobRepository } from '@mnela/db';
+import { readRegistryValue } from '@mnela/core';
+import { JobRepository, SystemConfigRepository } from '@mnela/db';
 import { type IngestFileJob, QUEUE_NAMES, createQueueConnection } from '@mnela/queue';
+
+import { ReloadService } from '../reload/reload.service.js';
 import { Prisma } from '@prisma/client';
 import { Queue } from 'bullmq';
 import chokidar, { type FSWatcher } from 'chokidar';
@@ -38,14 +41,25 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly redis: RedisService,
     private readonly jobs: JobRepository,
+    private readonly systemConfig: SystemConfigRepository,
+    private readonly reload: ReloadService,
   ) {
     void this.redis;
   }
 
   async onModuleInit(): Promise<void> {
+    await this.startWatching();
+    this.reload.register('dropbox.watcher', () => this.restart());
+  }
+
+  private async startWatching(): Promise<void> {
     const env = loadEnv();
-    if (env.WORKER_DROPBOX_DISABLED) {
-      this.logger.warn('dropbox watcher disabled via WORKER_DROPBOX_DISABLED');
+    const enabled = await readRegistryValue<boolean>(
+      this.systemConfig,
+      'ingestion.dropbox.enabled',
+    );
+    if (!enabled) {
+      this.logger.warn('dropbox watcher disabled via ingestion.dropbox.enabled');
       return;
     }
     const dir = dropboxDir(env);
@@ -75,12 +89,25 @@ export class DropboxWatcher implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`watching ${dir}`);
   }
 
-  async onModuleDestroy(): Promise<void> {
-    await this.watcher?.close();
+  private async restart(): Promise<void> {
+    this.logger.log('reloading dropbox watcher');
+    await this.stopWatching();
+    await this.startWatching();
+  }
+
+  private async stopWatching(): Promise<void> {
+    await this.watcher?.close().catch(() => undefined);
+    this.watcher = undefined;
     await this.queue?.close().catch(() => undefined);
+    this.queue = undefined;
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+    this.bullConnection = undefined;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.stopWatching();
   }
 
   private async enqueue(filePath: string): Promise<void> {

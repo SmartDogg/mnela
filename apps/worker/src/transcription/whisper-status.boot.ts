@@ -4,6 +4,7 @@ import { SystemConfigRepository } from '@mnela/db';
 import { createWhisperClient } from '@mnela/ingestion';
 
 import { loadEnv } from '../env.js';
+import { ReloadService } from '../reload/reload.service.js';
 import { WhisperStatusService } from './whisper-status.service.js';
 
 /**
@@ -29,9 +30,16 @@ export class WhisperStatusBoot implements OnModuleInit {
   constructor(
     private readonly status: WhisperStatusService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly reload: ReloadService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.probe();
+    this.reload.register('whisper.status', () => this.probe());
+  }
+
+  /** Re-probes whisper.cpp and writes the result to the shared status. */
+  private async probe(): Promise<void> {
     const env = loadEnv();
     const checkedAt = new Date().toISOString();
     const enabled = await readRegistryValue<boolean>(this.systemConfig, 'transcription.enabled');

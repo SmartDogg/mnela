@@ -29,6 +29,7 @@ import { type Redis } from 'ioredis';
 
 import { loadEnv } from '../env.js';
 import { RedisService } from '../redis.service.js';
+import { ReloadService } from '../reload/reload.service.js';
 import { EnrichmentEnqueueService } from '../shared/enrichment-enqueue.service.js';
 import { WhisperStatusService } from './whisper-status.service.js';
 
@@ -109,9 +110,15 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly status: WhisperStatusService,
     private readonly enrichmentEnqueue: EnrichmentEnqueueService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly reload: ReloadService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.startWorker();
+    this.reload.register('transcription.worker', () => this.restartWorker());
+  }
+
+  private async startWorker(): Promise<void> {
     const env = loadEnv();
     this.bullConnection = createQueueConnection(env.REDIS_URL);
     this.whisper = createWhisperClient({
@@ -136,11 +143,23 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`transcription worker ready (concurrency=${concurrency})`);
   }
 
-  async onModuleDestroy(): Promise<void> {
+  private async restartWorker(): Promise<void> {
+    this.logger.log('reloading transcription worker');
+    await this.shutdown();
+    await this.startWorker();
+  }
+
+  private async shutdown(): Promise<void> {
     await this.worker?.close().catch(() => undefined);
+    this.worker = undefined;
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+    this.bullConnection = undefined;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdown();
   }
 
   private async handleJob(bullJob: BullJob<TranscribeAudioJob>): Promise<{

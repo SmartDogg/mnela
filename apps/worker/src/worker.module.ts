@@ -7,6 +7,7 @@ import { loadEnv } from './env.js';
 import { IngestionConsumer } from './ingestion/ingestion.consumer.js';
 import { StubConsumersService } from './ingestion/stub-consumers.service.js';
 import { RedisService } from './redis.service.js';
+import { ReloadModule } from './reload/reload.module.js';
 import { RepositoriesModule } from './repositories.module.js';
 import { TranscriptionModule } from './transcription/transcription.module.js';
 
@@ -25,6 +26,7 @@ const env = loadEnv();
       },
     }),
     RepositoriesModule,
+    ReloadModule,
     TranscriptionModule,
   ],
   providers: [PrismaService, RedisService, IngestionConsumer, StubConsumersService, DropboxWatcher],
