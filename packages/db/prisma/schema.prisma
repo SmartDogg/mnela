@@ -537,6 +537,7 @@ model Conversation {
   adminUser         AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
   synthesisDocument Document? @relation("ConversationSynthesis", fields: [synthesisDocumentId], references: [id], onDelete: SetNull)
   messages          Message[]
+  telegramLinks     TelegramChatLink[]
 
   @@index([adminUserId, createdAt(sort: Desc)])
   @@index([adminUserId, updatedAt(sort: Desc)])
@@ -564,4 +565,88 @@ model Message {
 
   @@index([conversationId, createdAt])
   @@index([kind, pinnedDocumentId])
+}
+
+// =====================================================================
+// Telegram bot integration (ADR-0053) — single-tenant Telegram frontend
+// to /search/ask + /documents/upload. Config lives in the singleton-id
+// TelegramBot row (token AES-256-GCM-encrypted in `tokenEnc`, master key
+// shared with LlmProvider via `@mnela/llm-providers/keystore`). Access
+// gated by TelegramAllowedUser whitelist; chat-to-conversation mapping
+// in TelegramChatLink so multi-turn /ask state lives in the existing
+// Conversation/Message tables, not in a parallel store.
+// =====================================================================
+
+enum TelegramTransport {
+  polling
+  webhook
+}
+
+model TelegramBot {
+  /// Always the literal string "singleton" — the table holds exactly one row,
+  /// upserted by id. This keeps the controller stateless and avoids the need
+  /// for a per-row repo.
+  id String @id
+
+  enabled  Boolean @default(false)
+  /// AES-256-GCM ciphertext (IV‖tag‖ct) of the plaintext bot token. Same
+  /// keystore as LlmProvider.apiKeyEnc — `MNELA_PROVIDER_SECRET` or the
+  /// auto-generated `$MNELA_DATA_DIR/keystore/provider.key`.
+  tokenEnc Bytes?
+  /// Last 4 chars of the plaintext token, persisted so the UI can render
+  /// "…1234" without round-tripping through decrypt + log redaction.
+  tokenLast4 String?
+
+  /// Cached `getMe()` identity — refreshed on Test Connection. Lets the bot
+  /// recognise its own messages and lets the UI show "Connected as @foo".
+  botUsername String?
+  botId       BigInt?
+
+  transport          TelegramTransport @default(polling)
+  webhookUrl         String?
+  /// Debounce window for multi-modal turn bundling. New messages within
+  /// this window are collected into a single conversational turn before
+  /// the bot replies. 4000 ms is a deliberate compromise: long enough to
+  /// catch "voice → photo → text" sequences, short enough that single
+  /// utterances feel responsive.
+  bundleWindowMs     Int               @default(4000)
+  /// Optional default project slug — every TelegramChatLink that doesn't
+  /// have its own scopeSlug falls back to this. Set via /admin/system.
+  defaultProjectSlug String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TelegramAllowedUser {
+  /// Telegram user_id (64-bit). Bot only processes messages whose
+  /// `from.id` matches a row here.
+  tgUserId  BigInt   @id
+  label     String?
+  createdAt DateTime @default(now())
+}
+
+model TelegramChatLink {
+  /// Telegram chat_id (64-bit). For private chats this equals the user's
+  /// tgUserId; for groups it's the group chat id.
+  tgChatId BigInt @id
+
+  /// Mnela Conversation backing this Telegram chat. Created lazily on the
+  /// first message of the chat and reused for every subsequent turn so
+  /// `/search/ask` sees a continuous multi-turn thread per chat.
+  conversationId String?
+  /// Sticky `/scope <slug>` for this chat. When set, every /ask call from
+  /// this chat passes `scopeProjectSlug` and every ingest passes
+  /// `projects: [slug]`. `/scope` with no arg clears it.
+  scopeSlug      String?
+  /// Wall-clock of the last completed turn — handy for "what was the last
+  /// thing we talked about in this chat" queries / debugging.
+  lastTurnAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId])
 }

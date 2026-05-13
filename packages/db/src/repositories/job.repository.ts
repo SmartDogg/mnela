@@ -1,4 +1,5 @@
-import type { Job, JobStatus, JobType, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import type { Job, JobStatus, JobType } from '@prisma/client';
 
 import { type Page, type PageOptions, makePage, paginationParams } from './pagination.js';
 import type { PrismaProvider } from './types.js';
@@ -14,6 +15,10 @@ export interface CreateJobInput {
 export interface JobListFilters {
   status?: JobStatus;
   type?: JobType;
+  /** Filter by `Job.payload->>source` — used by /activity?tab=uploads
+   * to slice ingest jobs by provenance (manual_upload / telegram /
+   * api_ingest / etc.). */
+  payloadSource?: string;
 }
 
 export interface JobStats {
@@ -41,6 +46,21 @@ export class JobRepository {
     const where: Prisma.JobWhereInput = {};
     if (filters.status) where.status = filters.status;
     if (filters.type) where.type = filters.type;
+    if (filters.payloadSource) {
+      // Legacy ingest jobs (pre ADR-0053) have no `source` key on payload;
+      // the /imports/sources aggregator COALESCEs them under
+      // `manual_upload`, so the filter needs the same fallback to stay
+      // consistent — otherwise `?source=manual_upload` returns zero rows
+      // even when the dropdown shows "Manual upload (N)".
+      if (filters.payloadSource === 'manual_upload') {
+        where.OR = [
+          { payload: { path: ['source'], equals: 'manual_upload' } },
+          { payload: { path: ['source'], equals: Prisma.AnyNull } },
+        ];
+      } else {
+        where.payload = { path: ['source'], equals: filters.payloadSource };
+      }
+    }
     const prisma = this.getPrisma();
     const [items, total] = await Promise.all([
       prisma.job.findMany({

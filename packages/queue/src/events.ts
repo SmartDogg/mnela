@@ -117,7 +117,19 @@ export interface SystemWhisperStatusChangedEvent {
   type: 'system.whisper_status_changed';
   payload: { available: boolean; reason?: string };
 }
-export type SystemEvent = SystemClaudeStatusChangedEvent | SystemWhisperStatusChangedEvent;
+/**
+ * Telegram config changed — the apps/tg-bot process should re-read
+ * TelegramBot.enabled + token and restart its grammY connection. Sent by
+ * /admin/telegram on every successful update (ADR-0053).
+ */
+export interface SystemTelegramReloadEvent {
+  type: 'system.telegram_reload';
+  payload: { reason: 'config-changed' | 'whitelist-changed' | 'manual' };
+}
+export type SystemEvent =
+  | SystemClaudeStatusChangedEvent
+  | SystemWhisperStatusChangedEvent
+  | SystemTelegramReloadEvent;
 
 /**
  * Enrichment-specific live signals. The pipeline already emits

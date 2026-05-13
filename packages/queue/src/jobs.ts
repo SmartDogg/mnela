@@ -22,6 +22,25 @@ export type MaintenanceJobName = 'backup' | 'cleanup';
 export type TranscriptionJobName = 'transcribe_audio';
 export type ProjectsJobName = 'project_suggest' | 'project_autofill';
 
+/**
+ * Document.source values the SourceType enum (`packages/db/prisma/schema.prisma`)
+ * exposes. Mirroring here keeps `@mnela/queue` independent of @prisma/client at
+ * the type level — the worker validates the value once on ingest, the api fills
+ * it from the request body, and BullMQ ferries it across.
+ */
+export type DocumentSource =
+  | 'chatgpt_export'
+  | 'claude_export'
+  | 'obsidian_vault'
+  | 'manual_upload'
+  | 'api_ingest'
+  | 'telegram'
+  | 'voice_note'
+  | 'email'
+  | 'web_clip'
+  | 'chat'
+  | 'daily';
+
 export interface IngestFileJob {
   dbJobId: string;
   filePath: string;
@@ -29,7 +48,17 @@ export interface IngestFileJob {
   mimeType: string;
   size: number;
   contentHash: string;
+  /** Where the upload entered the system (transport-level). */
   origin: 'upload' | 'dropbox' | 'api_ingest';
+  /**
+   * Caller-supplied SourceType. When set, the ingestion consumer threads it
+   * into `ParseContext.origin` so the parser persists the document with this
+   * source instead of the historical `manual_upload` default. Used by tg-bot
+   * (source='telegram') and any future external uploader that wants accurate
+   * provenance on the resulting Documents. Optional — legacy callers without
+   * it keep landing as `manual_upload`.
+   */
+  source?: DocumentSource;
   importBatchId?: string;
 }
 

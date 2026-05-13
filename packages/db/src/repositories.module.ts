@@ -18,6 +18,9 @@ import {
   MessageRepository,
   ProjectRepository,
   SystemConfigRepository,
+  TelegramAllowedUserRepository,
+  TelegramBotRepository,
+  TelegramChatLinkRepository,
 } from './repositories/index.js';
 
 type RepoCtor = new (provider: () => ReturnType<PrismaService['active']>) => unknown;
@@ -39,6 +42,9 @@ const REPO_CLASSES = [
   MessageRepository,
   ProjectRepository,
   SystemConfigRepository,
+  TelegramAllowedUserRepository,
+  TelegramBotRepository,
+  TelegramChatLinkRepository,
 ] as const satisfies readonly RepoCtor[];
 
 const providers: Provider[] = REPO_CLASSES.map((Ctor) => ({

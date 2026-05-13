@@ -16,3 +16,4 @@ export * from './admin-user.repository.js';
 export * from './conversation.repository.js';
 export * from './message.repository.js';
 export * from './llm-provider.repository.js';
+export * from './telegram.repository.js';

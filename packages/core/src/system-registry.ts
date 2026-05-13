@@ -24,6 +24,7 @@ export type ConfigSection =
   | 'enrichment'
   | 'storage'
   | 'projects'
+  | 'telegram'
   | 'advanced';
 
 export interface ConfigSpecBase {
@@ -37,7 +38,8 @@ export interface ConfigSpecBase {
     | 'claude'
     | 'worker'
     | 'providers'
-    | 'projects';
+    | 'projects'
+    | 'telegram';
   /**
    * Top-level card the key renders under in /admin/system. Defaults are
    * derived from `group` so existing specs keep working without explicit
@@ -346,6 +348,34 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     description:
       'Gate for the LLM-generated project summary shown on /projects/[slug]. When off, the header falls back to top-entities + doc count without any LLM call. Default ON.',
     default: true,
+  },
+
+  // ---- Telegram bot (ADR-0053) ----
+  // Master gate for the Telegram-bot integration. The bot process polls
+  // its enabled-state at boot and on every `telegram:reload` pub/sub
+  // event, so flipping this on/off in /admin/system is sufficient — no
+  // process restart required. Token, transport, and whitelist live in
+  // the TelegramBot / TelegramAllowedUser tables (set via the Telegram
+  // card UI, not via this registry).
+  'telegram.enabled': {
+    key: 'telegram.enabled',
+    type: 'bool',
+    group: 'telegram',
+    section: 'telegram',
+    description:
+      'Master gate for the Telegram bot (ADR-0053). When off, the apps/tg-bot process exits its polling loop and ignores incoming updates. The bot token, transport, and whitelist are kept (and visible) but inert. Default OFF — you must configure a token + whitelist before turning this on.',
+    default: false,
+  },
+  'telegram.bundleWindowMs': {
+    key: 'telegram.bundleWindowMs',
+    type: 'int',
+    group: 'telegram',
+    section: 'telegram',
+    description:
+      'Debounce window (ms) used to bundle multi-modal Telegram messages — voice + photo + text sent in sequence — into one conversational turn. Each new message resets the timer; when it elapses, the accumulated items are merged into a single /search/ask call. Lower = snappier replies but risks splitting a multi-part thought; higher = longer wait before the bot answers.',
+    default: 4000,
+    min: 500,
+    max: 30_000,
   },
 };
 
