@@ -60,16 +60,11 @@ function DashboardView({
         title={t('title')}
         subtitle={t('subtitle')}
         actions={
-          <>
-            <Button asChild>
-              <Link href="/imports/new">
-                <Upload className="h-4 w-4" /> {t('actions.import')}
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/search">{t('actions.search')}</Link>
-            </Button>
-          </>
+          <Button asChild>
+            <Link href="/imports/new">
+              <Upload className="h-4 w-4" /> {t('actions.import')}
+            </Link>
+          </Button>
         }
       />
 

@@ -1,21 +1,12 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { Loader2, Search, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { api } from '@/lib/api/client';
-import type { Paginated } from '@/lib/api/types';
+import { useUnifiedSearch } from '@/hooks/use-unified-search';
 import { cn } from '@/lib/utils';
-
-interface EntityRow {
-  id: string;
-  name: string;
-  type: string;
-}
 
 interface SearchBarProps {
   /** When non-empty, the user typed a name. Calls onMatchInGraph for in-graph centering. */
@@ -46,22 +37,17 @@ export function SearchBar({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Debounce remote lookup; cheap in-graph match is fired on every keystroke.
-  const [debounced, setDebounced] = useState('');
-  useEffect(() => {
-    const id = window.setTimeout(() => setDebounced(text.trim()), 220);
-    return () => window.clearTimeout(id);
-  }, [text]);
-
-  const enabled = debounced.length >= 2;
-  const query = useQuery({
-    queryKey: ['graph-entities-search', debounced],
-    enabled,
-    queryFn: () =>
-      api.get<Paginated<EntityRow>>('/graph/entities', {
-        query: { q: debounced, limit: 10 },
-      }),
+  // Shared hook: entities-only here. Documents stay the palette's concern so
+  // the graph search keeps its tight, single-purpose feel. The hook owns the
+  // debounce — passing `text` directly gives instant highlight via the
+  // separate onMatchInGraph callback while the dropdown waits on debounce.
+  const search = useUnifiedSearch({
+    query: text,
+    kinds: ['entities'],
+    entityLimit: 10,
+    minQueryLength: 2,
   });
+  const results = search.entities?.items ?? [];
 
   useEffect(() => {
     function onClick(e: MouseEvent): void {
@@ -72,8 +58,6 @@ export function SearchBar({
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const results = query.data?.items ?? [];
-
   function pickCenter(id: string): void {
     onPickCenter(id);
     // Picking a result switches modes from "filter highlight" to "navigation".
@@ -82,6 +66,11 @@ export function SearchBar({
     onMatchInGraph('');
     setOpen(false);
   }
+
+  // The dropdown opens once the user types enough characters for the hook to
+  // start fetching; this mirrors the previous `enabled >= 2` gate that lived
+  // in the local useQuery.
+  const dropdownReady = search.debounced.length >= 2;
 
   return (
     <div ref={containerRef} className="relative w-full max-w-md">
@@ -151,16 +140,16 @@ export function SearchBar({
             }
           }}
         />
-        {query.isFetching && (
+        {search.isFetchingEntities && (
           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
         )}
       </div>
-      {open && enabled && (
+      {open && dropdownReady && (
         <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
-          {query.isLoading && (
+          {search.isFetchingEntities && results.length === 0 && (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('search.loading')}</div>
           )}
-          {!query.isLoading && results.length === 0 && (
+          {!search.isFetchingEntities && results.length === 0 && (
             <div className="px-2 py-1.5 text-xs text-muted-foreground">{t('search.empty')}</div>
           )}
           {results.map((row) => (

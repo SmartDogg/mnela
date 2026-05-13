@@ -15,7 +15,6 @@ import {
   ListChecks,
   ListTree,
   MessageCircleQuestion,
-  Search,
   Server,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -46,10 +45,10 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
       title: t('dashboard'),
       items: [
         { href: '/', label: t('dashboard'), icon: LayoutDashboard },
-        // Graph is the centre of the brain — promote it to top-level next
-        // to dashboard/search/ask so it's never more than one click away.
+        // Graph is the centre of the brain — promote it to top-level so
+        // it's never more than one click away. Global search lives in the
+        // header via ⌘K and no longer has a dedicated sidebar entry.
         { href: '/graph', label: t('graph'), icon: GitBranch },
-        { href: '/search', label: t('search'), icon: Search },
         { href: '/ask', label: t('ask'), icon: MessageCircleQuestion },
       ],
     },

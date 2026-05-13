@@ -24,7 +24,6 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "search": "Search",
     "ask": "Ask Brain",
     "documents": "Documents",
     "projects": "Projects",
@@ -124,8 +123,7 @@
     "quickActions": "Quick actions",
     "actions": {
       "import": "Import data",
-      "newDocument": "New document",
-      "search": "Search"
+      "newDocument": "New document"
     },
     "claudeMode": {
       "label": "Claude mode",
@@ -231,10 +229,12 @@
       "decidedAt": "Decided at"
     },
     "status": {
+      "active": "Active",
       "open": "Open",
       "in_progress": "In progress",
       "decided": "Decided",
-      "reverted": "Reverted"
+      "reverted": "Reverted",
+      "superseded": "Superseded"
     }
   },
   "daily": {
@@ -293,26 +293,6 @@
       "actionFailed": "Action failed"
     }
   },
-  "search": {
-    "title": "Search",
-    "subtitle": "Full-text, fuzzy, hybrid.",
-    "placeholder": "Search your brain…",
-    "modes": {
-      "fts": "Full-text",
-      "fuzzy": "Fuzzy",
-      "hybrid": "Hybrid"
-    },
-    "filters": {
-      "status": "Status",
-      "source": "Source",
-      "project": "Project",
-      "type": "Type"
-    },
-    "noResults": "No results.",
-    "duration": "{ms}ms",
-    "hits": "{count, plural, one {# result} other {# results}}",
-    "cmdkHint": "Press ⌘K / Ctrl+K to search from anywhere"
-  },
   "ask": {
     "title": "Ask Brain",
     "subtitle": "Server-side Claude with inline citations.",
@@ -345,10 +325,10 @@
       "banner": "Claude rate limit reached. Resumes at {resetAt}."
     },
     "error": {
-      "generic": "Claude failed to produce an answer. Try `claude -p \"hi\"` in your server shell to reproduce and debug (often: MCP stdio config or rate limit).",
-      "auth": "Claude is signed out on the server. SSH in and run `claude login`.",
-      "noBinary": "Claude binary is not installed on the server. Install Claude Code first.",
-      "rateLimit": "Claude rate limit hit. Wait for the window to reset."
+      "generic": "The assistant couldn't answer right now. Try again in a moment — your question wasn't lost. If this keeps happening, check the server logs.",
+      "auth": "The assistant is signed out. An administrator needs to sign it in on the server.",
+      "noBinary": "The assistant isn't installed on this server. An administrator needs to install Claude Code.",
+      "rateLimit": "Rate limit reached for the assistant. Wait for the window to reset, then try again."
     },
     "conversations": {
       "title": "Conversations",
@@ -370,9 +350,38 @@
     }
   },
   "cmdk": {
-    "placeholder": "Search documents, projects, decisions…",
-    "hint": "Tip: ⌘K toggles, ↑/↓ to navigate, ↵ to open",
-    "results": "Results"
+    "placeholder": "Search documents and entities…",
+    "compactHint": "⌘K toggles · ↑↓ navigate · ↵ open · Tab to expand",
+    "expandedHint": "↵ open · Esc collapse · Tab to compact",
+    "documents": "Documents",
+    "entities": "Entities",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "expandedTitle": "Search",
+    "expandedSubtitle": "Full-text, fuzzy, hybrid — across documents and entities.",
+    "noDocuments": "No documents.",
+    "noEntities": "No entities.",
+    "startTyping": "Start typing to search.",
+    "moreDocuments": "{count, plural, one {+# more document} other {+# more documents}}",
+    "moreEntities": "{count, plural, one {+# more entity} other {+# more entities}}",
+    "filters": {
+      "title": "Filters",
+      "mode": "Mode",
+      "status": "Status",
+      "source": "Source",
+      "type": "Type",
+      "project": "Project",
+      "typePlaceholder": "e.g. note, conversation",
+      "projectPlaceholder": "Project slug",
+      "any": "Any",
+      "clear": "Clear filters"
+    },
+    "modes": {
+      "hybrid": "Hybrid",
+      "fts": "Full-text",
+      "fuzzy": "Fuzzy"
+    },
+    "hits": "{count, plural, one {# result} other {# results}}"
   },
   "graph": {
     "title": "Graph",
@@ -586,8 +595,14 @@
       "range_7d": "7 days",
       "range_30d": "30 days",
       "range_all": "All time",
-      "selectAllVisible": "Select all ({count})",
-      "deselectAll": "Deselect all"
+      "selectAllVisible": "Select page ({count})",
+      "deselectAll": "Deselect all",
+      "totalHint": "{total} matching items across all pages"
+    },
+    "pagination": {
+      "summary": "Page {page} of {pages} · {total} total",
+      "prev": "Prev",
+      "next": "Next"
     },
     "bulk": {
       "selected": "{count, plural, one {# selected} other {# selected}}",

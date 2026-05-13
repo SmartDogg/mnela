@@ -24,7 +24,6 @@
   },
   "nav": {
     "dashboard": "Дашборд",
-    "search": "Поиск",
     "ask": "Спросить мозг",
     "documents": "Документы",
     "projects": "Проекты",
@@ -124,8 +123,7 @@
     "quickActions": "Быстрые действия",
     "actions": {
       "import": "Импорт",
-      "newDocument": "Новый документ",
-      "search": "Поиск"
+      "newDocument": "Новый документ"
     },
     "claudeMode": {
       "label": "Режим Claude",
@@ -231,10 +229,12 @@
       "decidedAt": "Дата решения"
     },
     "status": {
+      "active": "Активно",
       "open": "Открыто",
       "in_progress": "В работе",
       "decided": "Решено",
-      "reverted": "Отменено"
+      "reverted": "Отменено",
+      "superseded": "Заменено"
     }
   },
   "daily": {
@@ -293,26 +293,6 @@
       "actionFailed": "Не удалось выполнить действие"
     }
   },
-  "search": {
-    "title": "Поиск",
-    "subtitle": "Полнотекст, fuzzy, гибрид.",
-    "placeholder": "Поиск по мозгу…",
-    "modes": {
-      "fts": "Полнотекст",
-      "fuzzy": "Fuzzy",
-      "hybrid": "Гибрид"
-    },
-    "filters": {
-      "status": "Статус",
-      "source": "Источник",
-      "project": "Проект",
-      "type": "Тип"
-    },
-    "noResults": "Ничего не найдено.",
-    "duration": "{ms}мс",
-    "hits": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}",
-    "cmdkHint": "Нажмите ⌘K / Ctrl+K чтобы открыть поиск из любого места"
-  },
   "ask": {
     "title": "Спросить мозг",
     "subtitle": "Серверный Claude с инлайн-цитатами.",
@@ -345,10 +325,10 @@
       "banner": "Достигнут rate-limit Claude. Возобновится в {resetAt}."
     },
     "error": {
-      "generic": "Claude не смог сгенерировать ответ. Попробуй `claude -p \"hi\"` в shell сервера для отладки (обычно: MCP stdio config или rate limit).",
-      "auth": "Claude разлогинен на сервере. SSH и `claude login`.",
-      "noBinary": "Бинарник claude не установлен на сервере.",
-      "rateLimit": "Достигнут rate-limit Claude. Дождись сброса окна."
+      "generic": "Помощник сейчас не смог ответить. Попробуй ещё раз через минуту — твой вопрос не потерян. Если повторяется — посмотри серверные логи.",
+      "auth": "Помощник не авторизован. Администратору нужно залогинить его на сервере.",
+      "noBinary": "Помощник не установлен на этом сервере. Администратору нужно поставить Claude Code.",
+      "rateLimit": "Достигнут лимит запросов помощника. Дождись окончания окна и попробуй снова."
     },
     "conversations": {
       "title": "Диалоги",
@@ -370,9 +350,38 @@
     }
   },
   "cmdk": {
-    "placeholder": "Поиск документов, проектов, решений…",
-    "hint": "Подсказка: ⌘K — открыть, ↑/↓ — навигация, ↵ — открыть",
-    "results": "Результаты"
+    "placeholder": "Поиск документов и сущностей…",
+    "compactHint": "⌘K — открыть · ↑↓ — навигация · ↵ — открыть · Tab — развернуть",
+    "expandedHint": "↵ — открыть · Esc — свернуть · Tab — компактный режим",
+    "documents": "Документы",
+    "entities": "Сущности",
+    "expand": "Развернуть",
+    "collapse": "Свернуть",
+    "expandedTitle": "Поиск",
+    "expandedSubtitle": "Полнотекст, fuzzy, гибрид — по документам и сущностям.",
+    "noDocuments": "Документов не найдено.",
+    "noEntities": "Сущностей не найдено.",
+    "startTyping": "Начните вводить запрос.",
+    "moreDocuments": "{count, plural, one {ещё # документ} few {ещё # документа} many {ещё # документов} other {ещё # документа}}",
+    "moreEntities": "{count, plural, one {ещё # сущность} few {ещё # сущности} many {ещё # сущностей} other {ещё # сущности}}",
+    "filters": {
+      "title": "Фильтры",
+      "mode": "Режим",
+      "status": "Статус",
+      "source": "Источник",
+      "type": "Тип",
+      "project": "Проект",
+      "typePlaceholder": "напр. note, conversation",
+      "projectPlaceholder": "Slug проекта",
+      "any": "Любой",
+      "clear": "Сбросить фильтры"
+    },
+    "modes": {
+      "hybrid": "Гибрид",
+      "fts": "Полнотекст",
+      "fuzzy": "Fuzzy"
+    },
+    "hits": "{count, plural, one {# результат} few {# результата} many {# результатов} other {# результата}}"
   },
   "graph": {
     "title": "Граф",
@@ -586,8 +595,14 @@
       "range_7d": "7 дней",
       "range_30d": "30 дней",
       "range_all": "Всё время",
-      "selectAllVisible": "Выбрать всё ({count})",
-      "deselectAll": "Снять выделение"
+      "selectAllVisible": "Выбрать страницу ({count})",
+      "deselectAll": "Снять выделение",
+      "totalHint": "Всего по фильтру: {total}"
+    },
+    "pagination": {
+      "summary": "Страница {page} из {pages} · всего {total}",
+      "prev": "Назад",
+      "next": "Вперёд"
     },
     "bulk": {
       "selected": "{count, plural, one {выбрано #} few {выбрано #} other {выбрано #}}",
