@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Loader2,
   MessageCircle,
   ServerCrash,
@@ -13,6 +15,8 @@ import {
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
+
+import { useCollapsibleSection } from '@/lib/hooks/use-collapsible-section';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -39,14 +43,18 @@ import type { TelegramAllowedUserRow, TelegramConfig, TelegramTestResult } from 
 export function TelegramSection(): JSX.Element {
   const t = useTranslations('admin.telegram');
   const queryClient = useQueryClient();
+  const [open, toggle] = useCollapsibleSection('telegram');
 
   const config = useQuery({
     queryKey: ['admin', 'telegram', 'config'],
     queryFn: () => api.get<TelegramConfig>('/admin/telegram/config'),
+    // Don't hit the api on every page load when the card is closed.
+    enabled: open,
   });
   const whitelist = useQuery({
     queryKey: ['admin', 'telegram', 'whitelist'],
     queryFn: () => api.get<TelegramAllowedUserRow[]>('/admin/telegram/whitelist'),
+    enabled: open,
   });
 
   const refresh = (): void => {
@@ -55,8 +63,9 @@ export function TelegramSection(): JSX.Element {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="cursor-pointer" onClick={toggle}>
         <CardTitle className="flex items-center gap-2">
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           <MessageCircle className="size-4" />
           {t('title')}
           <Badge variant="outline" className="text-[10px]">
@@ -65,20 +74,22 @@ export function TelegramSection(): JSX.Element {
         </CardTitle>
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {config.isLoading && <Skeleton className="h-24 w-full" />}
-        {config.data && (
-          <>
-            <TokenBlock config={config.data} onChanged={refresh} />
-            <BehaviourBlock config={config.data} onChanged={refresh} />
-            <WhitelistBlock
-              rows={whitelist.data ?? []}
-              isLoading={whitelist.isLoading}
-              onChanged={refresh}
-            />
-          </>
-        )}
-      </CardContent>
+      {open && (
+        <CardContent className="space-y-6">
+          {config.isLoading && <Skeleton className="h-24 w-full" />}
+          {config.data && (
+            <>
+              <TokenBlock config={config.data} onChanged={refresh} />
+              <BehaviourBlock config={config.data} onChanged={refresh} />
+              <WhitelistBlock
+                rows={whitelist.data ?? []}
+                isLoading={whitelist.isLoading}
+                onChanged={refresh}
+              />
+            </>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

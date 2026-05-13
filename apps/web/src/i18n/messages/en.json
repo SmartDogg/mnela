@@ -595,6 +595,10 @@
       "saveFailed": "Failed to save",
       "resetSuccess": "Reset to default",
       "resetFailed": "Failed to reset",
+      "restartServices": "Restart services",
+      "restartHint": "Reload BullMQ consumers + Whisper status probe + Dropbox watcher with the current registry values. No actual process restart — works the same under docker / systemd / pnpm dev.",
+      "restartTriggered": "Reload signal sent",
+      "restartFailed": "Failed to send reload signal",
       "sections": {
         "providers": {
           "title": "AI Providers",
@@ -607,6 +611,18 @@
         "enrichment": {
           "title": "Enrichment",
           "description": "Pipeline throughput, rate-limit handling, and per-attachment vision settings."
+        },
+        "whisper": {
+          "title": "Transcription (Whisper)",
+          "description": "Voice / audio transcription via whisper.cpp. Toggle on/off, pick the model size, and the language hint."
+        },
+        "search": {
+          "title": "Search blend",
+          "description": "Hybrid search weighting: FTS (Postgres tsvector) + trigram similarity. Tune the weights and the trigram threshold."
+        },
+        "api": {
+          "title": "API limits",
+          "description": "Per-IP rate limits on the REST surface. Changing these requires a Restart Services click."
         },
         "projects": {
           "title": "Projects",

@@ -595,6 +595,10 @@
       "saveFailed": "Не удалось сохранить",
       "resetSuccess": "Сброшено к значению по умолчанию",
       "resetFailed": "Не удалось сбросить",
+      "restartServices": "Рестарт сервисов",
+      "restartHint": "Перезапустить BullMQ-консьюмеры, Whisper-пробу и Dropbox-watcher с актуальными значениями из registry. Без фактического перезапуска процесса — работает одинаково в docker / systemd / pnpm dev.",
+      "restartTriggered": "Сигнал на перезагрузку отправлен",
+      "restartFailed": "Не удалось отправить сигнал",
       "sections": {
         "providers": {
           "title": "AI провайдеры",
@@ -607,6 +611,18 @@
         "enrichment": {
           "title": "Обогащение",
           "description": "Пропускная способность пайплайна, обработка rate-limit и настройки vision на вложение."
+        },
+        "whisper": {
+          "title": "Транскрипция (Whisper)",
+          "description": "Расшифровка голоса / аудио через whisper.cpp. Тоггл вкл/выкл, выбор модели и hint языка."
+        },
+        "search": {
+          "title": "Веса поиска",
+          "description": "Микс гибридного поиска: FTS (Postgres tsvector) + trigram-схожесть. Веса и trigram-порог."
+        },
+        "api": {
+          "title": "API-лимиты",
+          "description": "Per-IP rate limits на REST-эндпоинты. Изменения требуют клика Рестарт сервисов."
         },
         "projects": {
           "title": "Проекты",

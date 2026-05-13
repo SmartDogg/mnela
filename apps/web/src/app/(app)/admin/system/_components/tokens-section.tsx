@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, Loader2, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Loader2, Plus, Trash2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -37,12 +37,14 @@ import {
 } from '@/components/ui/table';
 import { ApiError, api } from '@/lib/api/client';
 import type { AuthTokenSummary, CreatedAuthToken, TokenScope } from '@/lib/api/types';
+import { useCollapsibleSection } from '@/lib/hooks/use-collapsible-section';
 import { formatDate } from '@/lib/utils';
 
 export function TokensSection(): JSX.Element {
   const t = useTranslations('admin.tokens');
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
+  const [cardOpen, toggleCard] = useCollapsibleSection('tokens');
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [name, setName] = useState('');
   const [scope, setScope] = useState<TokenScope>('mcp');
   const [showToken, setShowToken] = useState<CreatedAuthToken | null>(null);
@@ -50,6 +52,7 @@ export function TokensSection(): JSX.Element {
   const tokens = useQuery({
     queryKey: ['tokens'],
     queryFn: () => api.get<AuthTokenSummary[]>('/auth/tokens'),
+    enabled: cardOpen,
   });
 
   const create = useMutation({
@@ -58,7 +61,7 @@ export function TokensSection(): JSX.Element {
     onSuccess: (token) => {
       queryClient.invalidateQueries({ queryKey: ['tokens'] });
       setShowToken(token);
-      setOpen(false);
+      setDialogOpen(false);
       setName('');
       setScope('mcp');
     },
@@ -80,108 +83,115 @@ export function TokensSection(): JSX.Element {
   return (
     <Card id="tokens">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
-          <CardTitle>{t('title')}</CardTitle>
+        <button type="button" className="flex-1 cursor-pointer text-left" onClick={toggleCard}>
+          <CardTitle className="flex items-center gap-2">
+            {cardOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+            {t('title')}
+          </CardTitle>
           <CardDescription>{t('subtitle')}</CardDescription>
-        </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Plus className="size-4" /> {t('create')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{t('create')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="tk-name">{t('name')}</Label>
-                <Input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="tk-scope">{t('scope')}</Label>
-                <Select value={scope} onValueChange={(v) => setScope(v as TokenScope)}>
-                  <SelectTrigger id="tk-scope">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="admin">{t('scopes.admin')}</SelectItem>
-                    <SelectItem value="mcp">{t('scopes.mcp')}</SelectItem>
-                    <SelectItem value="read_only">{t('scopes.read_only')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                disabled={!name || create.isPending}
-                onClick={() => create.mutate({ name, scope })}
-              >
-                {create.isPending && <Loader2 className="animate-spin" />}
-                {t('create')}
+        </button>
+        {cardOpen && (
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="size-4" /> {t('create')}
               </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('create')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="tk-name">{t('name')}</Label>
+                  <Input id="tk-name" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="tk-scope">{t('scope')}</Label>
+                  <Select value={scope} onValueChange={(v) => setScope(v as TokenScope)}>
+                    <SelectTrigger id="tk-scope">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">{t('scopes.admin')}</SelectItem>
+                      <SelectItem value="mcp">{t('scopes.mcp')}</SelectItem>
+                      <SelectItem value="read_only">{t('scopes.read_only')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  disabled={!name || create.isPending}
+                  onClick={() => create.mutate({ name, scope })}
+                >
+                  {create.isPending && <Loader2 className="animate-spin" />}
+                  {t('create')}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </CardHeader>
 
-      <CardContent>
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t('name')}</TableHead>
-                <TableHead>{t('scope')}</TableHead>
-                <TableHead>{t('lastUsed')}</TableHead>
-                <TableHead>{t('expires')}</TableHead>
-                <TableHead className="w-12"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tokens.isLoading &&
-                Array.from({ length: 3 }).map((_, i) => (
-                  <TableRow key={i}>
-                    <TableCell colSpan={5}>
-                      <Skeleton className="h-5 w-full" />
+      {cardOpen && (
+        <CardContent>
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('name')}</TableHead>
+                  <TableHead>{t('scope')}</TableHead>
+                  <TableHead>{t('lastUsed')}</TableHead>
+                  <TableHead>{t('expires')}</TableHead>
+                  <TableHead className="w-12"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tokens.isLoading &&
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell colSpan={5}>
+                        <Skeleton className="h-5 w-full" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                {tokens.data?.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-muted-foreground">
+                      No tokens.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {tokens.data?.map((token) => (
+                  <TableRow key={token.id}>
+                    <TableCell className="font-medium">{token.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{token.scope}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {token.lastUsedAt ? formatDate(token.lastUsedAt) : '—'}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {token.expiresAt ? formatDate(token.expiresAt) : '—'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => revoke.mutate(token.id)}
+                        aria-label={t('revoke')}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
-              {tokens.data?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No tokens.
-                  </TableCell>
-                </TableRow>
-              )}
-              {tokens.data?.map((token) => (
-                <TableRow key={token.id}>
-                  <TableCell className="font-medium">{token.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{token.scope}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {token.lastUsedAt ? formatDate(token.lastUsedAt) : '—'}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {token.expiresAt ? formatDate(token.expiresAt) : '—'}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => revoke.mutate(token.id)}
-                      aria-label={t('revoke')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </CardContent>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      )}
 
       <Dialog open={!!showToken} onOpenChange={() => setShowToken(null)}>
         <DialogContent>

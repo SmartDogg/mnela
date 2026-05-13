@@ -1,10 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Plus, RotateCcw } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+
+import { useCollapsibleSection } from '@/lib/hooks/use-collapsible-section';
 
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -43,6 +45,9 @@ const SECTION_ORDER: ConfigSection[] = [
   'providers',
   'ingestion',
   'enrichment',
+  'whisper',
+  'search',
+  'api',
   'projects',
   'telegram',
   'storage',
@@ -57,13 +62,19 @@ const GROUP_TO_SECTION: Record<ConfigGroup, ConfigSection> = {
   parsers: 'ingestion',
   enrichment: 'enrichment',
   vision: 'enrichment',
-  whisper: 'enrichment',
+  whisper: 'whisper',
   claude: 'enrichment',
   worker: 'advanced',
   providers: 'providers',
   projects: 'projects',
   telegram: 'telegram',
+  search: 'search',
+  api: 'api',
 };
+
+// `useCollapsibleSection` is shared with the dedicated cards
+// (TelegramSection, TokensSection) so every block on /admin/system
+// remembers its collapse state with the same localStorage scheme.
 
 function sectionOf(entry: MergedConfigEntry): ConfigSection {
   return entry.spec.section ?? GROUP_TO_SECTION[entry.spec.group] ?? 'advanced';
@@ -118,9 +129,33 @@ export default function AdminSystemPage(): JSX.Element {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('resetFailed')),
   });
 
+  const restart = useMutation({
+    mutationFn: () => api.post('/system/restart'),
+    onSuccess: () => {
+      toast.success(t('restartTriggered'));
+      queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('restartFailed')),
+  });
+
   return (
     <div>
-      <PageHeader title={t('title')} subtitle={t('subtitle')} />
+      <PageHeader
+        title={t('title')}
+        subtitle={t('subtitle')}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => restart.mutate()}
+            disabled={restart.isPending}
+            title={t('restartHint')}
+          >
+            <RefreshCw className={restart.isPending ? 'size-4 animate-spin' : 'size-4'} />
+            {t('restartServices')}
+          </Button>
+        }
+      />
       <div className="space-y-4 px-8 py-6">
         {/* ---- AI Providers card (the new hero) ---- */}
         <ProvidersSection
@@ -176,42 +211,48 @@ function ProvidersSection({
   const t = useTranslations('admin.system.sections.providers');
   const tProv = useTranslations('admin.providers');
   const [addOpen, setAddOpen] = useState(false);
+  const [open, toggle] = useCollapsibleSection('providers');
 
   return (
     <Card className="border-primary/30">
       <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div>
+        <button type="button" className="flex-1 cursor-pointer text-left" onClick={toggle}>
           <CardTitle className="flex items-center gap-2">
+            {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             <span>{t('title')}</span>
             <Badge variant="outline" className="text-[10px]">
               ADR-0049
             </Badge>
           </CardTitle>
           <CardDescription>{t('description')}</CardDescription>
-        </div>
-        <Button size="sm" onClick={() => setAddOpen(true)}>
-          <Plus className="size-4" /> {tProv('addProvider')}
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {isLoading && <Skeleton className="h-24 w-full" />}
-        {providers && (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {providers.providers.map((p) => (
-                <ProviderCard key={p.id} provider={p} onChanged={onChanged} />
-              ))}
-            </div>
-            <PerFeatureSelector
-              defaults={providers.defaults}
-              providers={providers.providers}
-              onChanged={onChanged}
-            />
-            {/* Claude CLI is one of the built-in providers; its rate-limit + test surface is here. */}
-            <ClaudeStatusBlock />
-          </>
+        </button>
+        {open && (
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <Plus className="size-4" /> {tProv('addProvider')}
+          </Button>
         )}
-      </CardContent>
+      </CardHeader>
+      {open && (
+        <CardContent className="space-y-4">
+          {isLoading && <Skeleton className="h-24 w-full" />}
+          {providers && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {providers.providers.map((p) => (
+                  <ProviderCard key={p.id} provider={p} onChanged={onChanged} />
+                ))}
+              </div>
+              <PerFeatureSelector
+                defaults={providers.defaults}
+                providers={providers.providers}
+                onChanged={onChanged}
+              />
+              {/* Claude CLI is one of the built-in providers; its rate-limit + test surface is here. */}
+              <ClaudeStatusBlock />
+            </>
+          )}
+        </CardContent>
+      )}
       <AddProviderDialog
         open={addOpen}
         onOpenChange={setAddOpen}
@@ -232,26 +273,32 @@ function StorageCard({
 }): JSX.Element {
   const t = useTranslations('admin.system.sections.storage');
   const tStats = useTranslations('admin.system.stats');
+  const [open, toggle] = useCollapsibleSection('storage');
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{t('title')}</CardTitle>
+      <CardHeader className="cursor-pointer" onClick={toggle}>
+        <CardTitle className="flex items-center gap-2">
+          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+          {t('title')}
+        </CardTitle>
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {isLoading && <Skeleton className="h-5 w-full" />}
-        {stats && (
-          <>
-            <StatRow label={tStats('documents')} value={stats.documents} />
-            <StatRow label={tStats('entities')} value={stats.entities} />
-            <StatRow label={tStats('edges')} value={stats.edges} />
-            <StatRow label={tStats('projects')} value={stats.projects} />
-            <StatRow label={tStats('decisions')} value={stats.decisions} />
-            <StatRow label={tStats('dbSize')} value={formatBytes(stats.dbSizeBytes)} />
-            <p className="pt-2 text-[11px] text-muted-foreground">{t('backupNote')}</p>
-          </>
-        )}
-      </CardContent>
+      {open && (
+        <CardContent className="space-y-2 text-sm">
+          {isLoading && <Skeleton className="h-5 w-full" />}
+          {stats && (
+            <>
+              <StatRow label={tStats('documents')} value={stats.documents} />
+              <StatRow label={tStats('entities')} value={stats.entities} />
+              <StatRow label={tStats('edges')} value={stats.edges} />
+              <StatRow label={tStats('projects')} value={stats.projects} />
+              <StatRow label={tStats('decisions')} value={stats.decisions} />
+              <StatRow label={tStats('dbSize')} value={formatBytes(stats.dbSizeBytes)} />
+              <p className="pt-2 text-[11px] text-muted-foreground">{t('backupNote')}</p>
+            </>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -270,10 +317,10 @@ function SectionCard({
   onReset: (key: string) => void;
 }): JSX.Element {
   const t = useTranslations(`admin.system.sections.${section}`);
-  const [open, setOpen] = useState(section !== 'advanced');
+  const [open, toggle] = useCollapsibleSection(section);
   return (
     <Card>
-      <CardHeader className="cursor-pointer" onClick={() => setOpen((v) => !v)}>
+      <CardHeader className="cursor-pointer" onClick={toggle}>
         <CardTitle className="flex items-center gap-2">
           {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           {t('title')}

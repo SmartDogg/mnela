@@ -326,12 +326,17 @@ export type ConfigGroup =
   | 'worker'
   | 'providers'
   | 'projects'
-  | 'telegram';
+  | 'telegram'
+  | 'search'
+  | 'api';
 
 export type ConfigSection =
   | 'providers'
   | 'ingestion'
   | 'enrichment'
+  | 'whisper'
+  | 'search'
+  | 'api'
   | 'projects'
   | 'telegram'
   | 'storage'
