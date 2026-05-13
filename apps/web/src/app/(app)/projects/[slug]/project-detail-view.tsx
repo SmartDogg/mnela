@@ -43,7 +43,8 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
     queryKey: ['project', project.slug, 'documents'],
     queryFn: () =>
       api.get<Paginated<DocumentSummary>>('/documents', {
-        query: { projectSlug: project.slug, limit: 200 },
+        // /documents caps `limit` at 100; pagination would be nice later.
+        query: { projectSlug: project.slug, limit: 100 },
       }),
     placeholderData: keepPreviousData,
   });
