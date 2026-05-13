@@ -15,9 +15,9 @@ export default async function AppLayout({
   if (!principal) redirect('/login');
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex min-h-screen items-start bg-background">
       <Sidebar className="hidden lg:flex" />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header principal={principal} />
         <main className="flex-1 overflow-x-hidden">{children}</main>
       </div>

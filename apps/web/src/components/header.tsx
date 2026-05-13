@@ -54,7 +54,7 @@ export function Header({ principal }: { principal: Principal }): JSX.Element {
       <button
         type="button"
         onClick={() => openCmdk()}
-        className="group flex h-8 flex-1 max-w-md items-center gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60"
+        className="group flex h-8 w-full max-w-md items-center gap-2 rounded-md border border-input bg-muted/30 px-3 text-sm text-muted-foreground transition-colors hover:bg-muted/60"
       >
         <SearchIcon className="h-4 w-4" />
         <span className="flex-1 text-left">{t('search')}…</span>
@@ -63,57 +63,59 @@ export function Header({ principal }: { principal: Principal }): JSX.Element {
         </kbd>
       </button>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
-        aria-label="Toggle theme"
-        suppressHydrationWarning
-      >
-        {mounted ? (
-          resolvedTheme === 'dark' ? (
-            <Sun className="h-4 w-4" />
+      <div className="ml-auto flex items-center gap-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          aria-label="Toggle theme"
+          suppressHydrationWarning
+        >
+          {mounted ? (
+            resolvedTheme === 'dark' ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )
           ) : (
-            <Moon className="h-4 w-4" />
-          )
-        ) : (
-          <Moon className="h-4 w-4 opacity-0" />
-        )}
-      </Button>
+            <Moon className="h-4 w-4 opacity-0" />
+          )}
+        </Button>
 
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" aria-label="Language">
-            <Languages className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {SUPPORTED_LOCALES.map((loc) => (
-            <DropdownMenuItem key={loc} onClick={() => setLocale(loc)}>
-              {loc.toUpperCase()}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Language">
+              <Languages className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {SUPPORTED_LOCALES.map((loc) => (
+              <DropdownMenuItem key={loc} onClick={() => setLocale(loc)}>
+                {loc.toUpperCase()}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-2">
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-semibold uppercase">
+                {displayName.charAt(0)}
+              </span>
+              <span className="hidden md:inline">{displayName}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => logoutMutation.mutate()}>
+              <LogOut className="mr-2 h-4 w-4" />
+              {t('logout')}
             </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-secondary text-xs font-semibold uppercase">
-              {displayName.charAt(0)}
-            </span>
-            <span className="hidden md:inline">{displayName}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel>{displayName}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => logoutMutation.mutate()}>
-            <LogOut className="mr-2 h-4 w-4" />
-            {t('logout')}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   );
 }

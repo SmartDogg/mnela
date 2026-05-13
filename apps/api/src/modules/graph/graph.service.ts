@@ -207,11 +207,12 @@ export class GraphService {
    * the same banner as a regular neighborhood query.
    */
   async overview(options: OverviewOptions = {}): Promise<CytoscapeGraph> {
-    // `0` is the "unlimited" sentinel from the client. The hard ceiling stays
-    // GRAPH_MAX_NODES regardless — the limit is also the SQL `LIMIT` clause,
-    // so we MUST send a real number.
-    const requested = options.limit === 0 ? GRAPH_MAX_NODES : (options.limit ?? 80);
-    const limit = Math.min(requested, GRAPH_MAX_NODES);
+    // `0` is the "unlimited" sentinel from the client: no SQL LIMIT, no
+    // truncation of nodes or edges. The /graph "Density: All" preset relies
+    // on this — anything else means the user gets a silently capped graph.
+    const unlimited = options.limit === 0;
+    const requested = options.limit ?? 80;
+    const limit = unlimited ? null : Math.min(requested, GRAPH_MAX_NODES);
     const minDegree = Math.max(1, options.minDegree ?? 1);
     const typeFilter = options.types && options.types.length > 0 ? options.types : null;
     const prisma = this.prisma.active();
@@ -219,20 +220,34 @@ export class GraphService {
     // Degree per entity from active edges. The double `WHERE soft-delete` is
     // implicit via `prisma.active()` — we go to $queryRaw, so we must apply
     // the entity filter explicitly below.
-    const rows = await prisma.$queryRaw<{ id: string; degree: bigint }[]>`
-      SELECT e.id, COUNT(*)::bigint AS degree
-      FROM "Entity" e
-      JOIN (
-        SELECT "fromId" AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
-        UNION ALL
-        SELECT "toId"   AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
-      ) d ON d.entity_id = e.id
-      WHERE e."mergedIntoId" IS NULL
-      GROUP BY e.id
-      HAVING COUNT(*) >= ${minDegree}
-      ORDER BY degree DESC, e.id
-      LIMIT ${limit}
-    `;
+    const rows = unlimited
+      ? await prisma.$queryRaw<{ id: string; degree: bigint }[]>`
+          SELECT e.id, COUNT(*)::bigint AS degree
+          FROM "Entity" e
+          JOIN (
+            SELECT "fromId" AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+            UNION ALL
+            SELECT "toId"   AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+          ) d ON d.entity_id = e.id
+          WHERE e."mergedIntoId" IS NULL
+          GROUP BY e.id
+          HAVING COUNT(*) >= ${minDegree}
+          ORDER BY degree DESC, e.id
+        `
+      : await prisma.$queryRaw<{ id: string; degree: bigint }[]>`
+          SELECT e.id, COUNT(*)::bigint AS degree
+          FROM "Entity" e
+          JOIN (
+            SELECT "fromId" AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+            UNION ALL
+            SELECT "toId"   AS entity_id FROM "Edge" WHERE status IN ('auto_confirmed', 'manual')
+          ) d ON d.entity_id = e.id
+          WHERE e."mergedIntoId" IS NULL
+          GROUP BY e.id
+          HAVING COUNT(*) >= ${minDegree}
+          ORDER BY degree DESC, e.id
+          LIMIT ${limit}
+        `;
 
     if (rows.length === 0) {
       return emptyGraph('');
@@ -261,13 +276,15 @@ export class GraphService {
         fromId: { in: nodes.map((n) => n.id) },
         toId: { in: nodes.map((n) => n.id) },
       },
-      take: GRAPH_MAX_EDGES + 1,
+      // When the caller asked for unlimited, lift the edge ceiling too —
+      // a half-truncated graph is worse than an honest "All".
+      ...(unlimited ? {} : { take: GRAPH_MAX_EDGES + 1 }),
     });
     const filteredEdges = edges.filter((e) => idSet.has(e.fromId) && idSet.has(e.toId));
 
     let truncatedEdges = filteredEdges;
     let truncated = false;
-    if (truncatedEdges.length > GRAPH_MAX_EDGES) {
+    if (!unlimited && truncatedEdges.length > GRAPH_MAX_EDGES) {
       truncatedEdges = truncatedEdges.slice(0, GRAPH_MAX_EDGES);
       truncated = true;
     }

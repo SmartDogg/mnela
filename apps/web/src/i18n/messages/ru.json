@@ -35,7 +35,9 @@
     "system": "Система",
     "workspace": "Рабочая область",
     "library": "Библиотека",
-    "jobsDashboard": "Статистика задач"
+    "jobsDashboard": "Статистика задач",
+    "collapse": "Свернуть",
+    "expand": "Развернуть"
   },
   "login": {
     "title": "Вход",
@@ -150,8 +152,7 @@
       "open": "Открыть",
       "archive": "Архив",
       "unarchive": "Восстановить",
-      "delete": "Удалить",
-      "reenrich": "Перезапустить enrichment (фаза 5)"
+      "delete": "Удалить"
     }
   },
   "documentDetail": {
@@ -700,8 +701,7 @@
       "status": "Статус",
       "available": "Доступен",
       "unavailable": "Недоступен",
-      "test": "Тест",
-      "phase5": "Появится в Фазе 5"
+      "test": "Тест"
     },
     "jobs": {
       "title": "Статистика задач",
@@ -738,7 +738,7 @@
     "generic": "Что-то пошло не так",
     "unauthorized": "Войдите чтобы продолжить.",
     "notFound": "Не найдено",
-    "serviceUnavailable": "Эта функция появится в одной из следующих фаз",
+    "serviceUnavailable": "Эта функция сейчас недоступна",
     "networkError": "Сетевая ошибка — проверьте, что API запущен"
   },
   "inbox": {
@@ -933,8 +933,7 @@
         "orchestratorNotRunning": "Оркестратор не запущен"
       },
       "rateLimit": {
-        "resumesAt": "Возобновится в {time}",
-        "windowChartPhase11": "График потребления — Phase 11."
+        "resumesAt": "Возобновится в {time}"
       }
     }
   }

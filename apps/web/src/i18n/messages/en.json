@@ -35,7 +35,9 @@
     "system": "System",
     "workspace": "Workspace",
     "library": "Library",
-    "jobsDashboard": "Job stats"
+    "jobsDashboard": "Job stats",
+    "collapse": "Collapse",
+    "expand": "Expand"
   },
   "login": {
     "title": "Sign in",
@@ -150,8 +152,7 @@
       "open": "Open",
       "archive": "Archive",
       "unarchive": "Restore",
-      "delete": "Delete",
-      "reenrich": "Re-enrich (Phase 5)"
+      "delete": "Delete"
     }
   },
   "documentDetail": {
@@ -700,8 +701,7 @@
       "status": "Status",
       "available": "Available",
       "unavailable": "Unavailable",
-      "test": "Test",
-      "phase5": "Available in Phase 5"
+      "test": "Test"
     },
     "jobs": {
       "title": "Job stats",
@@ -738,7 +738,7 @@
     "generic": "Something went wrong",
     "unauthorized": "Please sign in to continue.",
     "notFound": "Not found",
-    "serviceUnavailable": "This feature lands in a later phase",
+    "serviceUnavailable": "This feature is unavailable right now",
     "networkError": "Network error — check the API is running"
   },
   "inbox": {
@@ -933,8 +933,7 @@
         "orchestratorNotRunning": "Orchestrator service is not running"
       },
       "rateLimit": {
-        "resumesAt": "Resumes at {time}",
-        "windowChartPhase11": "Usage chart lands in Phase 11."
+        "resumesAt": "Resumes at {time}"
       }
     }
   }

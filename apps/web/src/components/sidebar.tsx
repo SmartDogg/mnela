@@ -4,7 +4,8 @@ import {
   Activity,
   BookOpen,
   Boxes,
-  Cog,
+  ChevronsLeft,
+  ChevronsRight,
   GitBranch,
   Inbox as InboxIcon,
   LayoutDashboard,
@@ -14,7 +15,7 @@ import {
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { ComponentType } from 'react';
+import { useCallback, useEffect, useState, type ComponentType } from 'react';
 
 import { cn } from '@/lib/utils';
 
@@ -22,7 +23,6 @@ interface NavItem {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
-  comingSoon?: boolean;
 }
 
 interface NavSection {
@@ -30,9 +30,45 @@ interface NavSection {
   items: NavItem[];
 }
 
+const COLLAPSE_STORAGE_KEY = 'mnela:sidebar:collapsed';
+
+function useCollapsedState(): [boolean, () => void] {
+  // The component is rendered on the server too; default to expanded for
+  // first paint and hydrate the persisted value once the browser is up. We
+  // wait for hydration via `mounted` so SSR markup and the first client
+  // render match (avoiding a hydration mismatch warning).
+  const [collapsed, setCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const stored = window.localStorage.getItem(COLLAPSE_STORAGE_KEY);
+      if (stored === '1') setCollapsed(true);
+    } catch {
+      // localStorage unavailable (private mode); keep default.
+    }
+  }, []);
+
+  const toggle = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(COLLAPSE_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
+  return [mounted && collapsed, toggle];
+}
+
 export function Sidebar({ className }: { className?: string }): JSX.Element {
   const t = useTranslations('nav');
   const pathname = usePathname();
+  const [collapsed, toggleCollapsed] = useCollapsedState();
 
   const sections: NavSection[] = [
     {
@@ -66,54 +102,75 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
   return (
     <aside
       className={cn(
-        'flex h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground',
+        // sticky + self-start keeps the rail anchored to the viewport while
+        // long pages (e.g. /admin/system) scroll under it. Without these
+        // the flex stretch lets the aside scroll out of view.
+        'sticky top-0 z-20 flex h-screen shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-out',
+        collapsed ? 'w-14' : 'w-60',
         className,
       )}
     >
-      <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-5">
-        <span className="inline-block h-5 w-5 rounded-sm bg-sidebar-accent" />
-        <span className="text-sm font-semibold tracking-tight">Mnela</span>
+      <div
+        className={cn(
+          'flex h-14 items-center gap-2 border-b border-sidebar-border',
+          collapsed ? 'justify-center px-2' : 'px-5',
+        )}
+      >
+        <span className="inline-block h-5 w-5 shrink-0 rounded-sm bg-sidebar-accent" />
+        {!collapsed && <span className="text-sm font-semibold tracking-tight">Mnela</span>}
       </div>
       <nav className="flex-1 overflow-y-auto px-2 py-4 scrollbar-thin">
         {sections.map((section) => (
           <div key={section.title} className="mb-4 space-y-0.5">
-            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-              {section.title}
-            </p>
-            {section.items.map(({ href, label, icon: Icon, comingSoon }) => {
+            {!collapsed && (
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                {section.title}
+              </p>
+            )}
+            {section.items.map(({ href, label, icon: Icon }) => {
               const active = pathname === href || (href !== '/' && pathname.startsWith(href));
               return (
                 <Link
                   key={href}
                   href={href}
+                  title={collapsed ? label : undefined}
+                  aria-label={collapsed ? label : undefined}
                   className={cn(
-                    'flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-colors',
+                    'flex items-center rounded-md text-sm transition-colors',
+                    collapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-3 py-1.5',
                     active
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                       : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/15 hover:text-sidebar-foreground',
                   )}
                 >
                   <Icon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1 truncate">{label}</span>
-                  {comingSoon && (
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                      soon
-                    </span>
-                  )}
+                  {!collapsed && <span className="flex-1 truncate">{label}</span>}
                 </Link>
               );
             })}
           </div>
         ))}
       </nav>
-      <div className="border-t border-sidebar-border p-3">
-        <Link
-          href="/admin/system"
-          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+      <div className="border-t border-sidebar-border p-2">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label={collapsed ? t('expand') : t('collapse')}
+          title={collapsed ? t('expand') : t('collapse')}
+          className={cn(
+            'flex w-full items-center rounded-md px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent/15 hover:text-sidebar-foreground',
+            collapsed ? 'justify-center' : 'gap-2',
+          )}
         >
-          <Cog className="h-4 w-4" />
-          v0.0 · phase 3
-        </Link>
+          {collapsed ? (
+            <ChevronsRight className="h-4 w-4" />
+          ) : (
+            <>
+              <ChevronsLeft className="h-4 w-4" />
+              <span>{t('collapse')}</span>
+            </>
+          )}
+        </button>
       </div>
     </aside>
   );
