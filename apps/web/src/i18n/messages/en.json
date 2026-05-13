@@ -597,8 +597,10 @@
       "resetFailed": "Failed to reset",
       "restartServices": "Restart services",
       "restartHint": "Reload BullMQ consumers + Whisper status probe + Dropbox watcher with the current registry values. No actual process restart — works the same under docker / systemd / pnpm dev.",
-      "restartTriggered": "Reload signal sent",
+      "restartTriggered": "Reload complete",
       "restartFailed": "Failed to send reload signal",
+      "restartingTitle": "Reloading services…",
+      "restartingHint": "Workers are picking up the new settings. This usually takes under a second; we wait 2.5s for safety.",
       "sections": {
         "providers": {
           "title": "AI Providers",

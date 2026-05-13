@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
 import { useCollapsibleSection } from '@/lib/hooks/use-collapsible-section';
@@ -129,17 +129,41 @@ export default function AdminSystemPage(): JSX.Element {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('resetFailed')),
   });
 
+  // `restarting` blanks the whole page with an overlay so the user
+  // can't change anything while consumers are mid-reload. POST
+  // /system/restart returns immediately (the pubsub publish is async);
+  // worker/orchestrator hot-reload takes <1s in practice, but we hold
+  // the overlay 2.5s to absorb the worst case + refetch /system/config
+  // so any post-reload state diff shows up.
+  const [restarting, setRestarting] = useState(false);
   const restart = useMutation({
     mutationFn: () => api.post('/system/restart'),
     onSuccess: () => {
-      toast.success(t('restartTriggered'));
-      queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+      setRestarting(true);
+      window.setTimeout(() => {
+        setRestarting(false);
+        queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+        queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+        queryClient.invalidateQueries({ queryKey: ['system', 'stats'] });
+        toast.success(t('restartTriggered'));
+      }, 2500);
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('restartFailed')),
   });
 
   return (
-    <div>
+    <div className="relative">
+      {(restarting || restart.isPending) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-8 py-6 shadow-xl">
+            <RefreshCw className="size-6 animate-spin text-primary" />
+            <p className="text-sm font-medium">{t('restartingTitle')}</p>
+            <p className="max-w-xs text-center text-xs text-muted-foreground">
+              {t('restartingHint')}
+            </p>
+          </div>
+        </div>
+      )}
       <PageHeader
         title={t('title')}
         subtitle={t('subtitle')}
@@ -148,10 +172,12 @@ export default function AdminSystemPage(): JSX.Element {
             variant="outline"
             size="sm"
             onClick={() => restart.mutate()}
-            disabled={restart.isPending}
+            disabled={restart.isPending || restarting}
             title={t('restartHint')}
           >
-            <RefreshCw className={restart.isPending ? 'size-4 animate-spin' : 'size-4'} />
+            <RefreshCw
+              className={restart.isPending || restarting ? 'size-4 animate-spin' : 'size-4'}
+            />
             {t('restartServices')}
           </Button>
         }

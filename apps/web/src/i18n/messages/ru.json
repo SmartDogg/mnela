@@ -597,8 +597,10 @@
       "resetFailed": "Не удалось сбросить",
       "restartServices": "Рестарт сервисов",
       "restartHint": "Перезапустить BullMQ-консьюмеры, Whisper-пробу и Dropbox-watcher с актуальными значениями из registry. Без фактического перезапуска процесса — работает одинаково в docker / systemd / pnpm dev.",
-      "restartTriggered": "Сигнал на перезагрузку отправлен",
+      "restartTriggered": "Перезагрузка завершена",
       "restartFailed": "Не удалось отправить сигнал",
+      "restartingTitle": "Перезагружаем сервисы…",
+      "restartingHint": "Воркеры подтягивают новые настройки. Обычно занимает меньше секунды; держим 2.5с для надёжности.",
       "sections": {
         "providers": {
           "title": "AI провайдеры",
