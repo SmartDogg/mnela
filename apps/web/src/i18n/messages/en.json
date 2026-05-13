@@ -259,7 +259,7 @@
   },
   "decisions": {
     "title": "Decisions",
-    "subtitle": "ADR-style log of choices and trade-offs.",
+    "subtitle": "Log of choices and trade-offs.",
     "create": "New decision",
     "columns": {
       "title": "Title",
@@ -628,7 +628,7 @@
         },
         "projects": {
           "title": "Projects",
-          "description": "Auto-suggested projects (ADR-0050). Turn the suggestion detector off to stop the post-import scan and avoid any token use. Default ON."
+          "description": "Auto-suggested projects. Turn the suggestion detector off to stop the post-import scan and avoid any token use. Default ON."
         },
         "storage": {
           "title": "Storage & Backup",

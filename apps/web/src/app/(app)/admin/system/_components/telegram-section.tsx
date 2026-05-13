@@ -68,9 +68,6 @@ export function TelegramSection(): JSX.Element {
           {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           <MessageCircle className="size-4" />
           {t('title')}
-          <Badge variant="outline" className="text-[10px]">
-            ADR-0053
-          </Badge>
         </CardTitle>
         <CardDescription>{t('description')}</CardDescription>
       </CardHeader>

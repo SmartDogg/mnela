@@ -108,7 +108,7 @@ export function EnrichmentPhase({ documents }: EnrichmentPhaseProps): JSX.Elemen
             </p>
           )}
           {q.slotHolder && q.slotHolder !== 'enrichment' && (
-            <p>Yielding shared Claude slot to {q.slotHolder} (ADR-0027).</p>
+            <p>Yielding shared Claude slot to {q.slotHolder}.</p>
           )}
         </div>
       )}

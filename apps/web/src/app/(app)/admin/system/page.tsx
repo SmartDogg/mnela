@@ -246,9 +246,6 @@ function ProvidersSection({
           <CardTitle className="flex items-center gap-2">
             {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
             <span>{t('title')}</span>
-            <Badge variant="outline" className="text-[10px]">
-              ADR-0049
-            </Badge>
           </CardTitle>
           <CardDescription>{t('description')}</CardDescription>
         </button>

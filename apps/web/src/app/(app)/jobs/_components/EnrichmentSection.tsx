@@ -186,7 +186,7 @@ function PauseBanner({ state }: { state: EnrichmentQueueState }): JSX.Element | 
     }
   }
   if (state.slotHolder && state.slotHolder !== 'enrichment') {
-    lines.push(`Yielding shared Claude slot to ${state.slotHolder} (ADR-0027).`);
+    lines.push(`Yielding shared Claude slot to ${state.slotHolder}.`);
   }
   if (lines.length === 0) return null;
   return (
