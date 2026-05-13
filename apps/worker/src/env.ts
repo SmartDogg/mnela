@@ -8,9 +8,9 @@ const EnvSchema = z.object({
   REDIS_URL: z.string().url(),
   MNELA_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   MNELA_DATA_DIR: z.string().default('./data'),
-  MNELA_TRANSCRIPTION: z.enum(['enabled', 'disabled']).default('disabled'),
-  MNELA_TRANSCRIPTION_LANGUAGE: z.string().min(2).default('ru'),
-  MNELA_WHISPER_MODEL: z.enum(['tiny', 'base', 'small', 'medium']).default('base'),
+  // Whisper user-facing settings (enabled / model / language) live in
+  // SystemConfig (transcription.* keys). Only the deploy-time wiring
+  // (where the worker reaches the whisper container) stays in env.
   WHISPER_URL: z.string().url().default('http://whisper:8080'),
   WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
   // Per-job memory under chatgpt account-export parsing can spike to

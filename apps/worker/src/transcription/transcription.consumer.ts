@@ -200,11 +200,20 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
 
       await this.publishProgress(dbJobId, 20, `calling whisper on ${audioAtt.filename}`);
 
+      // Whisper language + model come from SystemConfig so the user can
+      // tune them from /admin/system → Enrichment without redeploying.
+      // The model value here is informational metadata (the actual model
+      // the whisper container loads is baked at image build time).
+      const language = await readRegistryValue<string>(this.systemConfig, 'transcription.language');
+      const model = await readRegistryValue<string>(this.systemConfig, 'transcription.model');
+
       let result;
       try {
         result = await this.whisper.transcribe({
           filePath: inputPath,
-          language: env.MNELA_TRANSCRIPTION_LANGUAGE,
+          // 'auto' = let whisper detect per file. The whisper.cpp HTTP
+          // server treats an empty `language` field as auto-detect.
+          language: language === 'auto' ? '' : language,
         });
       } finally {
         if (tempWavPath) {
@@ -217,7 +226,7 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
 
       const meta: TranscriptionMetadata = {
         engine: 'whisper.cpp',
-        model: env.MNELA_WHISPER_MODEL,
+        model,
         language: result.language,
         completedAt: new Date().toISOString(),
       };
@@ -268,7 +277,7 @@ export class TranscriptionConsumer implements OnModuleInit, OnModuleDestroy {
         jobId: dbJobId,
         documentId,
         language: result.language,
-        model: env.MNELA_WHISPER_MODEL,
+        model,
       };
       if (result.durationSec !== undefined) transcribedPayload.durationSec = result.durationSec;
       await publishEvent(this.redis.client, {

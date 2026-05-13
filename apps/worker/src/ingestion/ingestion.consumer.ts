@@ -29,7 +29,6 @@ import {
   createQueueConnection,
   publishEvent,
   QUEUE_NAMES,
-  readWhisperStatus,
 } from '@mnela/queue';
 import { Prisma, type DocumentStatus, type SourceType } from '@prisma/client';
 import { Queue, Worker, type Job as BullJob } from 'bullmq';
@@ -448,13 +447,19 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
 
   private async maybeEnqueueTranscription(documentId: string): Promise<void> {
     if (!this.transcriptionQueue) return;
-    const status = await readWhisperStatus(this.redis.client);
-    if (!status.available) {
-      this.logger.debug(
-        `transcription skipped for ${documentId}: whisper unavailable (${status.reason ?? 'unknown'})`,
-      );
+    // Live registry read: toggling transcription.enabled in /admin/system
+    // takes effect on the very next ingest — no worker restart required.
+    // The boot-time WhisperStatusBoot probe is just for the UI badge.
+    const enabled = await readRegistryValue<boolean>(this.systemConfig, 'transcription.enabled');
+    if (!enabled) {
+      this.logger.debug(`transcription skipped for ${documentId}: transcription.enabled=false`);
       return;
     }
+    // The Whisper container may still be physically unreachable; the
+    // transcribe_audio consumer surfaces that as a clear job failure when
+    // it fires. We deliberately don't gate on whisper-status here so a
+    // user who just enabled transcription gets their pending audio
+    // queued without first having to manually refresh the status badge.
     const dbJob = await this.jobs.create({
       type: 'transcribe_audio',
       payload: { documentId },

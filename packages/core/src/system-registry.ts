@@ -263,6 +263,41 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     max: 60_000,
   },
 
+  // ---- Whisper transcription (ADR-0045) ----
+  // User-facing knobs surfaced under `/admin/system → Enrichment`.
+  // Deploy-level wiring (`WHISPER_URL`, `WHISPER_TIMEOUT_MS`) stays in
+  // env — those are infrastructure, not preferences.
+  'transcription.enabled': {
+    key: 'transcription.enabled',
+    type: 'bool',
+    group: 'whisper',
+    section: 'enrichment',
+    description:
+      'Run voice / audio uploads through whisper.cpp. Worker re-reads this on every ingest, so toggling takes effect on the next message — no restart. When off, audio Documents stay status="raw" with empty rawText and no transcribe_audio job is enqueued.',
+    default: false,
+  },
+  'transcription.model': {
+    key: 'transcription.model',
+    type: 'enum',
+    group: 'whisper',
+    section: 'enrichment',
+    description:
+      'whisper.cpp model size — tiny ≈75 MB (fastest, weakest), base ≈140 MB (recommended), small ≈466 MB, medium ≈1.5 GB (slowest, best). Changing this is informational at the worker side (the actual binary the whisper container loads is baked at image build time); rebuild via `docker compose ... build whisper` after switching to actually load the new model.',
+    default: 'base',
+    options: ['tiny', 'base', 'small', 'medium'],
+    requiresRestart: true,
+  },
+  'transcription.language': {
+    key: 'transcription.language',
+    type: 'enum',
+    group: 'whisper',
+    section: 'enrichment',
+    description:
+      'ISO-639-1 hint passed to whisper. "auto" lets the model detect per file (slower; useful for mixed-language vaults). Defaults to "ru" because the typical Mnela owner ships Russian voice notes.',
+    default: 'ru',
+    options: ['auto', 'ru', 'en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'uk', 'tr', 'ar', 'ja', 'zh'],
+  },
+
   // ---- Vision (image analysis) ----
   'attachments.imageAnalysisEnabled': {
     key: 'attachments.imageAnalysisEnabled',

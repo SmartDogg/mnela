@@ -1,4 +1,6 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { readRegistryValue } from '@mnela/core';
+import { SystemConfigRepository } from '@mnela/db';
 import { createWhisperClient } from '@mnela/ingestion';
 
 import { loadEnv } from '../env.js';
@@ -10,25 +12,36 @@ import { WhisperStatusService } from './whisper-status.service.js';
  * every other subsystem reads through readWhisperStatus().
  *
  * Behaviour:
- *   MNELA_TRANSCRIPTION=disabled → writes { available:false, reason:'not-enabled' }
- *   enabled, container unreachable → writes { available:false, reason:'container-down' }
- *   enabled, healthcheck ok       → writes { available:true, model }
+ *   transcription.enabled=false (registry) → writes { available:false, reason:'not-enabled' }
+ *   enabled, container unreachable          → writes { available:false, reason:'container-down' }
+ *   enabled, healthcheck ok                 → writes { available:true, model }
+ *
+ * The boot probe is one-shot; the ingestion consumer ALSO re-reads
+ * `transcription.enabled` directly from SystemConfig on every upload, so
+ * toggling the flag in /admin/system takes effect on the next ingest
+ * without restarting the worker. The status row above is what the UI
+ * reads to render a green/red badge.
  */
 @Injectable()
 export class WhisperStatusBoot implements OnModuleInit {
   private readonly logger = new Logger(WhisperStatusBoot.name);
 
-  constructor(private readonly status: WhisperStatusService) {}
+  constructor(
+    private readonly status: WhisperStatusService,
+    private readonly systemConfig: SystemConfigRepository,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const env = loadEnv();
     const checkedAt = new Date().toISOString();
-    if (env.MNELA_TRANSCRIPTION === 'disabled') {
+    const enabled = await readRegistryValue<boolean>(this.systemConfig, 'transcription.enabled');
+    const model = await readRegistryValue<string>(this.systemConfig, 'transcription.model');
+    if (!enabled) {
       await this.status.set({
         available: false,
         reason: 'not-enabled',
         checkedAt,
-        model: env.MNELA_WHISPER_MODEL,
+        model,
       });
       return;
     }
@@ -44,14 +57,14 @@ export class WhisperStatusBoot implements OnModuleInit {
           available: false,
           reason: 'container-down',
           checkedAt,
-          model: env.MNELA_WHISPER_MODEL,
+          model,
         });
         return;
       }
       await this.status.set({
         available: true,
         checkedAt,
-        model: env.MNELA_WHISPER_MODEL,
+        model,
         ...(health.version ? { version: health.version } : {}),
       });
     } catch (err) {
@@ -62,7 +75,7 @@ export class WhisperStatusBoot implements OnModuleInit {
         available: false,
         reason: 'container-down',
         checkedAt,
-        model: env.MNELA_WHISPER_MODEL,
+        model,
       });
     }
   }
