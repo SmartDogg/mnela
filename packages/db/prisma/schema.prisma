@@ -221,13 +221,55 @@ model DocumentEntity {
 // Projects, decisions, daily notes
 // =====================================================================
 
+// ADR-0051: project lifecycle is `active` (user-owned), `suggested` (detector
+// candidate awaiting accept/dismiss), or `dismissed` (rejected; revives only
+// when the signal grows materially — see signatureMetrics).
+enum ProjectStatus {
+  active
+  suggested
+  dismissed
+}
+
+// How a project was created. `manual` is the classic user-driven path;
+// `suggested_batch` and `suggested_cluster` come from the detector
+// (project_suggest job) — the former groups an import batch, the latter
+// groups documents that share an entity cluster across batches.
+enum ProjectSource {
+  manual
+  suggested_batch
+  suggested_cluster
+}
+
 model Project {
-  id          String  @id @default(cuid())
-  slug        String  @unique
+  id          String        @id @default(cuid())
+  slug        String        @unique
   name        String
-  description String? @db.Text
-  status      String  @default("active")
-  contextMd   String? @db.Text
+  description String?       @db.Text
+  status      ProjectStatus @default(active)
+  source      ProjectSource @default(manual)
+  contextMd   String?       @db.Text
+
+  /// When `source` is suggested_*, autoFill is implicitly true (detector
+  /// linked the documents itself). When `source=manual`, autoFill=true means
+  /// the user opted into a background scan that links candidate docs.
+  autoFill Boolean @default(false)
+
+  /// Deterministic fingerprint of the cluster this project represents
+  /// (e.g., `batch:<batchId>` or `cluster:<sortedEntityHash>:<docBucket>`).
+  /// Used by the detector to skip clusters it already emitted, and as the
+  /// revival key for dismissed suggestions.
+  signature String?
+
+  /// Snapshot of the cluster signal at emit time:
+  /// `{ docCount, topEntities: string[] }`. Compared to the live signal on
+  /// every detector pass; meaningful growth (≥50% docs, or ≥2 new top
+  /// entities) revives a dismissed suggestion as a fresh row.
+  signatureMetrics Json?
+
+  /// Source import batch id for `suggested_batch` projects (matches the
+  /// `__import.batchId` stamped on Document.metadata). Null for everything
+  /// else.
+  batchId String?
 
   metadata Json?
 
@@ -236,11 +278,25 @@ model Project {
 
   documents DocumentProject[]
   decisions Decision[]
+
+  @@index([status])
+  @@index([signature])
+  @@index([batchId])
+}
+
+/// How a document came to be attached to a project. `suggested` links are
+/// removed on dismiss; `manual` and `autoFill` survive.
+enum DocumentProjectLinkSource {
+  manual
+  suggested
+  autoFill
 }
 
 model DocumentProject {
   documentId String
   projectId  String
+  linkSource DocumentProjectLinkSource @default(manual)
+  createdAt  DateTime                   @default(now())
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   project  Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -318,6 +374,14 @@ enum JobType {
   export_vault
   transcribe_audio
   analyze_attachment
+  // ADR-0051: detector job — scans recent batches + entity clusters and
+  // emits ProjectStatus=suggested rows. Cheap heuristic SQL + at most one
+  // Haiku call per candidate for naming.
+  project_suggest
+  // ADR-0051: async autofill job for manual projects flagged autoFill=true.
+  // Pulls candidates via embedding + entity match and writes DocumentProject
+  // links with linkSource=autoFill.
+  project_autofill
 }
 
 enum JobStatus {
