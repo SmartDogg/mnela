@@ -315,6 +315,9 @@
       "assistant": "Мозг",
       "system": "Система"
     },
+    "toolCalls": {
+      "label": "Вызовы инструментов"
+    },
     "citation": {
       "tooltipMissing": "Источник не найден"
     },
@@ -472,7 +475,111 @@
       "subtitle": "Статистика, конфигурация, режим.",
       "configKey": "Ключ",
       "configValue": "Значение",
-      "configUpdate": "Обновить"
+      "configUpdate": "Обновить",
+      "overridden": "переопределено",
+      "restartRequired": "нужен перезапуск",
+      "reset": "сброс",
+      "saved": "Сохранено",
+      "saveFailed": "Не удалось сохранить",
+      "resetSuccess": "Сброшено к значению по умолчанию",
+      "resetFailed": "Не удалось сбросить",
+      "sections": {
+        "providers": {
+          "title": "AI провайдеры",
+          "description": "Выберите, какой AI-бэкенд работает за Ask, обогащением, vision и project-context. Встроенный Claude Code CLI всегда доступен; ниже можно добавить API-провайдеры."
+        },
+        "ingestion": {
+          "title": "Загрузка данных",
+          "description": "Лимиты загрузки, поведение парсеров ChatGPT/Claude.ai и ingest-воркер."
+        },
+        "enrichment": {
+          "title": "Обогащение",
+          "description": "Пропускная способность пайплайна, обработка rate-limit и настройки vision на вложение."
+        },
+        "storage": {
+          "title": "Хранилище и бэкап",
+          "description": "Статистика БД и операции бэкапа.",
+          "backupNote": "Инструменты бэкапа в плане. Пока делайте регулярные `pg_dump` из MNELA_DATA_DIR."
+        },
+        "advanced": {
+          "title": "Расширенные",
+          "description": "Параллелизм воркеров и другие низкоуровневые тумблеры."
+        }
+      },
+      "stats": {
+        "title": "Статистика",
+        "documents": "Документы",
+        "entities": "Сущности",
+        "edges": "Связи",
+        "projects": "Проекты",
+        "decisions": "Решения",
+        "dbSize": "Размер БД"
+      },
+      "errors": {
+        "bytesBelowMin": "Меньше минимума ({min})",
+        "bytesAboveMax": "Больше максимума ({max})",
+        "bytesParse": "Не удалось разобрать «{value}» — попробуйте форматы «5GiB», «2 GB» или «1048576».",
+        "intMin": "Минимум — {min}",
+        "intMax": "Максимум — {max}",
+        "intParse": "«{value}» — не валидное целое число"
+      }
+    },
+    "providers": {
+      "title": "AI провайдеры",
+      "addProvider": "Добавить провайдера",
+      "noKeyRequired": "API-ключ не требуется",
+      "noKey": "Ключ не настроен",
+      "test": "Тест",
+      "delete": "Удалить",
+      "deleteConfirm": "Удалить провайдера «{name}»? Любая фича, всё ещё направленная сюда, переключится на providers.default.",
+      "removed": "Удалён: {name}",
+      "deleteFailed": "Не удалось удалить",
+      "probeFailed": "Проба не удалась",
+      "probeOk": "{name}: ok ({latency}мс)",
+      "probeError": "{name}: {error}",
+      "kinds": {
+        "claude_cli": "Claude Code (CLI)",
+        "anthropic_api": "Anthropic API",
+        "openai_compat": "OpenAI-совместимый"
+      },
+      "builtin": "встроенный",
+      "routing": {
+        "title": "Маршрутизация",
+        "subtitle": "Каждая фича может идти к конкретному провайдеру или откатываться к глобальному дефолту.",
+        "applyAll": "Применить дефолт ко всем",
+        "applied": "Применено ко всем фичам",
+        "applyFailed": "Не удалось применить",
+        "fallback": "— откат к дефолту —",
+        "saved": "Дефолт обновлён",
+        "saveFailed": "Не удалось обновить дефолт",
+        "features": {
+          "default": "Глобальный дефолт",
+          "ask": "Спросить мозг (/ask)",
+          "enrichment": "Обогащение документов",
+          "vision": "Vision изображений",
+          "projectContext": "Обновление контекста проекта"
+        }
+      },
+      "dialog": {
+        "title": "Добавить AI провайдера",
+        "description": "Настройте Anthropic API или любой OpenAI-совместимый эндпоинт. Ключи шифруются в покое.",
+        "preset": "Пресет",
+        "name": "Название",
+        "namePlaceholder": "Мой ключ Anthropic",
+        "kind": "Тип",
+        "baseUrl": "Base URL",
+        "model": "Модель",
+        "apiKey": "API-ключ",
+        "apiKeyPlaceholder": "(хранится зашифрованным)",
+        "extra": "Дополнительно (JSON, опционально)",
+        "extraPlaceholder": "{\"headers\":{\"HTTP-Referer\":\"https://mnela.local\"}}",
+        "extraInvalid": "extra должен быть валидным JSON",
+        "cancel": "Отмена",
+        "submit": "Добавить провайдера",
+        "submitting": "Добавляем…",
+        "added": "Провайдер добавлен",
+        "addFailed": "Не удалось добавить провайдера"
+      }
     },
     "tokens": {
       "title": "API токены",

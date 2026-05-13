@@ -315,6 +315,9 @@
       "assistant": "Brain",
       "system": "System"
     },
+    "toolCalls": {
+      "label": "Tool calls"
+    },
     "citation": {
       "tooltipMissing": "Source not found"
     },
@@ -472,7 +475,111 @@
       "subtitle": "Stats, configuration, mode.",
       "configKey": "Key",
       "configValue": "Value",
-      "configUpdate": "Update"
+      "configUpdate": "Update",
+      "overridden": "overridden",
+      "restartRequired": "restart required",
+      "reset": "reset",
+      "saved": "Saved",
+      "saveFailed": "Failed to save",
+      "resetSuccess": "Reset to default",
+      "resetFailed": "Failed to reset",
+      "sections": {
+        "providers": {
+          "title": "AI Providers",
+          "description": "Configure which AI backend powers Ask, enrichment, vision, and project-context. The built-in Claude Code CLI is always available; add API providers below."
+        },
+        "ingestion": {
+          "title": "Ingestion",
+          "description": "Upload limits, ChatGPT/Claude.ai parser behaviour, and the ingest worker."
+        },
+        "enrichment": {
+          "title": "Enrichment",
+          "description": "Pipeline throughput, rate-limit handling, and per-attachment vision settings."
+        },
+        "storage": {
+          "title": "Storage & Backup",
+          "description": "Database stats and backup operations.",
+          "backupNote": "Backup tooling is on the roadmap. For now, take regular `pg_dump`s of MNELA_DATA_DIR."
+        },
+        "advanced": {
+          "title": "Advanced",
+          "description": "Worker concurrency and other low-level knobs."
+        }
+      },
+      "stats": {
+        "title": "Stats",
+        "documents": "Documents",
+        "entities": "Entities",
+        "edges": "Edges",
+        "projects": "Projects",
+        "decisions": "Decisions",
+        "dbSize": "DB size"
+      },
+      "errors": {
+        "bytesBelowMin": "Below minimum ({min})",
+        "bytesAboveMax": "Above maximum ({max})",
+        "bytesParse": "Could not parse \"{value}\" — try formats like \"5GiB\", \"2 GB\", or \"1048576\".",
+        "intMin": "Min is {min}",
+        "intMax": "Max is {max}",
+        "intParse": "\"{value}\" is not a valid integer"
+      }
+    },
+    "providers": {
+      "title": "AI Providers",
+      "addProvider": "Add provider",
+      "noKeyRequired": "No API key required",
+      "noKey": "No key configured",
+      "test": "Test",
+      "delete": "Delete",
+      "deleteConfirm": "Delete provider \"{name}\"? Any feature still routed to it will fall back to providers.default.",
+      "removed": "Removed {name}",
+      "deleteFailed": "Delete failed",
+      "probeFailed": "Probe failed",
+      "probeOk": "{name}: ok ({latency}ms)",
+      "probeError": "{name}: {error}",
+      "kinds": {
+        "claude_cli": "Claude Code (CLI)",
+        "anthropic_api": "Anthropic API",
+        "openai_compat": "OpenAI-compatible"
+      },
+      "builtin": "built-in",
+      "routing": {
+        "title": "Routing",
+        "subtitle": "Each feature can route to a specific provider or fall back to the global default.",
+        "applyAll": "Apply default to all",
+        "applied": "Applied to every feature",
+        "applyFailed": "Failed to apply",
+        "fallback": "— fallback to default —",
+        "saved": "Default updated",
+        "saveFailed": "Failed to update default",
+        "features": {
+          "default": "Global default",
+          "ask": "Ask Brain (/ask)",
+          "enrichment": "Document enrichment",
+          "vision": "Image vision",
+          "projectContext": "Project context refresh"
+        }
+      },
+      "dialog": {
+        "title": "Add AI provider",
+        "description": "Configure an Anthropic API or any OpenAI-compatible endpoint. Keys are encrypted at rest.",
+        "preset": "Preset",
+        "name": "Name",
+        "namePlaceholder": "My Anthropic key",
+        "kind": "Kind",
+        "baseUrl": "Base URL",
+        "model": "Model",
+        "apiKey": "API key",
+        "apiKeyPlaceholder": "(stored encrypted)",
+        "extra": "Extra (JSON, optional)",
+        "extraPlaceholder": "{\"headers\":{\"HTTP-Referer\":\"https://mnela.local\"}}",
+        "extraInvalid": "extra must be valid JSON",
+        "cancel": "Cancel",
+        "submit": "Add provider",
+        "submitting": "Adding…",
+        "added": "Provider added",
+        "addFailed": "Failed to add provider"
+      }
     },
     "tokens": {
       "title": "API tokens",
