@@ -126,10 +126,21 @@ export interface SystemTelegramReloadEvent {
   type: 'system.telegram_reload';
   payload: { reason: 'config-changed' | 'whitelist-changed' | 'manual' };
 }
+/**
+ * "Restart services" click in /admin/system. Each subsystem that has
+ * registry-driven settings flagged `requiresRestart=true` listens for
+ * this event and re-bootstraps its workers / pollers in-process (no
+ * actual `process.exit` — works the same on docker / systemd / pnpm dev).
+ */
+export interface SystemServiceReloadEvent {
+  type: 'system.service_reload';
+  payload: { service: 'all' | 'api' | 'worker' | 'orchestrator'; reason: string };
+}
 export type SystemEvent =
   | SystemClaudeStatusChangedEvent
   | SystemWhisperStatusChangedEvent
-  | SystemTelegramReloadEvent;
+  | SystemTelegramReloadEvent
+  | SystemServiceReloadEvent;
 
 /**
  * Enrichment-specific live signals. The pipeline already emits

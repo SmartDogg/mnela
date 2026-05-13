@@ -22,6 +22,9 @@ export type ConfigSection =
   | 'providers'
   | 'ingestion'
   | 'enrichment'
+  | 'whisper'
+  | 'search'
+  | 'api'
   | 'storage'
   | 'projects'
   | 'telegram'
@@ -39,7 +42,9 @@ export interface ConfigSpecBase {
     | 'worker'
     | 'providers'
     | 'projects'
-    | 'telegram';
+    | 'telegram'
+    | 'search'
+    | 'api';
   /**
    * Top-level card the key renders under in /admin/system. Defaults are
    * derived from `group` so existing specs keep working without explicit
@@ -271,7 +276,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'transcription.enabled',
     type: 'bool',
     group: 'whisper',
-    section: 'enrichment',
+    section: 'whisper',
     description:
       'Run voice / audio uploads through whisper.cpp. Worker re-reads this on every ingest, so toggling takes effect on the next message — no restart. When off, audio Documents stay status="raw" with empty rawText and no transcribe_audio job is enqueued.',
     default: false,
@@ -280,7 +285,7 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'transcription.model',
     type: 'enum',
     group: 'whisper',
-    section: 'enrichment',
+    section: 'whisper',
     description:
       'whisper.cpp model size — tiny ≈75 MB (fastest, weakest), base ≈140 MB (recommended), small ≈466 MB, medium ≈1.5 GB (slowest, best). Changing this is informational at the worker side (the actual binary the whisper container loads is baked at image build time); rebuild via `docker compose ... build whisper` after switching to actually load the new model.',
     default: 'base',
@@ -291,11 +296,88 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     key: 'transcription.language',
     type: 'enum',
     group: 'whisper',
-    section: 'enrichment',
+    section: 'whisper',
     description:
       'ISO-639-1 hint passed to whisper. "auto" lets the model detect per file (slower; useful for mixed-language vaults). Defaults to "ru" because the typical Mnela owner ships Russian voice notes.',
     default: 'ru',
     options: ['auto', 'ru', 'en', 'es', 'fr', 'de', 'it', 'pt', 'pl', 'uk', 'tr', 'ar', 'ja', 'zh'],
+  },
+
+  // ---- Search blend tuning (was env SEARCH_*) ----
+  // Hybrid search mixes FTS (Postgres tsvector ranking) with trigram
+  // similarity. Weights are stored as integer percentages 0-100; the
+  // search adapter divides by 100. Threshold filters trigram matches
+  // below it. Reads happen per request — toggling is live, no restart.
+  'search.fts.weight': {
+    key: 'search.fts.weight',
+    type: 'int',
+    group: 'search',
+    section: 'search',
+    description:
+      'FTS contribution to hybrid score, as a percentage 0–100. 70 (default) skews toward lexical / grammar matches; lower it if your vault has lots of typo-y voice transcripts and trigram should win more often.',
+    default: 70,
+    min: 0,
+    max: 100,
+  },
+  'search.trigram.weight': {
+    key: 'search.trigram.weight',
+    type: 'int',
+    group: 'search',
+    section: 'search',
+    description:
+      'Trigram contribution to hybrid score, as a percentage 0–100. Should typically sum with search.fts.weight to ~100 but the code does not enforce that — both are normalised relative to each other at score time.',
+    default: 30,
+    min: 0,
+    max: 100,
+  },
+  'search.trigram.threshold': {
+    key: 'search.trigram.threshold',
+    type: 'int',
+    group: 'search',
+    section: 'search',
+    description:
+      'Minimum trigram similarity (0–100) for a document to qualify as a candidate. Lower = more recall, more noise. Raise if your corpus is large and trigram keeps returning unrelated junk.',
+    default: 30,
+    min: 0,
+    max: 100,
+  },
+
+  // ---- API rate limits (was env RATE_LIMIT_*) ----
+  'api.rateLimit.global': {
+    key: 'api.rateLimit.global',
+    type: 'int',
+    group: 'api',
+    section: 'api',
+    description:
+      'Requests / minute per IP on the global NestJS throttler. Default 100 fits a single-user vault. Restart the api after changing — ThrottlerModule is configured once at startup.',
+    default: 100,
+    min: 1,
+    max: 100_000,
+    requiresRestart: true,
+  },
+  'api.rateLimit.login': {
+    key: 'api.rateLimit.login',
+    type: 'int',
+    group: 'api',
+    section: 'api',
+    description:
+      'Stricter window on the /auth/login endpoint — guards against credential-stuffing.',
+    default: 10,
+    min: 1,
+    max: 1000,
+    requiresRestart: true,
+  },
+
+  // ---- Ingestion: Dropbox watcher toggle (was env WORKER_DROPBOX_DISABLED) ----
+  'ingestion.dropbox.enabled': {
+    key: 'ingestion.dropbox.enabled',
+    type: 'bool',
+    group: 'imports',
+    section: 'ingestion',
+    description:
+      'Watch `<MNELA_DATA_DIR>/dropbox/` and auto-ingest every file dropped there. The watcher is started once at worker boot — click Restart Services after toggling.',
+    default: true,
+    requiresRestart: true,
   },
 
   // ---- Vision (image analysis) ----
