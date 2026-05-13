@@ -94,6 +94,7 @@ export class SearchController {
       ...(body.attachmentIds && body.attachmentIds.length > 0
         ? { attachmentIds: body.attachmentIds }
         : {}),
+      ...(body.scopeProjectSlug ? { scopeProjectSlug: body.scopeProjectSlug } : {}),
     } as const;
 
     try {

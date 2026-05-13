@@ -154,7 +154,8 @@ export class ProvidersService implements OnModuleInit {
     kind: string;
     model: string;
     baseUrl: string | null;
-    apiKeyEnc: Buffer | null;
+    /** Prisma 6 returns Bytes as Uint8Array; we widen here and wrap once below. */
+    apiKeyEnc: Uint8Array | null;
     extra: unknown;
   }): ProviderConfig {
     const out: ProviderConfig = {
@@ -166,7 +167,7 @@ export class ProvidersService implements OnModuleInit {
     if (row.baseUrl) out.baseUrl = row.baseUrl;
     if (row.apiKeyEnc) {
       try {
-        out.apiKey = this.keystore.decrypt(row.apiKeyEnc);
+        out.apiKey = this.keystore.decrypt(Buffer.from(row.apiKeyEnc));
       } catch (err) {
         this.logger.error(
           `failed to decrypt apiKey for provider ${row.id}: ${err instanceof Error ? err.message : String(err)} — provider will fail at call time`,

@@ -1,10 +1,12 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { readRegistryValue } from '@mnela/core';
-import { SystemConfigRepository } from '@mnela/db';
+import { JobRepository, SystemConfigRepository } from '@mnela/db';
 import {
   type EnrichmentJob,
   type EnrichmentSnapshot,
   type IngestFileJob,
+  type ProjectAutofillJob,
+  type ProjectSuggestJob,
   type TranscribeAudioJob,
   QUEUE_NAMES,
   createQueueConnection,
@@ -30,11 +32,13 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
   private ingestionQueue?: Queue<IngestFileJob>;
   private transcriptionQueue?: Queue<TranscribeAudioJob>;
   private enrichmentQueue?: Queue<EnrichmentJob>;
+  private projectsQueue?: Queue<ProjectSuggestJob | ProjectAutofillJob>;
   private bullConnection?: Redis;
 
   constructor(
     private readonly redis: RedisService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly jobs: JobRepository,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -49,19 +53,79 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     this.transcriptionQueue = new Queue<TranscribeAudioJob>(QUEUE_NAMES[4], {
       connection: this.bullConnection,
     });
+    this.projectsQueue = new Queue<ProjectSuggestJob | ProjectAutofillJob>(QUEUE_NAMES[5], {
+      connection: this.bullConnection,
+    });
     await this.ingestionQueue.waitUntilReady();
     await this.enrichmentQueue.waitUntilReady();
     await this.transcriptionQueue.waitUntilReady();
-    this.logger.log('bullmq ingestion + enrichment + transcription queues connected');
+    await this.projectsQueue.waitUntilReady();
+    this.logger.log('bullmq ingestion + enrichment + transcription + projects queues connected');
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.ingestionQueue?.close().catch(() => undefined);
     await this.enrichmentQueue?.close().catch(() => undefined);
     await this.transcriptionQueue?.close().catch(() => undefined);
+    await this.projectsQueue?.close().catch(() => undefined);
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+  }
+
+  /**
+   * Kick a full rescan over recent batches + entity clusters. Same logic
+   * as the orchestrator's ProjectsQueueService.enqueueRescan — duplicated
+   * (not imported) so the api process doesn't pull in orchestrator
+   * dependencies.
+   */
+  async enqueueProjectRescan(): Promise<{ jobId: string }> {
+    if (!this.projectsQueue) throw new Error('projects queue not initialized');
+    const jobId = `suggest:rescan:${new Date().toISOString().slice(0, 16)}`;
+    const existing = await this.projectsQueue.getJob(jobId);
+    if (existing) return { jobId: existing.id ?? jobId };
+    const dbJob = await this.jobs.create({
+      type: 'project_suggest',
+      payload: { mode: 'rescan' },
+    });
+    const payload: ProjectSuggestJob = { dbJobId: dbJob.id, mode: 'rescan' };
+    await this.projectsQueue.add('project_suggest', payload, {
+      jobId,
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 100 },
+    });
+    await publishEvent(this.redis.client, {
+      type: 'job.created',
+      payload: {
+        jobId: dbJob.id,
+        jobType: 'project_suggest',
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return { jobId: dbJob.id };
+  }
+
+  async enqueueProjectAutofill(projectId: string): Promise<{ jobId: string }> {
+    if (!this.projectsQueue) throw new Error('projects queue not initialized');
+    const dbJob = await this.jobs.create({
+      type: 'project_autofill',
+      payload: { projectId },
+    });
+    const payload: ProjectAutofillJob = { dbJobId: dbJob.id, projectId };
+    await this.projectsQueue.add('project_autofill', payload, {
+      jobId: dbJob.id,
+      removeOnComplete: { count: 200 },
+      removeOnFail: { count: 200 },
+    });
+    await publishEvent(this.redis.client, {
+      type: 'job.created',
+      payload: {
+        jobId: dbJob.id,
+        jobType: 'project_autofill',
+        createdAt: new Date().toISOString(),
+      },
+    });
+    return { jobId: dbJob.id };
   }
 
   async enqueueIngestFile(payload: IngestFileJob, opts: JobsOptions = {}): Promise<string> {

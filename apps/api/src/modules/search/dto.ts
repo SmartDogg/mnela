@@ -39,6 +39,13 @@ export const AskSchema = z.object({
   conversationId: z.string().min(1).optional(),
   mode: z.enum(['auto', 'fts']).default('auto'),
   /**
+   * Optional scope filter. When set, the SSE handler tells the agent loop
+   * to restrict mnela_find_similar / mnela_search to documents linked to
+   * this project (any linkSource). Implemented via the same projectSlug
+   * filter the FTS adapter already supports.
+   */
+  scopeProjectSlug: z.string().min(1).optional(),
+  /**
    * `ingest` turns are promoted to Document(source='chat') and run
    * through the standard enrichment pipeline so they (and any attached
    * files) feed the brain graph. `chat` is the default — files attached

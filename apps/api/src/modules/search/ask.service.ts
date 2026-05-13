@@ -141,6 +141,13 @@ export interface AskInput {
   attachmentIds?: readonly string[];
   principal: Principal | undefined;
   abort: AbortSignal;
+  /**
+   * ADR-0051 scope. When set, the agent loop's search tools (FTS,
+   * find_similar) prepend this project slug to their filters so the
+   * model only sees documents the user pinned to this project. Manual
+   * dropdown in the /ask composer → URL param `scope=project:<slug>`.
+   */
+  scopeProjectSlug?: string;
 }
 
 interface CitationRecord {
@@ -371,6 +378,7 @@ export class AskService {
         principal: input.principal,
         kind,
         ingestedAttachments,
+        ...(input.scopeProjectSlug ? { scopeProjectSlug: input.scopeProjectSlug } : {}),
       });
     } finally {
       await this.discardStagedFiles(stagedFilesOwnedByCaller);
@@ -601,6 +609,7 @@ export class AskService {
     principal: Principal | undefined;
     kind: AskMessageKind;
     ingestedAttachments: readonly IngestedAttachment[];
+    scopeProjectSlug?: string;
   }): AsyncGenerator<AskFrameOut> {
     const usingCli = args.provider.config.kind === 'claude_cli';
     const sessionId = randomUUID();
@@ -624,6 +633,13 @@ export class AskService {
     let citationOrd = 0;
     const citeByDocId = new Map<string, CitationRecord>();
     const allCites: CitationRecord[] = [];
+    /**
+     * Tool-call inputs by id. Citations are derived from `(tool name, input,
+     * output)`, but the provider frame for `tool_result` only carries the
+     * output — so we cache the input we already saw on the matching
+     * `tool_call` frame.
+     */
+    const toolCallInputs = new Map<string, unknown>();
     let aborted = false;
     let errorEmitted = false;
     let timedOut = false;
@@ -637,6 +653,7 @@ export class AskService {
         query: args.query,
         principal: args.principal,
         signal: ac.signal,
+        ...(args.scopeProjectSlug ? { scopeProjectSlug: args.scopeProjectSlug } : {}),
       });
       const frames = withHeartbeatAndIdleTimeout(providerFrames, {
         heartbeatMs: HEARTBEAT_INTERVAL_MS,
@@ -660,6 +677,7 @@ export class AskService {
           assistantBody += provider.delta;
           yield { event: 'token', data: { delta: provider.delta } };
         } else if (provider.type === 'tool_call') {
+          toolCallInputs.set(provider.id, provider.input);
           yield {
             event: 'tool_call',
             data: { id: provider.id, name: provider.name, input: provider.input },
@@ -673,9 +691,10 @@ export class AskService {
           if (!provider.ok && provider.error) data.error = provider.error;
           yield { event: 'tool_result', data };
           if (provider.ok) {
+            const matchedInput = toolCallInputs.get(provider.id);
             for (const cite of extractCitationsFromTool(
               provider.name,
-              provider.input,
+              matchedInput,
               provider.output,
             )) {
               if (citeByDocId.has(cite.docId)) continue;
@@ -840,18 +859,22 @@ export class AskService {
     query: string;
     principal: Principal | undefined;
     signal: AbortSignal;
+    scopeProjectSlug?: string;
   }): AsyncGenerator<ProviderFrame> {
     const usingCli = args.provider.config.kind === 'claude_cli';
     const systemPrompt = askSystemPrompt();
+    const userTurn = args.scopeProjectSlug
+      ? `[scope: project ${args.scopeProjectSlug} — restrict search to this project]\n\n${args.query}`
+      : args.query;
     const messages: ProviderMessage[] = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: args.query },
+      { role: 'user', content: userTurn },
     ];
     if (usingCli) {
       yield* args.provider.stream({ messages, signal: args.signal });
       return;
     }
-    const toolContext = this.buildToolContext(args.principal);
+    const toolContext = this.buildToolContext(args.principal, args.scopeProjectSlug);
     yield* runAgentLoop({
       provider: args.provider,
       messages,
@@ -861,7 +884,10 @@ export class AskService {
     });
   }
 
-  private buildToolContext(principal: Principal | undefined): McpToolContext {
+  private buildToolContext(
+    principal: Principal | undefined,
+    scopeProjectSlug?: string,
+  ): McpToolContext {
     const adapter = new HybridSearchAdapter(() => this.prisma.active());
     const principalForTools: Principal = principal ?? {
       kind: 'admin',
@@ -881,7 +907,12 @@ export class AskService {
       search: {
         findSimilar: async (text, limit) => {
           const trimmed = text.length > 600 ? text.slice(0, 600) : text;
-          const result = await adapter.search({ query: trimmed, page: 1, limit });
+          const result = await adapter.search({
+            query: trimmed,
+            page: 1,
+            limit,
+            ...(scopeProjectSlug ? { filters: { projectSlug: scopeProjectSlug } } : {}),
+          });
           return result.hits.map((h) => {
             const out: { documentId: string; title: string; snippet?: string; score: number } = {
               documentId: h.documentId,
@@ -892,7 +923,19 @@ export class AskService {
             return out;
           });
         },
-        search: (opts) => adapter.search(opts),
+        search: (opts) => {
+          if (scopeProjectSlug) {
+            const merged = {
+              ...opts,
+              filters: {
+                ...(opts.filters ?? {}),
+                projectSlug: scopeProjectSlug,
+              },
+            };
+            return adapter.search(merged);
+          }
+          return adapter.search(opts);
+        },
       },
       events: {
         graphNodeAdded: (entity) =>
