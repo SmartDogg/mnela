@@ -8,6 +8,7 @@ import {
   JobRepository,
   LlmProviderRepository,
   PrismaService,
+  ProjectRepository,
   SystemConfigRepository,
 } from '@mnela/db';
 import { Global, Module, type Provider } from '@nestjs/common';
@@ -23,6 +24,7 @@ const REPO_CLASSES = [
   JobRepository,
   AttachmentRepository,
   LlmProviderRepository,
+  ProjectRepository,
   SystemConfigRepository,
 ] as const satisfies readonly RepoCtor[];
 
