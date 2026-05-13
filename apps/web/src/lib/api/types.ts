@@ -69,7 +69,12 @@ export interface DocumentChunk {
   tokenCount: number;
 }
 
-export type ProjectStatus = 'active' | 'archived' | 'paused';
+// ADR-0051 lifecycle: 'active' covers manual + accepted suggestions,
+// 'suggested' = detector candidate awaiting accept/dismiss, 'dismissed'
+// = previously rejected suggestion (kept for revival audit trail).
+export type ProjectStatus = 'active' | 'suggested' | 'dismissed';
+
+export type ProjectSource = 'manual' | 'suggested_batch' | 'suggested_cluster';
 
 export interface ProjectSummary {
   id: string;
@@ -77,16 +82,43 @@ export interface ProjectSummary {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  source: ProjectSource;
+  autoFill: boolean;
+  signature: string | null;
+  batchId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-// API /projects/:slug returns the bare Project row — no derived counts.
-// Components needing documentCount / decisionCount should issue separate
-// queries (e.g. /documents?projectSlug=foo&limit=1 and read `.total`).
 export interface ProjectDetail extends ProjectSummary {
   contextMd: string | null;
   metadata: Record<string, unknown> | null;
+  signatureMetrics: { docCount?: number; topEntities?: string[] } | null;
+}
+
+/** Suggestion-list response from GET /projects/suggestions. */
+export interface ProjectSuggestion {
+  slug: string;
+  name: string;
+  description: string | null;
+  source: 'suggested_batch' | 'suggested_cluster';
+  signature: string | null;
+  docCount: number;
+  topEntities: string[];
+  createdAt: string;
+}
+
+export interface ProjectSuggestionsResponse {
+  items: ProjectSuggestion[];
+  /** Master gate state (projects.suggestions.enabled). */
+  enabled: boolean;
+}
+
+export interface ProjectPreviewCandidate {
+  documentId: string;
+  title: string;
+  score: number;
+  snippet?: string;
 }
 
 export type DecisionStatus = 'active' | 'superseded' | 'reverted';
@@ -292,9 +324,16 @@ export type ConfigGroup =
   | 'whisper'
   | 'claude'
   | 'worker'
-  | 'providers';
+  | 'providers'
+  | 'projects';
 
-export type ConfigSection = 'providers' | 'ingestion' | 'enrichment' | 'storage' | 'advanced';
+export type ConfigSection =
+  | 'providers'
+  | 'ingestion'
+  | 'enrichment'
+  | 'projects'
+  | 'storage'
+  | 'advanced';
 
 interface ConfigSpecCommon {
   key: string;

@@ -40,6 +40,7 @@ const SECTION_ORDER: ConfigSection[] = [
   'providers',
   'ingestion',
   'enrichment',
+  'projects',
   'storage',
   'advanced',
 ];
@@ -56,6 +57,7 @@ const GROUP_TO_SECTION: Record<ConfigGroup, ConfigSection> = {
   claude: 'enrichment',
   worker: 'advanced',
   providers: 'providers',
+  projects: 'projects',
 };
 
 function sectionOf(entry: MergedConfigEntry): ConfigSection {

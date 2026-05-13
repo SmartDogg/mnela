@@ -14,7 +14,8 @@ import {
   X,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
 
 import { EmptyState } from '@/components/empty-state';
@@ -68,6 +69,21 @@ export function ChatPanel({
   const t = useTranslations('ask');
   const queryClient = useQueryClient();
   const ask = useAskStream();
+  const searchParams = useSearchParams();
+  /**
+   * ADR-0050: `?scope=project:<slug>` restricts the agent loop's search
+   * tools (mnela_find_similar / mnela_search) to documents in that project.
+   * Sticky for the session — re-renders read the param fresh; we don't
+   * persist it elsewhere so changing the URL flips the scope immediately.
+   */
+  const scopeProjectSlug = useMemo(() => {
+    const raw = searchParams?.get('scope');
+    if (raw && raw.startsWith('project:')) {
+      const slug = raw.slice('project:'.length);
+      return slug.length > 0 ? slug : null;
+    }
+    return null;
+  }, [searchParams]);
   const attachments = useAskAttachments();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +165,7 @@ export function ChatPanel({
     const sendOpts: Parameters<typeof ask.send>[1] = { kind: appKind };
     if (conversationId) sendOpts.conversationId = conversationId;
     if (ids.length > 0) sendOpts.attachmentIds = ids;
+    if (scopeProjectSlug) sendOpts.scopeProjectSlug = scopeProjectSlug;
     setQuery('');
     // Drop the local chips immediately. The server has already taken
     // ownership of the files (chat-mode deletes after the stream;
@@ -270,6 +287,12 @@ export function ChatPanel({
           <p className="text-[10px] text-muted-foreground">
             {appKind === 'ingest' ? t('composer.ingestHint') : t('composer.chatHint')}
           </p>
+          {scopeProjectSlug && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+              <Sparkles className="size-3" />
+              scope: project:{scopeProjectSlug}
+            </span>
+          )}
         </div>
         {attachments.drafts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">

@@ -205,7 +205,59 @@
     "refreshUnavailable": "Claude orchestrator is not reachable. Start it to refresh project context.",
     "noContext": "No context yet. Run \"Refresh context\" once Claude is available.",
     "noEntities": "No entities surfaced yet — enrich some documents in this project first.",
-    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug with metadata.openQuestions."
+    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug with metadata.openQuestions.",
+    "tabs": {
+      "active": "Active",
+      "suggested": "Suggested",
+      "dismissed": "Dismissed"
+    },
+    "newPage": {
+      "title": "New project",
+      "subtitle": "Pick a system suggestion or start from scratch.",
+      "suggestionsHeader": "Suggestions",
+      "suggestionsEmpty": "No suggestions yet. Click rescan to scan your imports + entity graph.",
+      "suggestionsDisabled": "Project suggestions are disabled in admin. Enable them under System → Projects to populate this list.",
+      "rescan": "Rescan suggestions",
+      "rescanQueued": "Rescan job queued (id {jobId}…).",
+      "useSuggestion": "Use this suggestion",
+      "manualHeader": "Or describe it yourself",
+      "previewCandidates": "Preview candidate documents",
+      "autoFill": "Auto-fill from brain after creation",
+      "autoFillHint": "Runs a background scan that links documents matching your description (linkSource=autoFill).",
+      "create": "Create project",
+      "accept": "Accept suggestion",
+      "dismiss": "Dismiss",
+      "matchedDocs": "{count} document candidates",
+      "candidate": "Candidate",
+      "selected": "{count} selected"
+    },
+    "detail": {
+      "files": "Files",
+      "graph": "Graph",
+      "timeline": "Timeline",
+      "chat": "Chat",
+      "askAbout": "Ask about this project",
+      "summary": "Summary",
+      "summaryFallback": "No summary yet. Run \"Refresh context\" once Claude is available.",
+      "addDocument": "Add document",
+      "linkSourceManual": "Manual",
+      "linkSourceSuggested": "Suggested",
+      "linkSourceAutoFill": "Auto-fill"
+    },
+    "status": {
+      "active": "Active",
+      "suggested": "Suggested",
+      "dismissed": "Dismissed"
+    },
+    "source": {
+      "manual": "Manual",
+      "suggested_batch": "From import batch",
+      "suggested_cluster": "From entity cluster"
+    },
+    "createdSuccess": "Project created",
+    "acceptedSuccess": "Suggestion accepted",
+    "dismissedSuccess": "Suggestion dismissed",
+    "createFailed": "Failed to create"
   },
   "decisions": {
     "title": "Decisions",
@@ -523,6 +575,10 @@
         "enrichment": {
           "title": "Enrichment",
           "description": "Pipeline throughput, rate-limit handling, and per-attachment vision settings."
+        },
+        "projects": {
+          "title": "Projects",
+          "description": "Auto-suggested projects (ADR-0050). Turn the suggestion detector off to stop the post-import scan and avoid any token use. Default ON."
         },
         "storage": {
           "title": "Storage & Backup",

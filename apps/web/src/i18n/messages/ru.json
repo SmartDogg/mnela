@@ -205,7 +205,59 @@
     "refreshUnavailable": "Orchestrator Claude недоступен. Запустите его, чтобы обновить контекст.",
     "noContext": "Контекста пока нет. Запустите \"Обновить контекст\" когда Claude доступен.",
     "noEntities": "Сущности ещё не извлечены — обогатите документы проекта.",
-    "noQuestions": "В metadata.openQuestions пока пусто. Добавьте через PATCH /projects/:slug."
+    "noQuestions": "В metadata.openQuestions пока пусто. Добавьте через PATCH /projects/:slug.",
+    "tabs": {
+      "active": "Активные",
+      "suggested": "Подсказки",
+      "dismissed": "Отклонённые"
+    },
+    "newPage": {
+      "title": "Новый проект",
+      "subtitle": "Выберите подсказку системы или опишите сами.",
+      "suggestionsHeader": "Подсказки",
+      "suggestionsEmpty": "Пока нет подсказок. Запустите rescan — система пройдётся по импортам и графу сущностей.",
+      "suggestionsDisabled": "Авто-подсказки выключены в админке. Включите их в Система → Проекты, чтобы заполнить список.",
+      "rescan": "Запустить rescan",
+      "rescanQueued": "Задача rescan поставлена (id {jobId}…).",
+      "useSuggestion": "Использовать подсказку",
+      "manualHeader": "Или опишите сами",
+      "previewCandidates": "Найти кандидатов",
+      "autoFill": "Автоматически наполнить после создания",
+      "autoFillHint": "Фоном найдёт документы по описанию и привяжет (linkSource=autoFill).",
+      "create": "Создать проект",
+      "accept": "Принять подсказку",
+      "dismiss": "Отклонить",
+      "matchedDocs": "{count} кандидатов",
+      "candidate": "Кандидат",
+      "selected": "Выбрано: {count}"
+    },
+    "detail": {
+      "files": "Файлы",
+      "graph": "Граф",
+      "timeline": "Таймлайн",
+      "chat": "Чат",
+      "askAbout": "Спросить об этом проекте",
+      "summary": "Резюме",
+      "summaryFallback": "Резюме пока нет. Запустите \"Обновить контекст\" когда Claude доступен.",
+      "addDocument": "Добавить документ",
+      "linkSourceManual": "Вручную",
+      "linkSourceSuggested": "Подсказка",
+      "linkSourceAutoFill": "Авто"
+    },
+    "status": {
+      "active": "Активный",
+      "suggested": "Подсказка",
+      "dismissed": "Отклонён"
+    },
+    "source": {
+      "manual": "Вручную",
+      "suggested_batch": "Из импорта",
+      "suggested_cluster": "Из кластера сущностей"
+    },
+    "createdSuccess": "Проект создан",
+    "acceptedSuccess": "Подсказка принята",
+    "dismissedSuccess": "Подсказка отклонена",
+    "createFailed": "Не удалось создать"
   },
   "decisions": {
     "title": "Решения",
@@ -523,6 +575,10 @@
         "enrichment": {
           "title": "Обогащение",
           "description": "Пропускная способность пайплайна, обработка rate-limit и настройки vision на вложение."
+        },
+        "projects": {
+          "title": "Проекты",
+          "description": "Авто-подсказки проектов (ADR-0050). Выключите детектор — пост-импортный скан остановится и токены тратиться не будут. По умолчанию ВКЛ."
         },
         "storage": {
           "title": "Хранилище и бэкап",

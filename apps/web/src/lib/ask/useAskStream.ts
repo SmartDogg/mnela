@@ -85,6 +85,8 @@ export interface SendOpts {
   mode?: 'auto' | 'fts';
   kind?: AskMessageKind;
   attachmentIds?: string[];
+  /** ADR-0051: restrict search to a project's documents. */
+  scopeProjectSlug?: string;
 }
 
 export interface UseAskStreamApi {
@@ -146,6 +148,7 @@ export function useAskStream(): UseAskStreamApi {
         ...(opts?.attachmentIds && opts.attachmentIds.length > 0
           ? { attachmentIds: opts.attachmentIds }
           : {}),
+        ...(opts?.scopeProjectSlug ? { scopeProjectSlug: opts.scopeProjectSlug } : {}),
       });
 
       const attempt = async (): Promise<'done' | 'retry' | 'aborted' | 'fatal'> => {
