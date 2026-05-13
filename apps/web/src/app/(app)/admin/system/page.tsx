@@ -36,6 +36,7 @@ import { AddProviderDialog } from './_components/add-provider-dialog';
 import { ClaudeStatusBlock } from './_components/claude-status-block';
 import { ProviderCard } from './_components/provider-card';
 import { PerFeatureSelector } from './_components/per-feature-selector';
+import { TelegramSection } from './_components/telegram-section';
 import { TokensSection } from './_components/tokens-section';
 
 const SECTION_ORDER: ConfigSection[] = [
@@ -43,6 +44,7 @@ const SECTION_ORDER: ConfigSection[] = [
   'ingestion',
   'enrichment',
   'projects',
+  'telegram',
   'storage',
   'advanced',
 ];
@@ -60,6 +62,7 @@ const GROUP_TO_SECTION: Record<ConfigGroup, ConfigSection> = {
   worker: 'advanced',
   providers: 'providers',
   projects: 'projects',
+  telegram: 'telegram',
 };
 
 function sectionOf(entry: MergedConfigEntry): ConfigSection {
@@ -131,10 +134,14 @@ export default function AdminSystemPage(): JSX.Element {
 
         {/* ---- All non-provider sections ---- */}
         {SECTION_ORDER.filter((s) => s !== 'providers').map((section) => {
-          const entries = grouped.get(section);
           if (section === 'storage') {
             return <StorageCard key={section} stats={stats.data} isLoading={stats.isLoading} />;
           }
+          // Telegram has its own custom block (token + whitelist + registry rows).
+          if (section === 'telegram') {
+            return <TelegramSection key={section} />;
+          }
+          const entries = grouped.get(section);
           if (!entries || entries.length === 0) return null;
           return (
             <SectionCard

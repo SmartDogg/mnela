@@ -325,15 +325,45 @@ export type ConfigGroup =
   | 'claude'
   | 'worker'
   | 'providers'
-  | 'projects';
+  | 'projects'
+  | 'telegram';
 
 export type ConfigSection =
   | 'providers'
   | 'ingestion'
   | 'enrichment'
   | 'projects'
+  | 'telegram'
   | 'storage'
   | 'advanced';
+
+export interface TelegramConfig {
+  enabled: boolean;
+  hasToken: boolean;
+  tokenLast4: string | null;
+  botUsername: string | null;
+  botId: string | null;
+  transport: 'polling' | 'webhook';
+  webhookUrl: string | null;
+  bundleWindowMs: number;
+  defaultProjectSlug: string | null;
+  updatedAt: string;
+}
+
+export interface TelegramTestResult {
+  ok: boolean;
+  botId?: string;
+  botUsername?: string;
+  botFirstName?: string;
+  latencyMs: number;
+  error?: string;
+}
+
+export interface TelegramAllowedUserRow {
+  tgUserId: string;
+  label: string | null;
+  createdAt: string;
+}
 
 interface ConfigSpecCommon {
   key: string;

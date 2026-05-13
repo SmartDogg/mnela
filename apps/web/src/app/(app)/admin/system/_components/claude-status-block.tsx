@@ -44,12 +44,12 @@ export function ClaudeStatusBlock(): JSX.Element {
 
   return (
     <div className="rounded-md border border-border/60 bg-muted/20">
-      <button
-        type="button"
-        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <button
+          type="button"
+          className="flex flex-1 items-center gap-2 text-left"
+          onClick={() => setOpen((v) => !v)}
+        >
           {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
           <span className="text-sm font-medium">{t('title')}</span>
           {status.isLoading ? (
@@ -67,13 +67,10 @@ export function ClaudeStatusBlock(): JSX.Element {
               {data?.available ? t('available') : t('unavailable')}
             </Badge>
           )}
-        </div>
+        </button>
         {open && (
           <Button
-            onClick={(e) => {
-              e.stopPropagation();
-              test.mutate();
-            }}
+            onClick={() => test.mutate()}
             disabled={test.isPending}
             size="sm"
             variant="outline"
@@ -89,7 +86,7 @@ export function ClaudeStatusBlock(): JSX.Element {
             )}
           </Button>
         )}
-      </button>
+      </div>
       {open && (
         <div className="space-y-2 border-t border-border/40 px-3 py-2 text-sm">
           {reasonKey && !data?.available && (
