@@ -344,6 +344,13 @@
     "stop": "Остановить",
     "newChat": "Новый диалог",
     "saveSynthesis": "Сохранить как заметку",
+    "scope": {
+      "all": "Весь мозг",
+      "search": "Найти проект…",
+      "activeHeader": "Активные проекты",
+      "suggestedHeader": "Подсказки",
+      "empty": "Нет совпадений."
+    },
     "input": {
       "hint": "Enter — отправить · Cmd+Enter — перенос строки"
     },

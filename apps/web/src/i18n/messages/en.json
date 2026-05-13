@@ -344,6 +344,13 @@
     "stop": "Stop",
     "newChat": "New conversation",
     "saveSynthesis": "Save as note",
+    "scope": {
+      "all": "All brain",
+      "search": "Filter projects…",
+      "activeHeader": "Active projects",
+      "suggestedHeader": "Suggested",
+      "empty": "No projects match."
+    },
     "input": {
       "hint": "Enter to send · Cmd+Enter for newline"
     },

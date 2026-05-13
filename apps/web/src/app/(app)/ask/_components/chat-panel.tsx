@@ -36,6 +36,7 @@ import { DumbModeBanner } from './dumb-mode-banner';
 import { MessageBubble } from './message-bubble';
 import { RateLimitBanner } from './rate-limit-banner';
 import { SaveSynthesisDialog } from './save-synthesis-dialog';
+import { ScopeSelect } from './scope-select';
 
 interface ConversationDetail {
   conversation: {
@@ -284,15 +285,10 @@ export function ChatPanel({
       <footer className="border-t border-border/60 px-4 py-3">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <KindToggle kind={appKind} onChange={setAppKind} disabled={busy} />
+          <ScopeSelect disabled={busy} />
           <p className="text-[10px] text-muted-foreground">
             {appKind === 'ingest' ? t('composer.ingestHint') : t('composer.chatHint')}
           </p>
-          {scopeProjectSlug && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
-              <Sparkles className="size-3" />
-              scope: project:{scopeProjectSlug}
-            </span>
-          )}
         </div>
         {attachments.drafts.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
