@@ -596,11 +596,15 @@
       "resetSuccess": "Reset to default",
       "resetFailed": "Failed to reset",
       "restartServices": "Restart services",
-      "restartHint": "Reload BullMQ consumers + Whisper status probe + Dropbox watcher with the current registry values. No actual process restart — works the same under docker / systemd / pnpm dev.",
-      "restartTriggered": "Reload complete",
+      "restartHint": "Hot-reload subsystems that re-read SystemConfig at runtime. Returns per-subscriber acks within 2.5s. Some bindings (api rate-limit) require an OS-level restart and will report 'noop'.",
       "restartFailed": "Failed to send reload signal",
       "restartingTitle": "Reloading services…",
-      "restartingHint": "Workers are picking up the new settings. This usually takes under a second; we wait 2.5s for safety.",
+      "restartingHint": "Collecting per-subscriber acks. Usually <1s; capped at 2.5s.",
+      "restartOk": "Reloaded {total} subscriber(s)",
+      "restartPartial": "{errors} of {total} subscriber(s) failed to reload",
+      "restartWithNoop": "{noops} of {total} subscriber(s) noop (need process restart)",
+      "reloadAcksTitle": "Reload acks",
+      "reloadAcksDismiss": "Dismiss",
       "sections": {
         "providers": {
           "title": "AI Providers",

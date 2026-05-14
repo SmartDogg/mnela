@@ -2,24 +2,24 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { type MnelaEvent, publishEvent, subscribeEvents } from '@mnela/queue';
 import type { Redis } from 'ioredis';
 
-import { RedisService } from '../redis.service.js';
+import { RedisService } from '../../redis.service.js';
 
-export type ReloadHandler = () => Promise<void>;
+export type ReloadHandler = () => Promise<{ note?: string } | void>;
 
-const SERVICE_NAME = 'worker' as const;
+const SERVICE_NAME = 'api' as const;
 
 /**
- * In-process hot-reload for BullMQ consumers in apps/worker.
+ * In-process hot-reload for the api process. Mirrors the worker /
+ * orchestrator ReloadService: subscribers (SearchService weights,
+ * Throttler honest-noop, …) register a callback that re-reads the
+ * registry. Each handler emits a `system.service_reload_ack` frame
+ * the SystemService.requestRestart caller collects to render an
+ * honest per-subscriber overlay instead of a blind timer.
  *
- * The "Restart Services" button in /admin/system publishes a
- * `system.service_reload` event over Redis pubsub. Each consumer that
- * holds long-lived state (BullMQ Workers configured with a concurrency
- * read once at boot, file watchers tied to a feature flag, etc.)
- * registers a callback here; on event receipt we call every callback
- * in turn so the post-toggle state takes effect without an actual
- * process restart — works the same under `pnpm dev` (where node
- * `--watch` does not auto-restart on `process.exit`), under
- * docker-compose, and under systemd.
+ * `ThrottlerModule` is bound at DI-graph construction so it can't be
+ * hot-reloaded in-place — that handler registers as a "noop" with a
+ * note so the operator knows the rate-limit change really needs an
+ * OS-level restart. Don't silently lie about it.
  */
 @Injectable()
 export class ReloadService implements OnModuleInit, OnModuleDestroy {
@@ -32,6 +32,11 @@ export class ReloadService implements OnModuleInit, OnModuleDestroy {
   register(name: string, handler: ReloadHandler): void {
     this.handlers.push({ name, fn: handler });
     this.logger.debug(`reload handler registered: ${name}`);
+  }
+
+  registerNoop(name: string, note: string): void {
+    this.handlers.push({ name, fn: async () => ({ note }) });
+    this.logger.debug(`reload noop handler registered: ${name} (${note})`);
   }
 
   async onModuleInit(): Promise<void> {
@@ -60,10 +65,12 @@ export class ReloadService implements OnModuleInit, OnModuleDestroy {
     for (const { name, fn } of this.handlers) {
       const startedAt = Date.now();
       try {
-        await fn();
+        const result = await fn();
         const durationMs = Date.now() - startedAt;
-        this.logger.debug(`reload handler ok: ${name} (${durationMs}ms)`);
-        await this.publishAck(requestId, name, { status: 'ok', durationMs });
+        const note = result && typeof result === 'object' ? result.note : undefined;
+        const status = note ? 'noop' : 'ok';
+        this.logger.debug(`reload handler ${status}: ${name} (${durationMs}ms)`);
+        await this.publishAck(requestId, name, { status, durationMs, note });
       } catch (err) {
         const durationMs = Date.now() - startedAt;
         const message = err instanceof Error ? err.message : String(err);

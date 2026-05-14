@@ -49,11 +49,15 @@ const env = loadEnv();
         },
       },
     }),
-    // ThrottlerModule is configured once at startup; live re-configure
-    // would mean rebuilding NestJS DI graph mid-flight. The registry
-    // key `api.rateLimit.global` is marked requiresRestart=true, so the
-    // /admin/system Restart Services button re-bootstraps the api with
-    // the new value via process.exit(0) → docker/systemd auto-restart.
+    // ThrottlerModule is configured once at NestJS DI-graph construction;
+    // live re-configure would require rebuilding the full app. The
+    // /admin/system Restart Services button does NOT (and cannot
+    // honestly) hot-reload it — the api ReloadService registers a
+    // "noop" handler that surfaces a clear note in the admin overlay
+    // so the operator knows changes to `api.rateLimit.*` only take
+    // effect after a real OS-level restart. See
+    // ./modules/system/throttler-reload.boot.ts.
+    //
     // We deliberately read env here as the BOOT default (zod fallback)
     // before SystemConfig is even reachable; if the registry override
     // exists, the boot-time read in AppModule.imports will use it.

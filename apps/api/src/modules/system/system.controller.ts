@@ -117,9 +117,9 @@ export class SystemController {
   @Audit({ action: 'system.restart', targetType: 'System' })
   @ApiOperation({
     summary:
-      'Hot-reload all subsystems with `requiresRestart` registry settings — publishes system.service_reload on mnela:events; worker + orchestrator re-init their BullMQ consumers in-process. No actual process restart (works the same on docker / systemd / pnpm dev).',
+      'Hot-reload subsystems via mnela:events system.service_reload. Returns the per-subscriber acks (worker.ingestion, orchestrator.enrichment, api.search, api.throttler, …) collected within a 2.5s window so the UI can render an honest result instead of a blind timer.',
   })
-  restart(): Promise<{ accepted: true }> {
+  restart() {
     return this.system.requestRestart('manual');
   }
 }

@@ -18,6 +18,7 @@ import { SuggestionDetector } from './projects/detector.js';
 import { SuggestionNamer } from './projects/naming.js';
 import { RateLimitService } from './rate-limit/rate-limit.service.js';
 import { RedisService } from './redis.service.js';
+import { ReloadModule } from './reload/reload.module.js';
 import { RepositoriesModule } from './repositories.module.js';
 import { SearchBridge } from './search-bridge.js';
 
@@ -36,6 +37,7 @@ const env = loadEnv();
       },
     }),
     RepositoriesModule,
+    ReloadModule,
   ],
   providers: [
     PrismaService,

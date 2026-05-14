@@ -30,6 +30,7 @@ import type {
   ConfigSpec,
   MergedConfigEntry,
   ProvidersListResponse,
+  RestartResponse,
   SystemStats,
 } from '@/lib/api/types';
 import { formatBytes } from '@/lib/utils';
@@ -129,31 +130,35 @@ export default function AdminSystemPage(): JSX.Element {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('resetFailed')),
   });
 
-  // `restarting` blanks the whole page with an overlay so the user
-  // can't change anything while consumers are mid-reload. POST
-  // /system/restart returns immediately (the pubsub publish is async);
-  // worker/orchestrator hot-reload takes <1s in practice, but we hold
-  // the overlay 2.5s to absorb the worst case + refetch /system/config
-  // so any post-reload state diff shows up.
-  const [restarting, setRestarting] = useState(false);
+  // POST /system/restart blocks for ~2.5s server-side while it collects
+  // per-subscriber acks from worker/orchestrator/api ReloadServices,
+  // then returns them in `acks`. We render the list so the operator
+  // sees which subsystems actually hot-reloaded vs which need a real
+  // process restart (api.throttler ack is `noop` by design).
+  const [lastAcks, setLastAcks] = useState<RestartResponse['acks'] | null>(null);
   const restart = useMutation({
-    mutationFn: () => api.post('/system/restart'),
-    onSuccess: () => {
-      setRestarting(true);
-      window.setTimeout(() => {
-        setRestarting(false);
-        queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
-        queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
-        queryClient.invalidateQueries({ queryKey: ['system', 'stats'] });
-        toast.success(t('restartTriggered'));
-      }, 2500);
+    mutationFn: () => api.post<RestartResponse>('/system/restart'),
+    onSuccess: (res) => {
+      setLastAcks(res.acks);
+      queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+      queryClient.invalidateQueries({ queryKey: ['system', 'stats'] });
+      const errors = res.acks.filter((a) => a.status === 'error').length;
+      const noops = res.acks.filter((a) => a.status === 'noop').length;
+      if (errors > 0) {
+        toast.error(t('restartPartial', { errors, total: res.acks.length }));
+      } else if (noops > 0) {
+        toast.warning(t('restartWithNoop', { noops, total: res.acks.length }));
+      } else {
+        toast.success(t('restartOk', { total: res.acks.length }));
+      }
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('restartFailed')),
   });
 
   return (
     <div className="relative">
-      {(restarting || restart.isPending) && (
+      {restart.isPending && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card px-8 py-6 shadow-xl">
             <RefreshCw className="size-6 animate-spin text-primary" />
@@ -172,16 +177,46 @@ export default function AdminSystemPage(): JSX.Element {
             variant="outline"
             size="sm"
             onClick={() => restart.mutate()}
-            disabled={restart.isPending || restarting}
+            disabled={restart.isPending}
             title={t('restartHint')}
           >
-            <RefreshCw
-              className={restart.isPending || restarting ? 'size-4 animate-spin' : 'size-4'}
-            />
+            <RefreshCw className={restart.isPending ? 'size-4 animate-spin' : 'size-4'} />
             {t('restartServices')}
           </Button>
         }
       />
+      {lastAcks && lastAcks.length > 0 && (
+        <div className="mx-8 mt-4 rounded-lg border border-border bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-sm font-medium">{t('reloadAcksTitle')}</p>
+            <button
+              type="button"
+              onClick={() => setLastAcks(null)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              {t('reloadAcksDismiss')}
+            </button>
+          </div>
+          <ul className="space-y-1.5 text-sm">
+            {lastAcks.map((ack, i) => (
+              <li
+                key={`${ack.service}-${ack.subscriber}-${i}`}
+                className="flex items-center gap-3 font-mono text-xs"
+              >
+                <span aria-hidden>
+                  {ack.status === 'ok' ? '✅' : ack.status === 'noop' ? '⚠️' : '❌'}
+                </span>
+                <span className="min-w-[10rem] text-muted-foreground">
+                  {ack.service}.{ack.subscriber}
+                </span>
+                <span className="tabular-nums text-muted-foreground">{ack.durationMs}ms</span>
+                {ack.note && <span className="text-amber-500">{ack.note}</span>}
+                {ack.error && <span className="text-destructive">{ack.error}</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="space-y-4 px-8 py-6">
         {/* ---- AI Providers card (the new hero) ---- */}
         <ProvidersSection

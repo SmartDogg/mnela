@@ -596,11 +596,15 @@
       "resetSuccess": "Сброшено к значению по умолчанию",
       "resetFailed": "Не удалось сбросить",
       "restartServices": "Рестарт сервисов",
-      "restartHint": "Перезапустить BullMQ-консьюмеры, Whisper-пробу и Dropbox-watcher с актуальными значениями из registry. Без фактического перезапуска процесса — работает одинаково в docker / systemd / pnpm dev.",
-      "restartTriggered": "Перезагрузка завершена",
+      "restartHint": "Hot-reload подсистем, которые перечитывают SystemConfig в рантайме. В ответе — acks от каждого подписчика за 2.5с. Часть привязок (rate-limit api) требует полного рестарта процесса и вернёт 'noop'.",
       "restartFailed": "Не удалось отправить сигнал",
       "restartingTitle": "Перезагружаем сервисы…",
-      "restartingHint": "Воркеры подтягивают новые настройки. Обычно занимает меньше секунды; держим 2.5с для надёжности.",
+      "restartingHint": "Собираем acks от подписчиков. Обычно <1с; ограничено 2.5с.",
+      "restartOk": "Перезагружено подписчиков: {total}",
+      "restartPartial": "Не удалось перезагрузить: {errors} из {total}",
+      "restartWithNoop": "{noops} из {total} — noop (нужен рестарт процесса)",
+      "reloadAcksTitle": "Acks от подписчиков",
+      "reloadAcksDismiss": "Скрыть",
       "sections": {
         "providers": {
           "title": "AI провайдеры",

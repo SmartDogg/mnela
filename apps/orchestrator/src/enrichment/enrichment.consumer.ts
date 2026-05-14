@@ -9,6 +9,7 @@ import type { Redis } from 'ioredis';
 import { loadEnv } from '../env.js';
 import { ProjectsQueueService } from '../projects/projects-queue.service.js';
 import { RedisService } from '../redis.service.js';
+import { ReloadService } from '../reload/reload.service.js';
 import { EnrichmentPipeline } from './pipeline.js';
 
 @Injectable()
@@ -24,13 +25,21 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly systemConfig: SystemConfigRepository,
     private readonly projectsQueue: ProjectsQueueService,
+    private readonly reload: ReloadService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.startWorker();
+    this.reload.register('enrichment.worker', () => this.restartWorker());
+  }
+
+  /**
+   * Idempotent BullMQ Worker bootstrap. Called from onModuleInit and
+   * again on every `system.service_reload` so the post-toggle
+   * `enrichment.parallelism` value takes effect without a process restart.
+   */
+  private async startWorker(): Promise<void> {
     const env = loadEnv();
-    // Read parallelism from registry (DB override > env fallback > spec default).
-    // BullMQ Worker fixes concurrency at construction, so changes need a
-    // process restart — surfaced as `requiresRestart` in the admin UI.
     const parallelism = await readRegistryValue<number>(
       this.systemConfig,
       'enrichment.parallelism',
@@ -56,11 +65,23 @@ export class EnrichmentConsumer implements OnModuleInit, OnModuleDestroy {
     this.logger.log(`enrichment worker ready (parallelism=${parallelism})`);
   }
 
-  async onModuleDestroy(): Promise<void> {
+  private async restartWorker(): Promise<void> {
+    this.logger.log('reloading enrichment worker');
+    await this.shutdown();
+    await this.startWorker();
+  }
+
+  private async shutdown(): Promise<void> {
     await this.worker?.close().catch(() => undefined);
+    this.worker = undefined;
     if (this.bullConnection && this.bullConnection.status !== 'end') {
       await this.bullConnection.quit().catch(() => undefined);
     }
+    this.bullConnection = undefined;
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.shutdown();
   }
 
   /**

@@ -11,12 +11,15 @@ import {
   TrigramSearchAdapter,
 } from '@mnela/search';
 
+import { ReloadService } from '../system/reload.service.js';
+
 /**
  * Search blend tuning lives in SystemConfig (`search.*` registry keys);
- * `onModuleInit` reads the live values and rebuilds the adapters. The
- * "Restart services" button on /admin/system re-bootstraps the api so
- * post-toggle adapters reflect the new weights without process-level
- * restart (see ReloadService).
+ * `onModuleInit` reads the live values and builds the adapters once.
+ * The "Restart services" button on /admin/system fires the api-side
+ * ReloadService, which re-invokes `buildAdapters()` so post-toggle
+ * weights take effect in-process. Each adapter rebuild publishes a
+ * `system.service_reload_ack` frame.
  */
 @Injectable()
 export class SearchService implements OnModuleInit {
@@ -27,10 +30,12 @@ export class SearchService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly reload: ReloadService,
   ) {}
 
   async onModuleInit(): Promise<void> {
     await this.buildAdapters();
+    this.reload.register('search.adapters', () => this.buildAdapters());
   }
 
   /** Re-read registry and rebuild the three adapters. Idempotent. */

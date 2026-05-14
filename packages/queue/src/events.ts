@@ -134,13 +134,40 @@ export interface SystemTelegramReloadEvent {
  */
 export interface SystemServiceReloadEvent {
   type: 'system.service_reload';
-  payload: { service: 'all' | 'api' | 'worker' | 'orchestrator'; reason: string };
+  payload: {
+    service: 'all' | 'api' | 'worker' | 'orchestrator';
+    reason: string;
+    requestId: string;
+  };
+}
+/**
+ * Reply published by each ReloadService for every registered handler it
+ * ran in response to `system.service_reload`. The api collects these for
+ * ~2.5s after publishing the reload event so the /admin/system overlay
+ * can show real per-subscriber status (✅ worker.ingestion.consumer 240ms,
+ * ❌ orchestrator.enrichment.consumer timeout) instead of a blind timer.
+ *
+ * `requestId` correlates ack ↔ request — multiple Restart Services clicks
+ * in quick succession would otherwise interleave their acks.
+ */
+export interface SystemServiceReloadAckEvent {
+  type: 'system.service_reload_ack';
+  payload: {
+    requestId: string;
+    service: 'api' | 'worker' | 'orchestrator';
+    subscriber: string;
+    status: 'ok' | 'error' | 'noop';
+    durationMs: number;
+    error?: string;
+    note?: string;
+  };
 }
 export type SystemEvent =
   | SystemClaudeStatusChangedEvent
   | SystemWhisperStatusChangedEvent
   | SystemTelegramReloadEvent
-  | SystemServiceReloadEvent;
+  | SystemServiceReloadEvent
+  | SystemServiceReloadAckEvent;
 
 /**
  * Enrichment-specific live signals. The pipeline already emits

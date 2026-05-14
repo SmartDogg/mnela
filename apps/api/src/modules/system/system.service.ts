@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
+
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService, SystemConfigRepository } from '@mnela/db';
-import { publishEvent } from '@mnela/queue';
+import { type MnelaEvent, publishEvent, subscribeEvents } from '@mnela/queue';
 import type { Prisma, SystemConfig } from '@prisma/client';
 
 import { RedisService } from '../../redis.service.js';
@@ -35,6 +37,24 @@ export interface MergedConfigEntry {
   updatedAt: string | null;
 }
 
+export interface ReloadAck {
+  service: 'api' | 'worker' | 'orchestrator';
+  subscriber: string;
+  status: 'ok' | 'error' | 'noop';
+  durationMs: number;
+  error?: string;
+  note?: string;
+}
+
+export interface RestartResponse {
+  accepted: true;
+  requestId: string;
+  windowMs: number;
+  acks: ReloadAck[];
+}
+
+const RELOAD_ACK_WINDOW_MS = 2500;
+
 @Injectable()
 export class SystemService {
   private readonly logger = new Logger(SystemService.name);
@@ -46,21 +66,53 @@ export class SystemService {
   ) {}
 
   /**
-   * Publishes `system.service_reload` on the shared Redis pubsub. Every
-   * worker/orchestrator subscriber re-initialises its BullMQ consumers
-   * (concurrency from registry, dropbox watcher, whisper status probe,
-   * etc.) without an actual process restart — works the same on docker
-   * compose, systemd, and `pnpm dev`. The HTTP response is fire-and-
-   * forget; the UI shows a toast and re-fetches /system/config to pick
-   * up the post-reload state.
+   * Publishes `system.service_reload` on the shared Redis pubsub and
+   * collects the per-subscriber `system.service_reload_ack` replies for
+   * `RELOAD_ACK_WINDOW_MS` so the /admin/system overlay can render
+   * honest "✅ worker.ingestion 240ms / ❌ orchestrator.enrichment
+   * timeout / ⚠️ api.throttler noop" instead of a blind 2.5s timer.
+   *
+   * Subscribers (worker/orchestrator/api ReloadService) reply
+   * asynchronously; the window is short on purpose — restart handlers
+   * should be quick (close + recreate BullMQ Worker, re-read registry).
+   * Anything longer is a bug in the handler, not a reason to wait.
    */
-  async requestRestart(reason: string): Promise<{ accepted: true }> {
+  async requestRestart(reason: string): Promise<RestartResponse> {
+    const requestId = randomUUID();
+    const subscriber = this.redis.client.duplicate();
+    const acks: ReloadAck[] = [];
+
+    await subscriber.connect();
+    const ackPromise = new Promise<void>((resolve) => {
+      const timer = setTimeout(() => resolve(), RELOAD_ACK_WINDOW_MS);
+      void subscribeEvents(subscriber, (event: MnelaEvent) => {
+        if (event.type !== 'system.service_reload_ack') return;
+        if (event.payload.requestId !== requestId) return;
+        acks.push({
+          service: event.payload.service,
+          subscriber: event.payload.subscriber,
+          status: event.payload.status,
+          durationMs: event.payload.durationMs,
+          error: event.payload.error,
+          note: event.payload.note,
+        });
+      }).catch(() => clearTimeout(timer));
+    });
+
     await publishEvent(this.redis.client, {
       type: 'system.service_reload',
-      payload: { service: 'all', reason },
+      payload: { service: 'all', reason, requestId },
     });
-    this.logger.log(`service_reload published (reason=${reason})`);
-    return { accepted: true };
+    this.logger.log(`service_reload published (reason=${reason}, requestId=${requestId})`);
+
+    try {
+      await ackPromise;
+    } finally {
+      await subscriber.quit().catch(() => undefined);
+    }
+
+    this.logger.log(`service_reload acks received (requestId=${requestId}): ${acks.length}`);
+    return { accepted: true, requestId, windowMs: RELOAD_ACK_WINDOW_MS, acks };
   }
 
   async stats(): Promise<SystemStats> {

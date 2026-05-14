@@ -6,20 +6,16 @@ import { RedisService } from '../redis.service.js';
 
 export type ReloadHandler = () => Promise<void>;
 
-const SERVICE_NAME = 'worker' as const;
+const SERVICE_NAME = 'orchestrator' as const;
 
 /**
- * In-process hot-reload for BullMQ consumers in apps/worker.
- *
- * The "Restart Services" button in /admin/system publishes a
- * `system.service_reload` event over Redis pubsub. Each consumer that
- * holds long-lived state (BullMQ Workers configured with a concurrency
- * read once at boot, file watchers tied to a feature flag, etc.)
- * registers a callback here; on event receipt we call every callback
- * in turn so the post-toggle state takes effect without an actual
- * process restart — works the same under `pnpm dev` (where node
- * `--watch` does not auto-restart on `process.exit`), under
- * docker-compose, and under systemd.
+ * Mirror of `apps/worker/src/reload/reload.service.ts` for the orchestrator
+ * process. Subscribers (e.g. `EnrichmentConsumer`) register a callback that
+ * closes + recreates their BullMQ Worker so registry-driven values like
+ * `enrichment.parallelism` take effect on the next "Restart Services"
+ * click without an OS-level process restart. Each handler run publishes
+ * a `system.service_reload_ack` frame the api collects to render an
+ * honest per-subscriber overlay.
  */
 @Injectable()
 export class ReloadService implements OnModuleInit, OnModuleDestroy {

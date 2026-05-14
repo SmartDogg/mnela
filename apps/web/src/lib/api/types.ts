@@ -398,6 +398,22 @@ export interface MergedConfigEntry {
   updatedAt: string | null;
 }
 
+export interface ReloadAck {
+  service: 'api' | 'worker' | 'orchestrator';
+  subscriber: string;
+  status: 'ok' | 'error' | 'noop';
+  durationMs: number;
+  error?: string;
+  note?: string;
+}
+
+export interface RestartResponse {
+  accepted: true;
+  requestId: string;
+  windowMs: number;
+  acks: ReloadAck[];
+}
+
 export type InboxItemType =
   | 'link_suggestion'
   | 'entity_merge_suggestion'
