@@ -232,3 +232,69 @@ docker exec mnela-orchestrator ls -la /data/claude/
 The `mnela` user inside the container needs to own `/data`. The Dockerfile
 chowns at build time, but if you've manually swapped a bind-mount in,
 re-chown to the container's `mnela:mnela`.
+
+## Enabling optional Sentry crash reporting
+
+Sentry is off by default and `@sentry/node` is intentionally not bundled
+in the slim Docker images. To turn it on:
+
+```bash
+# 1. add the dep (workspace-scoped install)
+pnpm add @sentry/node -F @mnela/api -F @mnela/worker \
+                     -F @mnela/orchestrator -F @mnela/tg-bot
+
+# 2. set the DSN in .env
+echo 'MNELA_SENTRY_DSN=https://…@sentry.io/…' >> .env
+
+# 3. rebuild prod images and restart
+mnela update
+```
+
+`packages/core/src/sentry.ts` dynamic-imports the package and scrubs
+`Authorization` headers and request bodies in `beforeSend`. If the DSN
+is set but the package isn't installed, the process stderr-logs once
+and continues without telemetry.
+
+## Postgres index audit (`mnela db:audit`)
+
+Run on a populated install to find slow queries + drop-candidate
+indexes:
+
+```bash
+mnela db:audit
+```
+
+If you get `ERROR: relation "pg_stat_statements" does not exist`, the
+extension hasn't been preloaded yet — that happens once after pulling
+the new compose file. `mnela update` already includes the postgres
+restart; if you started from an older deployment, run:
+
+```bash
+docker compose up -d postgres   # picks up the new shared_preload_libraries
+mnela db:audit
+```
+
+See [`docs/PERF.md`](./docs/PERF.md) for what to do with the output.
+
+## Container healthcheck reports "unhealthy"
+
+Each container has a docker `healthcheck:` configured (see
+`infra/docker/docker-compose.yml`):
+
+- **api / web / mcp** — HTTP probe via the node binary. Failure means
+  the process is up but not serving — usually a startup crash visible
+  in `mnela logs <svc>`.
+- **worker / orchestrator / tg-bot** — touches `/tmp/mnela-heartbeat`
+  every 30 s; mtime > 90 s old marks the container unhealthy. A wedged
+  event loop will trip this even when `restart: unless-stopped`
+  wouldn't (the process is alive, just deadlocked).
+
+If a worker keeps tripping the heartbeat, get a profile:
+
+```bash
+docker exec mnela-worker node -e "console.log(process._getActiveHandles().length)"
+```
+
+A growing handle count is a leak; a stuck event-loop tick is a
+deadlock. Either way the cure is a restart followed by file an issue
+with `mnela logs worker 500` attached.

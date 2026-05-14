@@ -12,6 +12,11 @@ name: mnela
 # The MNELA_IMAGES env var toggles between locally built images
 # (`MNELA_IMAGES=local`, the default — `build:` blocks fire) and pulled
 # GHCR releases (`MNELA_IMAGES=registry` — `image:` references only).
+#
+# Memory ceilings (`mem_limit:`) are budgets, not targets — see
+# docs/PERF.md for the expected idle/under-load RSS per process.
+# They are tuned for a 1 GB VPS; bump them in `.env` / a compose
+# override if you've sized up.
 
 x-mnela-env: &mnela-env
   NODE_ENV: production
@@ -21,12 +26,30 @@ x-mnela-env: &mnela-env
   MNELA_DATA_DIR: /data
   COOKIE_SECRET: ${COOKIE_SECRET:-mnela-dev-cookie-secret-change-me}
   MNELA_PROVIDER_SECRET: ${MNELA_PROVIDER_SECRET:-}
+  # Optional crash / error reporting (no-op when unset). See
+  # packages/core/src/sentry.ts + docs/TROUBLESHOOTING.md.
+  MNELA_SENTRY_DSN: ${MNELA_SENTRY_DSN:-}
 
 services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: mnela-postgres
     restart: unless-stopped
+    # pg_stat_statements lives in `contrib/` of stock postgres:16; we
+    # only need to wire it into `shared_preload_libraries` (requires
+    # one restart) and run `CREATE EXTENSION pg_stat_statements`
+    # (handled by `mnela db:audit`). track_io_timing=on is cheap on
+    # Linux and gives the audit useful blk_read_time numbers.
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - pg_stat_statements.max=10000
+      - -c
+      - track_io_timing=on
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-mnela}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mnela_dev_password_change_me}
@@ -42,6 +65,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    mem_limit: 768m
 
   redis:
     image: redis:7-alpine
@@ -63,6 +87,7 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    mem_limit: 128m
 
   mcp:
     profiles: [prod]
@@ -80,6 +105,21 @@ services:
       MCP_HTTP_PORT: '3010'
     expose:
       - '3010'
+    healthcheck:
+      # node binary is always present; using it dodges the missing
+      # curl/wget problem in node:22-slim. Public /health endpoint.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3010/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 192m
 
   api:
     profiles: [prod]
@@ -112,6 +152,19 @@ services:
       - claude-creds:/claude-creds:ro
     expose:
       - '3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/api/v1/system/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 512m
 
   # One-shot migration runner. Uses the same image as the api but with a
   # custom command. Invoke via:
@@ -160,8 +213,22 @@ services:
       # /api/v1 suffix REQUIRED — apps/web/src/lib/api/server.ts:10 +
       # client.ts:43 concat the relative `/auth/me` etc. onto this base.
       MNELA_API_INTERNAL_BASE: http://api:3000/api/v1
+      MNELA_SENTRY_DSN: ${MNELA_SENTRY_DSN:-}
     expose:
       - '3001'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3001/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    mem_limit: 256m
 
   worker:
     profiles: [prod]
@@ -179,6 +246,23 @@ services:
       WHISPER_URL: ${WHISPER_URL:-http://whisper:8080}
     volumes:
       - mnela-data:/data
+    healthcheck:
+      # Headless process — no HTTP. main.ts refreshes
+      # /tmp/mnela-heartbeat every 30 s; mtime > 90 s ago means the
+      # event loop is wedged (or the process is dead but Docker would
+      # already be restarting it via `restart: unless-stopped`).
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "const s=require('fs').statSync('/tmp/mnela-heartbeat');process.exit(s.mtimeMs>Date.now()-90000?0:1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 384m
 
   orchestrator:
     profiles: [prod]
@@ -204,6 +288,19 @@ services:
       # OAuth credentials persist here; bootstrap once with
       #   docker exec -it mnela-orchestrator claude login
       - claude-creds:/home/mnela/.claude
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "const s=require('fs').statSync('/tmp/mnela-heartbeat');process.exit(s.mtimeMs>Date.now()-90000?0:1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    mem_limit: 512m
 
   tg-bot:
     profiles: [prod]
@@ -221,6 +318,19 @@ services:
       MNELA_INTERNAL_TOKEN: ${MNELA_INTERNAL_TOKEN}
     volumes:
       - mnela-data:/data
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "const s=require('fs').statSync('/tmp/mnela-heartbeat');process.exit(s.mtimeMs>Date.now()-90000?0:1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 192m
 
   caddy:
     profiles: [prod]
@@ -244,6 +354,7 @@ services:
       - ${CADDYFILE:-../../Caddyfile}:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    mem_limit: 64m
 
 volumes:
   postgres-data:

@@ -3,6 +3,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { initSentry } from '@mnela/core';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
@@ -15,6 +16,7 @@ import { maintenanceMiddleware } from './middleware/maintenance.js';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
+  await initSentry({ serviceName: 'api' });
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });

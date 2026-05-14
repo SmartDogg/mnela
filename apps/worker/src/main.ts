@@ -2,10 +2,12 @@ import 'reflect-metadata';
 
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { initSentry, startHeartbeat } from '@mnela/core';
 
 import { WorkerModule } from './worker.module.js';
 
 async function bootstrap(): Promise<void> {
+  await initSentry({ serviceName: 'worker' });
   // `bufferLogs: true` keeps all Nest startup logs invisible under
   // turbo+node-watch on Windows (turbo's stdout aggregator never sees the
   // flush). Drop it so the dev stack actually surfaces "watching ...",
@@ -16,8 +18,11 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   logger.log('mnela worker started');
 
+  const stopHeartbeat = startHeartbeat();
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.log(`received ${signal}, shutting down`);
+    stopHeartbeat();
     await app.close();
     process.exit(0);
   };

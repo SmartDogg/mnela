@@ -16,6 +16,7 @@
 //   mnela update [--tag X]    scripts/update.sh (pull latest release + migrate + up)
 //   mnela claude:test         POST /system/claude-test on the API
 //   mnela providers:export    list configured LLM providers (no plaintext keys)
+//   mnela db:audit            pg_stat_statements top queries + index audit
 //   mnela help                this listing
 
 import { spawnSync } from 'node:child_process';
@@ -71,6 +72,7 @@ Commands:
   update [--tag X]       Pull latest release, run migrations, restart prod stack
   claude:test            POST /system/claude-test against the API container
   providers:export       Print LlmProvider rows as JSON (no plaintext keys)
+  db:audit               pg_stat_statements top queries + missing/unused indexes
   help, -h, --help       Show this message
 
 Environment:
@@ -162,6 +164,92 @@ req.end('{}');
   return result.status ?? 1;
 }
 
+function cmdDbAudit(layout: RepoLayout): number {
+  /*
+   * Three short reports against the live postgres container:
+   *   1. top 20 queries by total exec time (pg_stat_statements)
+   *   2. unused indexes (idx_scan = 0, non-unique, non-primary)
+   *   3. tables w/ high seq_scan ratio (n_live_tup > 10k AND seq_scan > idx_scan)
+   *
+   * `CREATE EXTENSION` is idempotent. If `shared_preload_libraries=pg_stat_statements`
+   * isn't set in compose, this will fail loudly — that's correct, the
+   * operator should restart postgres after pulling the new compose file.
+   */
+  const project = process.env.COMPOSE_PROJECT_NAME ?? 'mnela';
+  const file = process.env.COMPOSE_FILE ?? layout.composeFile;
+  const dbUser = process.env.POSTGRES_USER ?? 'mnela';
+  const dbName = process.env.POSTGRES_DB ?? 'mnela';
+  const sql = `
+\\echo ── enabling pg_stat_statements (idempotent) ──
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+\\echo
+\\echo ── top 20 queries by total exec time ──
+SELECT
+  round(total_exec_time::numeric, 1) AS total_ms,
+  calls,
+  round(mean_exec_time::numeric, 2) AS mean_ms,
+  round((100 * total_exec_time / sum(total_exec_time) OVER ())::numeric, 1) AS pct,
+  regexp_replace(left(query, 120), '\\s+', ' ', 'g') AS query
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 20;
+\\echo
+\\echo ── unused indexes (idx_scan = 0, drop candidates) ──
+SELECT
+  schemaname || '.' || relname AS table,
+  indexrelname AS index,
+  pg_size_pretty(pg_relation_size(s.indexrelid)) AS size
+FROM pg_stat_user_indexes s
+JOIN pg_index i USING (indexrelid)
+WHERE s.idx_scan = 0
+  AND NOT i.indisunique
+  AND NOT i.indisprimary
+ORDER BY pg_relation_size(s.indexrelid) DESC
+LIMIT 20;
+\\echo
+\\echo ── hot tables with bad seq/idx ratio (candidate indexes) ──
+SELECT
+  schemaname || '.' || relname AS table,
+  n_live_tup AS rows,
+  seq_scan,
+  idx_scan,
+  CASE WHEN seq_scan = 0 THEN 0
+       ELSE seq_tup_read / seq_scan
+  END AS avg_seq_read
+FROM pg_stat_user_tables
+WHERE n_live_tup > 10000
+  AND seq_scan > COALESCE(idx_scan, 0)
+ORDER BY seq_tup_read DESC NULLS LAST
+LIMIT 20;
+`;
+  const result = spawnSync(
+    'docker',
+    [
+      'compose',
+      '-f',
+      file,
+      '-p',
+      project,
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      dbUser,
+      '-d',
+      dbName,
+      '-c',
+      sql,
+    ],
+    { stdio: 'inherit' },
+  );
+  if (result.error) {
+    process.stderr.write(`✘ docker not on PATH: ${result.error.message}\n`);
+    return 1;
+  }
+  return result.status ?? 1;
+}
+
 function cmdProvidersExport(layout: RepoLayout): number {
   // psql inside the postgres container — avoids needing prisma at the CLI
   // side. Suppress apiKeyEnc; print everything else as a JSON array.
@@ -235,6 +323,9 @@ function main(): void {
       break;
     case 'providers:export':
       code = cmdProvidersExport(layout);
+      break;
+    case 'db:audit':
+      code = cmdDbAudit(layout);
       break;
     default:
       process.stderr.write(`Unknown command: ${cmd}\n\n`);

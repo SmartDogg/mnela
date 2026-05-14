@@ -248,7 +248,18 @@ export function ChatPanel({
         </div>
       </header>
 
-      <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4" ref={scrollerRef}>
+      {/*
+        data-testid + data-state are the stable hooks Playwright SSE
+        specs poll on — see apps/web/e2e/phase11-smoke.spec.ts. status
+        flips ('idle'|'streaming'|'reconnecting'|'done'|'error') match
+        the AskStreamStatus union exactly.
+      */}
+      <div
+        className="flex-1 space-y-3 overflow-y-auto px-6 py-4"
+        ref={scrollerRef}
+        data-testid="ask-stream"
+        data-state={ask.status}
+      >
         {ask.messages.length === 0 && (
           <EmptyState
             title={t('empty.title')}

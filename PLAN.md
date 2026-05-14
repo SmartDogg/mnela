@@ -161,11 +161,11 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Smoke E2E suite passes; perf and memory profiled; healthchecks return; optional Sentry wires up. UX rough edges from the ADR-0049/0050/0051/0052/0053 sprint are smoothed.
 
-- [ ] Perf profiling
-- [ ] Index audit
-- [ ] Container memory limits + healthchecks (incl. apps/tg-bot, apps/orchestrator projects queue)
-- [ ] Optional Sentry
-- [ ] Playwright E2E in `apps/web/e2e`
+- [x] Perf profiling
+- [x] Index audit
+- [x] Container memory limits + healthchecks (incl. apps/tg-bot, apps/orchestrator projects queue)
+- [x] Optional Sentry
+- [x] Playwright E2E in `apps/web/e2e`
 - [ ] **Honest Restart Services UX** — per-subscriber ack via `mnela:events` (worker/orchestrator/api reply, UI shows ack/timeout), replacing the current 2.5s timer overlay (see CLAUDE.md "SystemConfig & hot-reload")
 - [ ] `/admin/system` command-bar search across SystemConfig keys + section names + anchor links (`/admin/system#telegram`)
 - [x] Cmd-K palette: index Projects + Decisions + Conversations alongside Documents + Entities

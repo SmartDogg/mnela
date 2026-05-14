@@ -1,5 +1,8 @@
 export const PACKAGE_NAME = '@mnela/core';
 
+export { startHeartbeat } from './heartbeat.js';
+export { initSentry } from './sentry.js';
+
 export {
   CONFIG_REGISTRY,
   readRegistryValue,
