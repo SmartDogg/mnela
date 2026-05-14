@@ -1,4 +1,26 @@
-name: mnela-dev
+name: mnela
+
+# Single compose file, two operating modes:
+#   docker compose up postgres redis             → dev (default profile)
+#   docker compose --profile prod up -d --build  → all 6 apps + caddy
+#
+# The api/web/worker/orchestrator/tg-bot/caddy services carry
+# `profiles: [prod]` so they NEVER start in dev mode. postgres + redis
+# stay profile-less so `pnpm dev` against the host can rely on them.
+#
+# Optional whisper is in docker-compose.optional.yml under `optional`.
+# The MNELA_IMAGES env var toggles between locally built images
+# (`MNELA_IMAGES=local`, the default — `build:` blocks fire) and pulled
+# GHCR releases (`MNELA_IMAGES=registry` — `image:` references only).
+
+x-mnela-env: &mnela-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER:-mnela}:${POSTGRES_PASSWORD:-mnela_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-mnela}
+  REDIS_URL: redis://default:${REDIS_PASSWORD:-mnela_dev_redis_change_me}@redis:6379
+  MNELA_LOG_LEVEL: ${MNELA_LOG_LEVEL:-info}
+  MNELA_DATA_DIR: /data
+  COOKIE_SECRET: ${COOKIE_SECRET:-mnela-dev-cookie-secret-change-me}
+  MNELA_PROVIDER_SECRET: ${MNELA_PROVIDER_SECRET:-}
 
 services:
   postgres:
@@ -42,38 +64,152 @@ services:
       retries: 10
       start_period: 10s
 
-  # api/web/worker/orchestrator/caddy services land in Phase 10
   mcp:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-mcp:${MNELA_VERSION:-latest}
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.mcp
     container_name: mnela-mcp
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-mnela}:${POSTGRES_PASSWORD:-mnela_dev_password_change_me}@postgres:5432/${POSTGRES_DB:-mnela}
-      # Redis runs with --requirepass; the MCP container must authenticate
-      # or every command fails with NOAUTH. Use the `default` user (the
-      # only user redis-7 ships with by default) and the shared password.
-      REDIS_URL: redis://default:${REDIS_PASSWORD:-mnela_dev_redis_change_me}@redis:6379
+      <<: *mnela-env
       MCP_HTTP_PORT: '3010'
-      MNELA_LOG_LEVEL: ${MNELA_LOG_LEVEL:-info}
-      NODE_ENV: production
     expose:
       - '3010'
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://localhost:3010/health >/dev/null || exit 1']
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+
+  api:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-api:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: mnela-api
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *mnela-env
+      HTTP_HOST: 0.0.0.0
+      HTTP_PORT: '3000'
+      MNELA_API_INTERNAL_BASE: http://api:3000
+      MNELA_API_ORIGIN: ${MNELA_PUBLIC_ORIGIN:-http://localhost:3000}
+      RATE_LIMIT_GLOBAL_PER_MINUTE: ${RATE_LIMIT_GLOBAL_PER_MINUTE:-100}
+    volumes:
+      - mnela-data:/data
+    expose:
+      - '3000'
+
+  web:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-web:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: mnela-web
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_started }
+    environment:
+      NODE_ENV: production
+      PORT: '3001'
+      MNELA_API_ORIGIN: http://api:3000
+      MNELA_API_INTERNAL_BASE: http://api:3000
+      NEXT_PUBLIC_MNELA_API_ORIGIN: ${MNELA_PUBLIC_ORIGIN:-http://localhost:3000}
+    expose:
+      - '3001'
+
+  worker:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-worker:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: mnela-worker
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *mnela-env
+      WHISPER_URL: ${WHISPER_URL:-http://whisper:8080}
+    volumes:
+      - mnela-data:/data
+
+  orchestrator:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-orchestrator:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.orchestrator
+    container_name: mnela-orchestrator
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    environment:
+      <<: *mnela-env
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    volumes:
+      - mnela-data:/data
+      # OAuth credentials persist here; bootstrap once with
+      #   docker exec -it mnela-orchestrator claude login
+      - claude-creds:/home/mnela/.claude
+
+  tg-bot:
+    profiles: [prod]
+    image: ghcr.io/smartdogg/mnela-tg-bot:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.tg-bot
+    container_name: mnela-tg-bot
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_started }
+    environment:
+      <<: *mnela-env
+      MNELA_API_BASE_URL: http://api:3000/api/v1
+      MNELA_INTERNAL_TOKEN: ${MNELA_INTERNAL_TOKEN}
+    volumes:
+      - mnela-data:/data
+
+  caddy:
+    profiles: [prod]
+    image: caddy:2-alpine
+    container_name: mnela-caddy
+    restart: unless-stopped
+    depends_on:
+      api: { condition: service_started }
+      web: { condition: service_started }
+      mcp: { condition: service_started }
+    environment:
+      MNELA_DOMAIN: ${MNELA_DOMAIN:-localhost}
+      MNELA_HOST: ${MNELA_HOST:-localhost}
+    ports:
+      - '${CADDY_HTTP_PORT:-80}:80'
+      - '${CADDY_HTTPS_PORT:-443}:443'
+    volumes:
+      # install.sh copies one of the Caddyfile templates into ./Caddyfile
+      # at the repo root before `docker compose up`. Override the path
+      # with $CADDYFILE for ad-hoc setups (Cloudflare Tunnel, etc.).
+      - ${CADDYFILE:-../../Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
 
 volumes:
   postgres-data:
     name: mnela-postgres-data
   redis-data:
     name: mnela-redis-data
+  mnela-data:
+    name: mnela-data
+  claude-creds:
+    name: mnela-claude-creds
+  caddy-data:
+    name: mnela-caddy-data
+  caddy-config:
+    name: mnela-caddy-config
