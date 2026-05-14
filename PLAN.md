@@ -144,17 +144,18 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 **Acceptance:** Fresh `bash <(curl …)` on a clean VPS produces a running Mnela with HTTPS; `mnela update` works; backup/restore round-trips data **including the keystore + encrypted provider/Telegram secrets**.
 
-- [ ] `scripts/install.sh` with full wizard (generates `.env`, runs migrations, builds compose, prints first URL)
-- [ ] `scripts/update.sh`, `backup.sh`, `restore.sh` — `backup.sh` MUST include `$MNELA_DATA_DIR/keystore/provider.key` plus `LlmProvider.apiKeyEnc` + `TelegramBot.tokenEnc` rows; `restore.sh` MUST verify the keystore decrypts before importing SQL
-- [ ] `apps/cli` — `mnela` CLI (status/logs/backup/restore/claude:test/`providers export`)
-- [ ] Caddyfile templates (domain / IP / tunnel) with `flush_interval -1` on `/api/v1/search/ask` for SSE
-- [ ] Multi-stage Dockerfiles for api/web/mcp/worker/orchestrator/**tg-bot**
-- [ ] `infra/docker/docker-compose.yml --profile prod` — all 6 apps + caddy + (optional) whisper. Today only postgres/redis/mcp boot from compose.
-- [ ] `POST /auth/bootstrap` server endpoint backing the Setup Wizard (replace env-var-only `ADMIN_INITIAL_*` bootstrap path)
-- [ ] Setup Wizard expands relevant `/admin/system` cards on first visit (Providers / Telegram / Transcription if applicable)
-- [ ] Fix `infra/claude/claude-mcp-config.json` hardcoded `/opt/mnela/...` path; ship envsubst variant + dev-local variant
-- [ ] Docs: README.md (final), DEPLOYMENT.md, EXPORT_GUIDES/{chatgpt,claude,obsidian}.md, TROUBLESHOOTING.md
-- [ ] Issue templates
+- [x] `scripts/install.sh` with full wizard (generates `.env`, runs migrations, builds compose, prints first URL)
+- [x] `scripts/backup.sh`, `restore.sh` — `backup.sh` includes `$MNELA_DATA_DIR/keystore/provider.key` plus `LlmProvider.apiKeyEnc` + `TelegramBot.tokenEnc` rows; `restore.sh` verifies the keystore decrypts before importing SQL
+- [x] `apps/cli` — `mnela` CLI (status/logs/backup/restore/claude:test/`providers:export`); zero runtime deps, wraps `docker compose` + the bash scripts
+- [x] Caddyfile templates (domain / IP / tunnel) with `flush_interval -1` on `/api/v1/search/ask` for SSE
+- [x] Multi-stage Dockerfiles for api/web/mcp/worker/orchestrator/**tg-bot**; orchestrator bakes the Anthropic native installer for `claude` and persists `~/.claude` via the `mnela-claude-creds` volume
+- [x] `infra/docker/docker-compose.yml --profile prod` — all 6 apps + caddy. postgres/redis stay profile-less so dev keeps working unchanged
+- [x] `POST /auth/bootstrap` server endpoint + `GET /auth/setup-status`; `/login` redirects to `/setup` when no admin exists; wizard's step 1 calls bootstrap not login
+- [x] Setup Wizard pre-expands relevant `/admin/system` cards (Providers, Telegram, Whisper if voice was enabled) on completion
+- [x] `infra/claude/claude-mcp-config.json` converted to a reference-only template; the live config is generated at orchestrator boot per-install
+- [x] `.github/workflows/release.yml` — multi-arch (amd64+arm64) GHCR builds for all 6 Dockerfiles on `v*` tag; ci.yml adds a `docker-build-smoke` job
+- [x] Docs: README.md updated (no more "under construction" + one-command install snippet), `DEPLOYMENT.md`, `TROUBLESHOOTING.md`, `docs/EXPORT_GUIDES/{chatgpt,claude,obsidian}.md`
+- [x] Issue templates (`bug.md`, `feature.md`) + `PULL_REQUEST_TEMPLATE.md`
 
 ## Phase 11 — Polish
 
