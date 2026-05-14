@@ -90,7 +90,7 @@ function DashboardView({
             <CardTitle>{t('recent')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p className="text-muted-foreground">{jobs ? renderJobsLine(jobs) : '—'}</p>
+            <p className="text-muted-foreground">{jobs ? renderJobsLine(jobs, t) : '—'}</p>
             <div className="flex flex-wrap gap-2 text-xs">
               {jobs &&
                 Object.entries(jobs).map(([status, count]) => (
@@ -127,9 +127,16 @@ function DashboardView({
   );
 }
 
-function renderJobsLine(jobs: JobStats): string {
+function renderJobsLine(
+  jobs: JobStats,
+  t: (key: string, values?: Record<string, number>) => string,
+): string {
   const total =
     jobs.queued + jobs.running + jobs.paused + jobs.completed + jobs.failed + jobs.cancelled;
-  if (total === 0) return 'No jobs yet.';
-  return `${jobs.completed} done · ${jobs.running} running · ${jobs.failed} failed`;
+  if (total === 0) return t('noJobs');
+  return t('jobsLine', {
+    done: jobs.completed,
+    running: jobs.running,
+    failed: jobs.failed,
+  });
 }

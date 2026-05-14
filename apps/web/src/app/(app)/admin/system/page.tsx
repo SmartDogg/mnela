@@ -469,6 +469,7 @@ function ConfigControl({
   saving: boolean;
   onSave: (value: unknown) => void;
 }): JSX.Element {
+  const t = useTranslations('admin.system');
   switch (spec.type) {
     case 'bool':
       return (
@@ -478,7 +479,7 @@ function ConfigControl({
             onCheckedChange={(checked) => onSave(checked === true)}
             disabled={saving}
           />
-          <span className="text-sm">{value ? 'enabled' : 'disabled'}</span>
+          <span className="text-sm">{value ? t('boolEnabled') : t('boolDisabled')}</span>
         </div>
       );
     case 'enum':

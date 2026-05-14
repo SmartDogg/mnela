@@ -28,14 +28,12 @@
     "documents": "Documents",
     "projects": "Projects",
     "graph": "Graph",
-    "inbox": "Inbox",
     "review": "Review",
-    "activity": "Imports & Queues",
+    "activity": "Activity",
     "admin": "Admin",
     "system": "System",
     "workspace": "Workspace",
     "library": "Library",
-    "jobsDashboard": "Job stats",
     "collapse": "Collapse",
     "expand": "Expand"
   },
@@ -117,6 +115,8 @@
       "dbSize": "Database size"
     },
     "recent": "Recent activity",
+    "noJobs": "No jobs yet.",
+    "jobsLine": "{done} done · {running} running · {failed} failed",
     "quickActions": "Quick actions",
     "actions": {
       "import": "Import data",
@@ -200,10 +200,12 @@
     "questions": "Open questions",
     "refresh": "Refresh context",
     "refreshStarted": "Context refresh enqueued (job {jobId}…)",
-    "refreshUnavailable": "Claude orchestrator is not reachable. Start it to refresh project context.",
+    "refreshUnavailable": "AI provider is not reachable. Try again once Claude Code (or your configured provider) is online.",
     "noContext": "No context yet. Run \"Refresh context\" once Claude is available.",
     "noEntities": "No entities surfaced yet — enrich some documents in this project first.",
-    "noQuestions": "No open questions in metadata yet. Add them via PATCH /projects/:slug with metadata.openQuestions.",
+    "noQuestions": "No open questions yet.",
+    "noDocumentsLinked": "No documents linked yet.",
+    "timelineEmpty": "Nothing on the timeline yet.",
     "tabs": {
       "active": "Active",
       "suggested": "Suggested",
@@ -221,7 +223,7 @@
       "manualHeader": "Or describe it yourself",
       "previewCandidates": "Preview candidate documents",
       "autoFill": "Auto-fill from brain after creation",
-      "autoFillHint": "Runs a background scan that links documents matching your description (linkSource=autoFill).",
+      "autoFillHint": "Runs a background scan and attaches documents that match the description.",
       "create": "Create project",
       "accept": "Accept suggestion",
       "dismiss": "Dismiss",
@@ -287,11 +289,11 @@
     }
   },
   "activity": {
-    "title": "Imports & Queues",
+    "title": "Activity",
     "subtitle": "Active uploads and background jobs in one view.",
     "newImport": "New import",
     "tabs": {
-      "uploads": "Imports",
+      "uploads": "Uploads",
       "queue": "Queue"
     }
   },
@@ -384,8 +386,8 @@
       "chatTooltip": "Conversation only — files (if any) are read as context but nothing is added to the brain.",
       "chatHint": "Just a question — files are temporary context, nothing is stored in the brain.",
       "ingestLabel": "Feed brain",
-      "ingestTooltip": "Save the Q&A + any attached files into the knowledge graph. Files run through the same ingestion pipeline as /imports.",
-      "ingestHint": "Q&A + uploaded files become Documents and enrich the graph — visible in /graph and /jobs in a minute.",
+      "ingestTooltip": "Save the Q&A + attached files into your knowledge graph (same pipeline as uploads in Activity).",
+      "ingestHint": "Q&A + uploaded files become documents and enrich the graph — visible in Graph and Activity in a minute.",
       "attachAria": "Attach files to this message",
       "dropHere": "Drop files to attach",
       "waitForUploads": "Waiting for attachments to finish uploading…",
@@ -591,6 +593,8 @@
       "overridden": "overridden",
       "restartRequired": "restart required",
       "reset": "reset",
+      "boolEnabled": "enabled",
+      "boolDisabled": "disabled",
       "saved": "Saved",
       "saveFailed": "Failed to save",
       "resetSuccess": "Reset to default",
@@ -823,6 +827,12 @@
     "notFound": "Not found",
     "serviceUnavailable": "This feature is unavailable right now",
     "networkError": "Network error — check the API is running"
+  },
+  "notFound": {
+    "code": "404",
+    "title": "Not found",
+    "subtitle": "The page you were looking for doesn't exist (or never did).",
+    "backToDashboard": "Back to dashboard"
   },
   "inbox": {
     "title": "Review",

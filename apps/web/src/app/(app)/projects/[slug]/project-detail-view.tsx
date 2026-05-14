@@ -27,6 +27,7 @@ interface ProjectEntity {
 export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.Element {
   const t = useTranslations('projects');
   const td = useTranslations('projects.detail');
+  const tCommon = useTranslations('common');
   const queryClient = useQueryClient();
 
   const entitiesQuery = useQuery({
@@ -232,10 +233,10 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
             <Card>
               <CardContent className="py-3">
                 {documentsQuery.isLoading && (
-                  <p className="text-sm text-muted-foreground">Loading…</p>
+                  <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
                 )}
                 {documentsQuery.data && documentsQuery.data.items.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No documents linked yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('noDocumentsLinked')}</p>
                 )}
                 {documentsQuery.data && documentsQuery.data.items.length > 0 && (
                   <ul className="divide-y">
@@ -261,7 +262,9 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
           <TabsContent value="timeline">
             <Card>
               <CardContent className="py-3 space-y-3">
-                {documentsByDay.length === 0 && <p className="text-sm text-muted-foreground">—</p>}
+                {documentsByDay.length === 0 && (
+                  <p className="text-sm text-muted-foreground">{t('timelineEmpty')}</p>
+                )}
                 {documentsByDay.map(([day, docs]) => (
                   <div key={day} className="space-y-1">
                     <p className="text-xs font-semibold uppercase text-muted-foreground">{day}</p>
@@ -281,7 +284,9 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
           </TabsContent>
 
           <TabsContent value="entities">
-            {entitiesQuery.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {entitiesQuery.isLoading && (
+              <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
+            )}
             {entitiesQuery.data && entitiesQuery.data.length === 0 && (
               <p className="text-sm text-muted-foreground">{t('noEntities')}</p>
             )}
@@ -313,7 +318,7 @@ export function ProjectDetailView({ project }: { project: ProjectDetail }): JSX.
 
           <TabsContent value="questions">
             {openQuestionsQuery.isLoading && (
-              <p className="text-sm text-muted-foreground">Loading…</p>
+              <p className="text-sm text-muted-foreground">{tCommon('loading')}</p>
             )}
             {openQuestionsQuery.data && openQuestionsQuery.data.length === 0 && (
               <p className="text-sm text-muted-foreground">{t('noQuestions')}</p>
