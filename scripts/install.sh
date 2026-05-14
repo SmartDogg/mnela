@@ -18,7 +18,12 @@ set -euo pipefail
 
 INSTALL_PREFIX=${INSTALL_PREFIX:-/opt/mnela}
 REPO_URL=${MNELA_REPO_URL:-https://github.com/SmartDogg/mnela}
-REPO_BRANCH=${MNELA_REPO_BRANCH:-main}
+# By default we pin to the latest published `v*` tag instead of tracking
+# `main`. Curl-pipe-bash to HEAD would otherwise install whatever
+# arbitrary commit is on main right now, including unstable changes
+# between releases. Set MNELA_REPO_BRANCH=main explicitly to opt in.
+REPO_BRANCH=${MNELA_REPO_BRANCH:-}
+FORCE=${MNELA_FORCE:-0}
 
 cyan()   { printf '\033[36m%s\033[0m\n' "$*"; }
 green()  { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -60,9 +65,54 @@ prompt_choice() {
   printf -v "$var" '%s' "$input"
 }
 
+# ----- argv parsing ------------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force) FORCE=1; shift ;;
+    --branch) REPO_BRANCH="$2"; shift 2 ;;
+    --domain) MNELA_DOMAIN="$2"; MNELA_BIND_MODE="domain"; shift 2 ;;
+    --ip) MNELA_HOST="$2"; MNELA_BIND_MODE="ip"; shift 2 ;;
+    --tunnel) MNELA_DOMAIN="$2"; MNELA_BIND_MODE="tunnel"; shift 2 ;;
+    --no-claude) CLAUDE_MAX="no"; shift ;;
+    -h|--help)
+      sed -n '2,30p' "$0"
+      cat <<'EOH'
+
+Flags:
+  --domain HOST        run in domain mode (Let's Encrypt)
+  --ip ADDR            run in ip mode (self-signed TLS)
+  --tunnel HOST        run behind Cloudflare Tunnel
+  --no-claude          skip the Claude Max question (will use api providers later)
+  --branch NAME        repo branch / tag to install (default: latest v* tag)
+  --force              re-run on an existing install, overwriting files
+EOH
+      exit 0 ;;
+    *) abort "Unknown flag: $1 (use --help)" ;;
+  esac
+done
+
 # ----- preflight ---------------------------------------------------------
 cyan "▸ Mnela install — preflight"
 [[ "$EUID" -eq 0 ]] || abort "run as root (or via sudo)."
+
+# Refuse to run non-interactively without explicit flags so the operator
+# doesn't end up with a half-configured install from `curl | bash`.
+if ! tty -s && [[ -z "${MNELA_BIND_MODE:-}" ]]; then
+  cat >&2 <<EOF
+✘ install.sh detected a non-interactive environment (curl|bash) but no
+  mode flag was passed. Re-run with one of:
+
+    bash <(curl -fsSL …) --domain mnela.example.com
+    bash <(curl -fsSL …) --ip 1.2.3.4
+    bash <(curl -fsSL …) --tunnel mnela.example.com
+
+  Or download the script first and run interactively:
+
+    curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh -o /tmp/install.sh
+    sudo bash /tmp/install.sh
+EOF
+  exit 2
+fi
 
 # We need a recent docker + compose + curl + git + openssl. Install missing.
 need_apt_install=()
@@ -94,6 +144,18 @@ MEM_KB=$(grep -E '^MemTotal' /proc/meminfo | awk '{print $2}')
 DISK_FREE_KB=$(df -k --output=avail / | tail -n1)
 (( DISK_FREE_KB > 10000000 )) || yellow "  ⚠ <10 GB free disk."
 
+# ----- resolve REPO_BRANCH (latest v* tag if not pinned) -----------------
+if [[ -z "$REPO_BRANCH" ]]; then
+  REPO_BRANCH=$(git ls-remote --tags --sort='-v:refname' "$REPO_URL" 'v*' \
+    | head -n1 | awk -F/ '{print $NF}' | sed 's/\^{}$//')
+  if [[ -z "$REPO_BRANCH" ]]; then
+    yellow "  no v* tags published yet, falling back to main"
+    REPO_BRANCH=main
+  else
+    cyan "▸ Installing release $REPO_BRANCH"
+  fi
+fi
+
 # ----- clone (or reuse local checkout) -----------------------------------
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)
 if [[ -n "$SELF_DIR" && -f "$SELF_DIR/../infra/docker/docker-compose.yml" ]]; then
@@ -102,6 +164,13 @@ if [[ -n "$SELF_DIR" && -f "$SELF_DIR/../infra/docker/docker-compose.yml" ]]; th
 else
   if [[ -d "$INSTALL_PREFIX/.git" ]]; then
     cyan "▸ Updating $INSTALL_PREFIX"
+    if [[ "$FORCE" != "1" ]]; then
+      if ! git -C "$INSTALL_PREFIX" diff-index --quiet HEAD --; then
+        red "✘ working tree at $INSTALL_PREFIX has local edits."
+        red "  Either commit/stash them, or re-run with --force to discard them."
+        exit 1
+      fi
+    fi
     git -C "$INSTALL_PREFIX" fetch --depth=1 origin "$REPO_BRANCH"
     git -C "$INSTALL_PREFIX" checkout -B "$REPO_BRANCH" "origin/$REPO_BRANCH"
   else

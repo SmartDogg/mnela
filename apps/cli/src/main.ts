@@ -13,6 +13,7 @@
 //   mnela logs [svc] [opts]   tail logs (defaults to all services)
 //   mnela backup [-o dir]     scripts/backup.sh
 //   mnela restore <file>      scripts/restore.sh <file>
+//   mnela update [--tag X]    scripts/update.sh (pull latest release + migrate + up)
 //   mnela claude:test         POST /system/claude-test on the API
 //   mnela providers:export    list configured LLM providers (no plaintext keys)
 //   mnela help                this listing
@@ -67,6 +68,7 @@ Commands:
                          flags after -- to forward them to docker compose logs.
   backup [-o <dir>]      Run scripts/backup.sh
   restore <file>         Run scripts/restore.sh <file>
+  update [--tag X]       Pull latest release, run migrations, restart prod stack
   claude:test            POST /system/claude-test against the API container
   providers:export       Print LlmProvider rows as JSON (no plaintext keys)
   help, -h, --help       Show this message
@@ -224,6 +226,9 @@ function main(): void {
         process.exit(2);
       }
       code = runScript('restore.sh', rest);
+      break;
+    case 'update':
+      code = runScript('update.sh', rest);
       break;
     case 'claude:test':
       code = cmdClaudeTest(layout);

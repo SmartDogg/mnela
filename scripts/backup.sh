@@ -35,11 +35,13 @@ cd "$REPO_ROOT"
 BACKUP_DIR=${MNELA_BACKUP_DIR:-"$REPO_ROOT/backups"}
 COMPOSE_FILE=${COMPOSE_FILE:-"infra/docker/docker-compose.yml"}
 COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-mnela}
+ALLOW_NO_KEYSTORE=0
 TS=$(date -u +%Y-%m-%d-%H%M%S)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -o|--output) BACKUP_DIR="$2"; shift 2 ;;
+    --allow-no-keystore) ALLOW_NO_KEYSTORE=1; shift ;;
     -h|--help)
       sed -n '2,28p' "$0"; exit 0 ;;
     *)
@@ -101,9 +103,20 @@ DATA_BYTES=$(wc -c < "$WORK/data.tar")
 echo "        $(numfmt --to=iec --suffix=B "$DATA_BYTES" 2>/dev/null || echo "${DATA_BYTES}B")"
 
 if ! tar -tf "$WORK/data.tar" 2>/dev/null | grep -q '^\./keystore/provider.key$\|^keystore/provider.key$'; then
-  echo "  ⚠ keystore/provider.key not present in /data — MNELA_PROVIDER_SECRET is" >&2
-  echo "    likely set via env. Make sure your destination uses the SAME secret," >&2
-  echo "    or the encrypted LlmProvider / TelegramBot rows won't decrypt." >&2
+  if [[ "$ALLOW_NO_KEYSTORE" == "1" ]]; then
+    echo "  ⚠ keystore/provider.key not present in /data — continuing because --allow-no-keystore."
+    echo "    Make sure your destination uses the SAME MNELA_PROVIDER_SECRET env value," >&2
+    echo "    or the encrypted LlmProvider / TelegramBot rows won't decrypt." >&2
+  else
+    echo "✘ keystore/provider.key not present in /data." >&2
+    echo "  This means MNELA_PROVIDER_SECRET is set via env, not file-backed." >&2
+    echo "  Without the key the encrypted LlmProvider.apiKeyEnc and" >&2
+    echo "  TelegramBot.tokenEnc rows in the dump cannot be decrypted on" >&2
+    echo "  the destination host. To proceed anyway (and own the responsibility" >&2
+    echo "  of replicating MNELA_PROVIDER_SECRET out-of-band) re-run with" >&2
+    echo "  --allow-no-keystore." >&2
+    exit 1
+  fi
 fi
 
 # ----- 3. /home/mnela/.claude (best-effort) ------------------------------
