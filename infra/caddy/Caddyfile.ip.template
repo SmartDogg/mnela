@@ -1,0 +1,40 @@
+# Caddyfile.ip.template — IP-only deployment (no public DNS).
+#
+# Caddy's internal CA mints a self-signed cert. Browsers will show a
+# warning until the user imports /data/caddy/pki/authorities/local/root.crt
+# (inside the mnela-caddy volume) as a trusted root.
+#
+# install.sh prints this warning explicitly and points to TROUBLESHOOTING.md
+# for the per-OS trust-store import steps.
+#
+# {$MNELA_HOST} resolves at Caddy parse time. Set to the public IPv4/IPv6
+# address (or `localhost` for purely-local dev with HTTPS).
+
+{
+	# Auto-issue + trust an internal CA. No outbound ACME — works in
+	# air-gapped / VPN-only deployments.
+	local_certs
+}
+
+https://{$MNELA_HOST} {
+	tls internal
+
+	@sse path /api/v1/search/ask
+	handle @sse {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle /live* { reverse_proxy api:3000 }
+	handle /api/* { reverse_proxy api:3000 }
+	handle /mcp/* { reverse_proxy mcp:3010 }
+	handle { reverse_proxy web:3001 }
+
+	encode zstd gzip
+}
+
+# Plain HTTP redirect so bookmarks without `https://` still land at TLS.
+http://{$MNELA_HOST} {
+	redir https://{host}{uri} permanent
+}

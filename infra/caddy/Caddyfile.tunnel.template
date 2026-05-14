@@ -1,0 +1,33 @@
+# Caddyfile.tunnel.template — Mnela sits behind Cloudflare Tunnel.
+#
+# Cloudflare terminates TLS at the edge and hands plaintext HTTP to the
+# cloudflared sidecar on the VPS. cloudflared then proxies to our Caddy on
+# :80 over the loopback / docker network. We disable auto-HTTPS entirely
+# so Caddy doesn't try to mint certs we'd never serve.
+#
+# Set up cloudflared separately:
+#   docker run -d --name cloudflared --network host \
+#     cloudflare/cloudflared:latest tunnel --no-autoupdate run \
+#     --token "$CF_TUNNEL_TOKEN"
+# In the Cloudflare dashboard set the Public Hostname route to
+# `http://localhost:80`.
+
+{
+	auto_https off
+}
+
+:80 {
+	@sse path /api/v1/search/ask
+	handle @sse {
+		reverse_proxy api:3000 {
+			flush_interval -1
+		}
+	}
+
+	handle /live* { reverse_proxy api:3000 }
+	handle /api/* { reverse_proxy api:3000 }
+	handle /mcp/* { reverse_proxy mcp:3010 }
+	handle { reverse_proxy web:3001 }
+
+	encode zstd gzip
+}
