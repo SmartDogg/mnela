@@ -114,7 +114,14 @@ export class SystemController {
   @Post('restart')
   @RequiredScope('admin')
   @HttpCode(HttpStatus.ACCEPTED)
-  @Audit({ action: 'system.restart', targetType: 'System' })
+  // transactional:false — this handler blocks ~2.5s collecting per-subscriber
+  // acks (the windowMs constant in system.service.ts). Wrapping that in the
+  // default Prisma tx (5s timeout) is borderline on warm machines and busts
+  // on slower ones, producing an HTTP 500 even though the underlying pubsub
+  // publish already fired and the workers reloaded. The /system/restart
+  // endpoint mutates no data, so transactional isolation buys nothing here;
+  // the audit row writes in its own implicit autocommit.
+  @Audit({ action: 'system.restart', targetType: 'System', transactional: false })
   @ApiOperation({
     summary:
       'Hot-reload subsystems via mnela:events system.service_reload. Returns the per-subscriber acks (worker.ingestion, orchestrator.enrichment, api.search, api.throttler, …) collected within a 2.5s window so the UI can render an honest result instead of a blind timer.',
