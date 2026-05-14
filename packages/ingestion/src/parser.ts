@@ -27,7 +27,13 @@ export type ParsedSource =
   | 'telegram'
   | 'voice_note'
   | 'email'
-  | 'web_clip';
+  | 'web_clip'
+  // 'chat' and 'daily' are written by AskService.promoteToDocument (ADR-0050)
+  // and the legacy DailyNote migration — they never reach a parser. Listed
+  // here so ingestion code typed against the Prisma DocumentSource enum
+  // assigns cleanly without a cast.
+  | 'chat'
+  | 'daily';
 
 export interface ParsedAttachment {
   filename: string;
