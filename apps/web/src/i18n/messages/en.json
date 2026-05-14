@@ -126,6 +126,24 @@
       "label": "Claude mode",
       "available": "Smart mode active",
       "disabled": "Dumb mode (FTS only)"
+    },
+    "empty": {
+      "subtitle": "Pick a way to feed your brain. You can do all three later — start with whichever is closest at hand.",
+      "upload": {
+        "title": "Upload your first export",
+        "desc": "Drop a ChatGPT, Claude, or Obsidian export — Mnela parses it, dedupes, and starts enriching in the background.",
+        "cta": "Open import wizard"
+      },
+      "telegram": {
+        "title": "Connect Telegram",
+        "desc": "Send voice notes, photos, and snippets to your bot — they land in the same brain as your exports.",
+        "cta": "Set up Telegram"
+      },
+      "dropbox": {
+        "title": "Watch a folder",
+        "desc": "Point Mnela at a local folder (Dropbox, iCloud, anything). New files get ingested automatically.",
+        "cta": "Configure folder watch"
+      }
     }
   },
   "documents": {
@@ -467,15 +485,22 @@
     }
   },
   "cmdk": {
-    "placeholder": "Search documents and entities…",
+    "placeholder": "Search documents, entities, projects…",
     "compactHint": "⌘K toggles · ↑↓ navigate · ↵ open · Tab to expand",
     "expandedHint": "↵ open · Esc collapse · Tab to compact",
     "documents": "Documents",
     "entities": "Entities",
+    "projects": "Projects",
+    "decisions": "Decisions",
+    "conversations": "Conversations",
+    "active": "Active",
+    "suggested": "Suggested",
+    "saved": "Saved",
+    "conversationUntitled": "(untitled)",
     "expand": "Expand",
     "collapse": "Collapse",
     "expandedTitle": "Search",
-    "expandedSubtitle": "Full-text, fuzzy, hybrid — across documents and entities.",
+    "expandedSubtitle": "Full-text, fuzzy, hybrid — across documents, entities, projects, decisions, and conversations.",
     "noDocuments": "No documents.",
     "noEntities": "No entities.",
     "startTyping": "Start typing to search.",

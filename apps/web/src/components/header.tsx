@@ -1,12 +1,13 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { Languages, LogOut, Moon, Search as SearchIcon, Sun } from 'lucide-react';
+import { Languages, LogOut, Menu, Moon, Search as SearchIcon, Sun } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
+import { SidebarBrand, SidebarNav } from '@/components/sidebar';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { useCmdkStore } from '@/lib/state/cmdk-store';
 import { api } from '@/lib/api/client';
 import type { Principal } from '@/lib/api/types';
@@ -23,9 +25,11 @@ import { LOCALE_COOKIE, SUPPORTED_LOCALES, type Locale } from '@/i18n/config';
 
 export function Header({ principal }: { principal: Principal }): JSX.Element {
   const t = useTranslations('common');
+  const tNav = useTranslations('nav');
   const router = useRouter();
   const { resolvedTheme, setTheme } = useTheme();
   const openCmdk = useCmdkStore((s) => s.open);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   // next-themes resolves the theme client-side. Render a neutral placeholder
   // on the server to avoid a hydration mismatch between SSR (no theme) and
   // the first client paint (theme resolved from localStorage / system).
@@ -50,7 +54,26 @@ export function Header({ principal }: { principal: Principal }): JSX.Element {
   const displayName = principal.name ?? `${principal.kind}:${principal.id.slice(0, 6)}`;
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 px-6 backdrop-blur">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 px-4 backdrop-blur sm:px-6">
+      {/* Hamburger: only on screens below `lg` where the desktop sidebar
+          is hidden (see (app)/layout.tsx `Sidebar className="hidden lg:flex"`). */}
+      <Sheet open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          aria-label={tNav('expand')}
+          onClick={() => setDrawerOpen(true)}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+        <SheetContent side="left" className="w-72 p-0">
+          <SheetTitle className="sr-only">Mnela</SheetTitle>
+          <SidebarBrand collapsed={false} />
+          <SidebarNav collapsed={false} onNavigate={() => setDrawerOpen(false)} />
+        </SheetContent>
+      </Sheet>
+
       <button
         type="button"
         onClick={() => openCmdk()}

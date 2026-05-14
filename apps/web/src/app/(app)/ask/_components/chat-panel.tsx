@@ -222,21 +222,30 @@ export function ChatPanel({
         }
       }}
     >
-      <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div>
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
+        <div className="min-w-0">
           <h1 className="text-sm font-semibold">{t('title')}</h1>
           <p className="text-xs text-muted-foreground">{t('subtitle')}</p>
         </div>
-        {canSave && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setSaveOpen(true)}
-            className="h-7 gap-1.5 px-2 text-xs"
-          >
-            <Bookmark className="size-3" /> {t('saveSynthesis')}
-          </Button>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {/*
+            Scope chip lives in the header (not the composer footer) so the
+            user can see which corner of the brain is in play while reading
+            the conversation, not just while typing. Single source of truth
+            is `?scope=project:<slug>` — see chat-panel scopeProjectSlug.
+          */}
+          <ScopeSelect disabled={busy} />
+          {canSave && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSaveOpen(true)}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <Bookmark className="size-3" /> {t('saveSynthesis')}
+            </Button>
+          )}
+        </div>
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4" ref={scrollerRef}>
@@ -285,7 +294,6 @@ export function ChatPanel({
       <footer className="border-t border-border/60 px-4 py-3">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <KindToggle kind={appKind} onChange={setAppKind} disabled={busy} />
-          <ScopeSelect disabled={busy} />
           <p className="text-[10px] text-muted-foreground">
             {appKind === 'ingest' ? t('composer.ingestHint') : t('composer.chatHint')}
           </p>

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { usePrincipalOrNull } from '@/lib/auth/principal-context';
+
 /**
  * Per-section open/closed state for the /admin/system page, persisted
  * to localStorage so each block remembers its collapse state across
@@ -11,9 +13,16 @@ import { useCallback, useEffect, useState } from 'react';
  * The hook ALWAYS returns `false` on the initial render (SSR-safe);
  * the persisted value is hydrated in `useEffect`. A flicker on first
  * paint is acceptable here because the page is admin-only.
+ *
+ * Storage key is scoped per-user via PrincipalContext so a shared
+ * workstation doesn't leak one operator's open/closed state to the
+ * next. Outside the (app) tree (e.g. Setup Wizard) the principal is
+ * unknown — the hook falls back to an `anon` namespace.
  */
 export function useCollapsibleSection(key: string): [boolean, () => void] {
-  const storageKey = `mnela:admin-system:open:${key}`;
+  const principal = usePrincipalOrNull();
+  const userKey = principal?.id ?? 'anon';
+  const storageKey = `mnela:admin-system:open:${key}:u:${userKey}`;
   const [open, setOpen] = useState(false);
   useEffect(() => {
     if (typeof window === 'undefined') return;

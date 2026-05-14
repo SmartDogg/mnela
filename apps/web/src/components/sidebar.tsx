@@ -65,12 +65,9 @@ function useCollapsedState(): [boolean, () => void] {
   return [mounted && collapsed, toggle];
 }
 
-export function Sidebar({ className }: { className?: string }): JSX.Element {
+function useNavSections(): NavSection[] {
   const t = useTranslations('nav');
-  const pathname = usePathname();
-  const [collapsed, toggleCollapsed] = useCollapsedState();
-
-  const sections: NavSection[] = [
+  return [
     {
       title: t('workspace'),
       items: [
@@ -98,6 +95,76 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
       ],
     },
   ];
+}
+
+/**
+ * Nav rail body — shared between the desktop sidebar (collapsible) and
+ * the mobile drawer (always expanded). Pass `onNavigate` from the drawer
+ * to close it after a link click.
+ */
+export function SidebarNav({
+  collapsed = false,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}): JSX.Element {
+  const pathname = usePathname();
+  const sections = useNavSections();
+  return (
+    <nav className="flex-1 overflow-y-auto px-2 py-4 scrollbar-thin">
+      {sections.map((section) => (
+        <div key={section.title} className="mb-4 space-y-0.5">
+          {!collapsed && (
+            <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+              {section.title}
+            </p>
+          )}
+          {section.items.map(({ href, label, icon: Icon }) => {
+            const active = pathname === href || (href !== '/' && pathname.startsWith(href));
+            return (
+              <Link
+                key={href}
+                href={href}
+                onClick={onNavigate}
+                title={collapsed ? label : undefined}
+                aria-label={collapsed ? label : undefined}
+                className={cn(
+                  'flex items-center rounded-md text-sm transition-colors',
+                  collapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-3 py-1.5',
+                  active
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                    : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/15 hover:text-sidebar-foreground',
+                )}
+              >
+                <Icon className="h-4 w-4 shrink-0" />
+                {!collapsed && <span className="flex-1 truncate">{label}</span>}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+export function SidebarBrand({ collapsed }: { collapsed: boolean }): JSX.Element {
+  return (
+    <div
+      className={cn(
+        'flex h-14 items-center gap-2 border-b border-sidebar-border',
+        collapsed ? 'justify-center px-2' : 'px-5',
+      )}
+    >
+      <span className="inline-block h-5 w-5 shrink-0 rounded-sm bg-sidebar-accent" />
+      {!collapsed && <span className="text-sm font-semibold tracking-tight">Mnela</span>}
+    </div>
+  );
+}
+
+export function Sidebar({ className }: { className?: string }): JSX.Element {
+  const t = useTranslations('nav');
+  const [collapsed, toggleCollapsed] = useCollapsedState();
 
   return (
     <aside
@@ -110,47 +177,8 @@ export function Sidebar({ className }: { className?: string }): JSX.Element {
         className,
       )}
     >
-      <div
-        className={cn(
-          'flex h-14 items-center gap-2 border-b border-sidebar-border',
-          collapsed ? 'justify-center px-2' : 'px-5',
-        )}
-      >
-        <span className="inline-block h-5 w-5 shrink-0 rounded-sm bg-sidebar-accent" />
-        {!collapsed && <span className="text-sm font-semibold tracking-tight">Mnela</span>}
-      </div>
-      <nav className="flex-1 overflow-y-auto px-2 py-4 scrollbar-thin">
-        {sections.map((section) => (
-          <div key={section.title} className="mb-4 space-y-0.5">
-            {!collapsed && (
-              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                {section.title}
-              </p>
-            )}
-            {section.items.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || (href !== '/' && pathname.startsWith(href));
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  title={collapsed ? label : undefined}
-                  aria-label={collapsed ? label : undefined}
-                  className={cn(
-                    'flex items-center rounded-md text-sm transition-colors',
-                    collapsed ? 'justify-center px-0 py-2' : 'gap-2.5 px-3 py-1.5',
-                    active
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                      : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/15 hover:text-sidebar-foreground',
-                  )}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="flex-1 truncate">{label}</span>}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+      <SidebarBrand collapsed={collapsed} />
+      <SidebarNav collapsed={collapsed} />
       <div className="border-t border-sidebar-border p-2">
         <button
           type="button"

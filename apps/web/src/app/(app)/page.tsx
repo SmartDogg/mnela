@@ -1,4 +1,14 @@
-import { Boxes, BookOpen, Database, GitBranch, Inbox, Sparkles, Upload } from 'lucide-react';
+import {
+  Boxes,
+  BookOpen,
+  Database,
+  GitBranch,
+  Inbox,
+  MessageSquare,
+  Send,
+  Sparkles,
+  Upload,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 
@@ -27,7 +37,65 @@ async function loadOverview(): Promise<{
 
 export default async function DashboardPage(): Promise<JSX.Element> {
   const { stats, claude, jobs } = await loadOverview();
+  // First-visit branch: no documents in the brain yet → show three concrete
+  // entry points instead of a wall of zero-valued stat cards. We don't gate
+  // on `stats === null` (API failure) because the operator would still
+  // benefit from seeing the real dashboard chrome to debug the failure.
+  if (stats && stats.documents === 0) {
+    return <DashboardEmpty />;
+  }
   return <DashboardView stats={stats} claude={claude} jobs={jobs} />;
+}
+
+function DashboardEmpty(): JSX.Element {
+  const t = useTranslations('dashboard');
+  const tEmpty = useTranslations('dashboard.empty');
+  const ctas = [
+    {
+      icon: Upload,
+      title: tEmpty('upload.title'),
+      desc: tEmpty('upload.desc'),
+      href: '/imports/new',
+      cta: tEmpty('upload.cta'),
+    },
+    {
+      icon: Send,
+      title: tEmpty('telegram.title'),
+      desc: tEmpty('telegram.desc'),
+      href: '/admin/system#telegram',
+      cta: tEmpty('telegram.cta'),
+    },
+    {
+      icon: MessageSquare,
+      title: tEmpty('dropbox.title'),
+      desc: tEmpty('dropbox.desc'),
+      href: '/admin/system#ingestion',
+      cta: tEmpty('dropbox.cta'),
+    },
+  ];
+  return (
+    <div className="flex flex-col">
+      <PageHeader title={t('title')} subtitle={tEmpty('subtitle')} />
+      <div className="grid gap-4 px-4 py-6 sm:px-8 md:grid-cols-3">
+        {ctas.map(({ icon: Icon, title, desc, href, cta }) => (
+          <Card key={href} className="flex flex-col">
+            <CardHeader className="flex flex-row items-center gap-3 pb-2">
+              <span className="inline-flex h-9 w-9 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <Icon className="h-5 w-5" />
+              </span>
+              <CardTitle className="text-sm">{title}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-1 flex-col justify-between gap-4 text-sm text-muted-foreground">
+              <p>{desc}</p>
+              <Button asChild size="sm" variant="outline" className="self-start">
+                <Link href={href}>{cta}</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function DashboardView({

@@ -1,6 +1,15 @@
 'use client';
 
-import { Loader2, Maximize2, Minimize2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import {
+  Boxes,
+  CheckCircle2,
+  Loader2,
+  Maximize2,
+  MessagesSquare,
+  Minimize2,
+  Sparkles,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -24,7 +33,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUnifiedSearch } from '@/hooks/use-unified-search';
-import type { SearchHit, SearchMode, SearchRequest } from '@/lib/api/types';
+import { api } from '@/lib/api/client';
+import type {
+  DecisionSummary,
+  Paginated,
+  ProjectSummary,
+  SearchHit,
+  SearchMode,
+  SearchRequest,
+} from '@/lib/api/types';
 import { useCmdkStore } from '@/lib/state/cmdk-store';
 import { sanitizeHighlight } from '@/lib/text/sanitize-highlights';
 import { cn } from '@/lib/utils';
@@ -37,6 +54,13 @@ interface PaletteFilters {
   source: string;
   type: string;
   projectSlug: string;
+}
+
+interface ConversationRow {
+  id: string;
+  title: string;
+  updatedAt: string;
+  synthesisDocumentId: string | null;
 }
 
 const DEFAULT_FILTERS: PaletteFilters = {
@@ -61,8 +85,14 @@ const SOURCE_OPTIONS = [
 ] as const;
 const MODE_OPTIONS: readonly SearchMode[] = ['hybrid', 'fts', 'fuzzy'] as const;
 
-const COMPACT_LIMITS = { documents: 8, entities: 8 } as const;
-const EXPANDED_LIMITS = { documents: 30, entities: 20 } as const;
+const COMPACT_LIMITS = { documents: 8, entities: 8, projects: 5, decisions: 5, conversations: 5 };
+const EXPANDED_LIMITS = {
+  documents: 30,
+  entities: 20,
+  projects: 20,
+  decisions: 20,
+  conversations: 20,
+};
 
 function docValue(id: string): string {
   return `doc:${id}`;
@@ -70,6 +100,25 @@ function docValue(id: string): string {
 
 function entValue(id: string): string {
   return `ent:${id}`;
+}
+
+function projValue(slug: string): string {
+  return `proj:${slug}`;
+}
+
+function decValue(id: string): string {
+  return `dec:${id}`;
+}
+
+function convValue(id: string): string {
+  return `conv:${id}`;
+}
+
+function tokensMatch(haystack: string | null | undefined, tokens: string[]): boolean {
+  if (tokens.length === 0) return true;
+  if (!haystack) return false;
+  const norm = haystack.toLowerCase();
+  return tokens.every((t) => norm.includes(t));
 }
 
 export function GlobalCmdk(): JSX.Element {
@@ -129,10 +178,106 @@ export function GlobalCmdk(): JSX.Element {
     entityLimit: limits.entities,
   });
 
+  /*
+   * Projects / Decisions / Conversations are filtered client-side: the
+   * admin user's N is small (typically < 200), the existing endpoints
+   * don't accept a `q=` filter, and we want the palette to feel instant
+   * when the user keeps typing. We fetch once when the palette opens and
+   * filter against `search.debounced` (the shared 200ms debounce from
+   * useUnifiedSearch).
+   */
+  const projectsAll = useQuery({
+    queryKey: ['cmdk', 'projects-all'],
+    enabled: isOpen,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const [active, suggested] = await Promise.all([
+        api.get<Paginated<ProjectSummary>>('/projects', {
+          query: { status: 'active', limit: 100 },
+        }),
+        api.get<Paginated<ProjectSummary>>('/projects', {
+          query: { status: 'suggested', limit: 50 },
+        }),
+      ]);
+      return [...active.items, ...suggested.items];
+    },
+  });
+  const decisionsAll = useQuery({
+    queryKey: ['cmdk', 'decisions-all'],
+    enabled: isOpen,
+    staleTime: 30_000,
+    queryFn: () =>
+      api
+        .get<Paginated<DecisionSummary>>('/decisions', { query: { limit: 100 } })
+        .then((p) => p.items),
+  });
+  const conversationsAll = useQuery({
+    queryKey: ['cmdk', 'conversations-all'],
+    enabled: isOpen,
+    staleTime: 30_000,
+    queryFn: () =>
+      api
+        .get<Paginated<ConversationRow>>('/conversations', { query: { limit: 100 } })
+        .then((p) => p.items),
+  });
+
   const docs = search.documents?.hits ?? [];
   const ents = search.entities?.items ?? [];
   const hasInput = search.debounced.length > 0;
-  const hasAnyResults = docs.length > 0 || ents.length > 0;
+
+  const tokens = useMemo(
+    () =>
+      search.debounced
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 0),
+    [search.debounced],
+  );
+
+  const projectRows = useMemo(() => {
+    const all = projectsAll.data ?? [];
+    if (!hasInput) return [];
+    const matches = all.filter(
+      (p) =>
+        tokensMatch(p.name, tokens) ||
+        tokensMatch(p.slug, tokens) ||
+        tokensMatch(p.description, tokens),
+    );
+    return matches.slice(0, limits.projects);
+  }, [projectsAll.data, hasInput, tokens, limits.projects]);
+
+  const decisionRows = useMemo(() => {
+    const all = decisionsAll.data ?? [];
+    if (!hasInput) return [];
+    /*
+     * Decisions without a `projectId` have no detail page to open (ADR-0052
+     * folded /decisions into the project detail Decisions tab). Skip them
+     * — they're rare and showing a no-op row in the palette would be a
+     * worse experience than hiding it.
+     */
+    const projectById = new Map((projectsAll.data ?? []).map((p) => [p.id, p] as const));
+    const matches = all.filter(
+      (d) => d.projectId && projectById.has(d.projectId) && tokensMatch(d.title, tokens),
+    );
+    return matches.slice(0, limits.decisions).map((d) => ({
+      decision: d,
+      project: projectById.get(d.projectId as string)!,
+    }));
+  }, [decisionsAll.data, projectsAll.data, hasInput, tokens, limits.decisions]);
+
+  const conversationRows = useMemo(() => {
+    const all = conversationsAll.data ?? [];
+    if (!hasInput) return [];
+    const matches = all.filter((c) => tokensMatch(c.title, tokens));
+    return matches.slice(0, limits.conversations);
+  }, [conversationsAll.data, hasInput, tokens, limits.conversations]);
+
+  const hasAnyResults =
+    docs.length > 0 ||
+    ents.length > 0 ||
+    projectRows.length > 0 ||
+    decisionRows.length > 0 ||
+    conversationRows.length > 0;
 
   const handleSelect = useCallback(
     (value: string) => {
@@ -143,6 +288,20 @@ export function GlobalCmdk(): JSX.Element {
       } else if (value.startsWith('ent:')) {
         const id = value.slice(4);
         router.push(`/graph?center=${encodeURIComponent(id)}`);
+      } else if (value.startsWith('proj:')) {
+        const slug = value.slice(5);
+        router.push(`/projects/${encodeURIComponent(slug)}`);
+      } else if (value.startsWith('dec:')) {
+        // Routed through the project page (decisions live inside the
+        // project detail tab per ADR-0052). Caller-side lookup put the
+        // project slug in the option `value` after the id, separated
+        // by `|`, to avoid a second indirection here.
+        const rest = value.slice(4);
+        const [, slug] = rest.split('|');
+        if (slug) router.push(`/projects/${encodeURIComponent(slug)}`);
+      } else if (value.startsWith('conv:')) {
+        const id = value.slice(5);
+        router.push(`/ask?conv=${encodeURIComponent(id)}`);
       } else {
         return;
       }
@@ -290,6 +449,71 @@ export function GlobalCmdk(): JSX.Element {
                     })}
                   </p>
                 )}
+              </CommandGroup>
+            )}
+
+            {projectRows.length > 0 && (
+              <CommandGroup heading={t('projects')}>
+                {projectRows.map((p) => (
+                  <CommandItem
+                    key={p.slug}
+                    value={projValue(p.slug)}
+                    onSelect={handleSelect}
+                    className="flex items-center gap-2"
+                  >
+                    {p.status === 'suggested' ? (
+                      <Sparkles className="size-3.5 text-amber-500" />
+                    ) : (
+                      <Boxes className="size-3.5 text-muted-foreground" />
+                    )}
+                    <span className="flex-1 truncate font-medium">{p.name}</span>
+                    <CommandShortcut className="font-mono text-[10px] uppercase tracking-wider">
+                      {p.status === 'suggested' ? t('suggested') : t('active')}
+                    </CommandShortcut>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {decisionRows.length > 0 && (
+              <CommandGroup heading={t('decisions')}>
+                {decisionRows.map(({ decision, project }) => (
+                  <CommandItem
+                    key={decision.id}
+                    value={`${decValue(decision.id)}|${project.slug}`}
+                    onSelect={handleSelect}
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="size-3.5 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium">{decision.title}</span>
+                    <CommandShortcut className="font-mono text-[10px] normal-case tracking-normal">
+                      {project.name}
+                    </CommandShortcut>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+
+            {conversationRows.length > 0 && (
+              <CommandGroup heading={t('conversations')}>
+                {conversationRows.map((c) => (
+                  <CommandItem
+                    key={c.id}
+                    value={convValue(c.id)}
+                    onSelect={handleSelect}
+                    className="flex items-center gap-2"
+                  >
+                    <MessagesSquare className="size-3.5 text-muted-foreground" />
+                    <span className="flex-1 truncate font-medium">
+                      {c.title || t('conversationUntitled')}
+                    </span>
+                    {c.synthesisDocumentId && (
+                      <CommandShortcut className="font-mono text-[10px] uppercase tracking-wider">
+                        {t('saved')}
+                      </CommandShortcut>
+                    )}
+                  </CommandItem>
+                ))}
               </CommandGroup>
             )}
           </CommandList>

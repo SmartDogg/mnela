@@ -168,15 +168,15 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 - [ ] Playwright E2E in `apps/web/e2e`
 - [ ] **Honest Restart Services UX** — per-subscriber ack via `mnela:events` (worker/orchestrator/api reply, UI shows ack/timeout), replacing the current 2.5s timer overlay (see CLAUDE.md "SystemConfig & hot-reload")
 - [ ] `/admin/system` command-bar search across SystemConfig keys + section names + anchor links (`/admin/system#telegram`)
-- [ ] Cmd-K palette: index Projects + Decisions + Conversations alongside Documents + Entities
-- [ ] Mobile sidebar (`Sheet` drawer from header hamburger, or `lg:flex md:flex` icon-only collapsed variant)
+- [x] Cmd-K palette: index Projects + Decisions + Conversations alongside Documents + Entities
+- [x] Mobile sidebar (`Sheet` drawer from header hamburger, or `lg:flex md:flex` icon-only collapsed variant)
 - [ ] Persist `apps/tg-bot` `TurnBuffer` to Redis with TTL (currently in-process, lost on restart)
 - [ ] Per-day budget cap for `projects.suggestions` rescans (`projects.suggestions.maxPassesPerDay`)
 - [ ] Cost telemetry on provider `usage` frames (`Message.tokensIn/Out` + per-provider rate table → "$X this week" in admin)
 - [ ] Provider tool-use detection — badge non-tool-use models as "no citations" in admin
-- [ ] Dashboard first-visit empty state with CTAs ("Upload your first export", "Connect Telegram", "Connect Dropbox")
-- [ ] Scope chip moved from `/ask` composer footer to chat header (visible while reading, not just composing)
-- [ ] `useCollapsibleSection` localStorage key scoped per-user (avoid shared-workstation cross-user persistence)
+- [x] Dashboard first-visit empty state with CTAs ("Upload your first export", "Connect Telegram", "Connect Dropbox")
+- [x] Scope chip moved from `/ask` composer footer to chat header (visible while reading, not just composing)
+- [x] `useCollapsibleSection` localStorage key scoped per-user (avoid shared-workstation cross-user persistence)
 
 ---
 
