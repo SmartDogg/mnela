@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AdminUserRepository, AuthTokenRepository } from '@mnela/db';
 import type { AdminUser, AuthToken } from '@prisma/client';
 import argon2 from 'argon2';
@@ -41,6 +41,29 @@ export class AuthService {
     const ok = await argon2.verify(user.passwordHash, password);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
     await this.admins.touchLastLogin(user.id);
+    const session = await this.sessions.create(user.id);
+    return { sessionId: session.id, ttlSeconds: session.ttlSeconds, adminUser: user };
+  }
+
+  async hasAnyAdmin(): Promise<boolean> {
+    return (await this.admins.count()) > 0;
+  }
+
+  /**
+   * Creates the very first admin user when the AdminUser table is empty,
+   * then opens a session so the wizard can keep going without a second
+   * login round-trip. Throws 403 if any admin already exists — the
+   * endpoint is single-shot per install.
+   */
+  async bootstrapFirstAdmin(username: string, password: string): Promise<LoginResult> {
+    const existing = await this.admins.count();
+    if (existing > 0) {
+      throw new ForbiddenException(
+        'Admin user already exists. Use POST /auth/login or contact an admin to reset.',
+      );
+    }
+    const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+    const user = await this.admins.create({ username, passwordHash });
     const session = await this.sessions.create(user.id);
     return { sessionId: session.id, ttlSeconds: session.ttlSeconds, adminUser: user };
   }

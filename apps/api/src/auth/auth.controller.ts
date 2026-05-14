@@ -18,7 +18,7 @@ import { Audit } from '../audit/audit.decorator.js';
 import { loadEnv } from '../env.js';
 import { rateLimitHolder } from '../modules/system/rate-limit.holder.js';
 import { AuthService } from './auth.service.js';
-import { CreateTokenDto, LoginDto } from './dto.js';
+import { BootstrapDto, CreateTokenDto, LoginDto } from './dto.js';
 import { CurrentPrincipal } from './principal.decorator.js';
 import { Public } from './public.decorator.js';
 import { RequiredScope } from './scope.decorator.js';
@@ -28,6 +28,50 @@ import type { Principal } from './types.js';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  @Public()
+  @Get('setup-status')
+  @ApiOperation({
+    summary: 'Whether the first admin has been bootstrapped. Drives the /setup redirect.',
+  })
+  async setupStatus(): Promise<{ bootstrapped: boolean }> {
+    return { bootstrapped: await this.auth.hasAnyAdmin() };
+  }
+
+  @Public()
+  @Post('bootstrap')
+  @HttpCode(201)
+  // Single-shot first-admin creation. Rate-limited harshly because it's
+  // unauthenticated and idempotent-by-nature (returns 403 once an admin
+  // exists). Same per-minute window as /auth/login but cheaper since the
+  // success path runs exactly once per deployment.
+  @Throttle({ default: { limit: () => rateLimitHolder.getLogin(), ttl: 60_000 } })
+  @ApiOperation({
+    summary:
+      'Create the first admin user when the AdminUser table is empty. ' +
+      'Returns 403 once any admin exists. On success, sets the session cookie.',
+  })
+  @ApiResponse({ status: 201, description: 'First admin created, session cookie set' })
+  @ApiResponse({ status: 403, description: 'Admin user(s) already exist' })
+  async bootstrap(
+    @Body() body: BootstrapDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ id: string; username: string }> {
+    const env = loadEnv();
+    const { sessionId, ttlSeconds, adminUser } = await this.auth.bootstrapFirstAdmin(
+      body.username,
+      body.password,
+    );
+    res.cookie('mnela_session', sessionId, {
+      httpOnly: true,
+      secure: env.NODE_ENV === 'production',
+      signed: true,
+      sameSite: 'lax',
+      maxAge: ttlSeconds * 1000,
+      path: '/',
+    });
+    return { id: adminUser.id, username: adminUser.username };
+  }
 
   @Public()
   @Post('login')

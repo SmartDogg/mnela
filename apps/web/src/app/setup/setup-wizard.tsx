@@ -48,8 +48,11 @@ export function SetupWizard(): JSX.Element {
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [token, setToken] = useState<CreatedAuthToken | null>(null);
 
-  const loginMutation = useMutation({
-    mutationFn: () => api.post<{ id: string; username: string }>('/auth/login', admin),
+  // /auth/bootstrap creates the first admin AND sets a session cookie in
+  // one round-trip. Subsequent attempts (admin already exists) return 403
+  // — at that point the visitor wants /login, not /setup.
+  const bootstrapMutation = useMutation({
+    mutationFn: () => api.post<{ id: string; username: string }>('/auth/bootstrap', admin),
   });
 
   const tokenMutation = useMutation({
@@ -60,6 +63,21 @@ export function SetupWizard(): JSX.Element {
       }),
     onSuccess: (created) => {
       setToken(created);
+      // Pre-expand the cards the user will most plausibly need first on
+      // /admin/system: AI Providers (unless they chose Claude Max — in
+      // which case the built-in is already wired), Telegram, and the
+      // whisper / Transcription block when voice was enabled. The
+      // mnela:admin-system:open:<section> keys are read by
+      // useCollapsibleSection so a single localStorage write is enough.
+      if (typeof window !== 'undefined') {
+        const sectionsToOpen: string[] = [];
+        if (claudeChoice !== 'have_max') sectionsToOpen.push('providers');
+        sectionsToOpen.push('telegram');
+        if (voiceEnabled) sectionsToOpen.push('whisper');
+        for (const section of sectionsToOpen) {
+          window.localStorage.setItem(`mnela:admin-system:open:${section}`, '1');
+        }
+      }
       setStep('done');
     },
     onError: (err) => toast.error(err instanceof ApiError ? err.message : 'Failed'),
@@ -143,20 +161,24 @@ export function SetupWizard(): JSX.Element {
           </CardContent>
           <Footer>
             <Button
-              disabled={!admin.username || admin.password.length < 12 || loginMutation.isPending}
+              disabled={
+                !admin.username || admin.password.length < 12 || bootstrapMutation.isPending
+              }
               onClick={() =>
-                loginMutation.mutate(undefined, {
+                bootstrapMutation.mutate(undefined, {
                   onSuccess: () => next(),
                   onError: (err) =>
                     toast.error(
-                      err instanceof ApiError && err.status === 401
-                        ? 'Admin not bootstrapped yet — set ADMIN_INITIAL_USERNAME / ADMIN_INITIAL_PASSWORD in the API .env'
-                        : 'Failed',
+                      err instanceof ApiError && err.status === 403
+                        ? 'An admin already exists for this install — use the regular /login page instead.'
+                        : err instanceof ApiError
+                          ? err.message
+                          : 'Failed to create admin user',
                     ),
                 })
               }
             >
-              {loginMutation.isPending && <Loader2 className="animate-spin" />}
+              {bootstrapMutation.isPending && <Loader2 className="animate-spin" />}
               Next
               <ChevronRight />
             </Button>

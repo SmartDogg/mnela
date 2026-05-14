@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { LoginForm } from './login-form';
-import { getPrincipal } from '@/lib/api/server';
+import { getPrincipal, getSetupStatus } from '@/lib/api/server';
 
 export const metadata = { title: 'Sign in' };
 
@@ -14,6 +14,13 @@ export default async function LoginPage({
   const principal = await getPrincipal().catch(() => null);
   if (principal) {
     redirect(params.next ?? '/');
+  }
+  // First-boot redirect: when no admin exists there's nothing to log in to —
+  // send the visitor to /setup, where step 1 calls POST /auth/bootstrap.
+  // Once any admin exists this stays bootstrapped=true forever.
+  const { bootstrapped } = await getSetupStatus();
+  if (!bootstrapped) {
+    redirect('/setup');
   }
 
   return (

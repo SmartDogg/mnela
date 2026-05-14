@@ -50,6 +50,19 @@ export async function getPrincipal(): Promise<Principal | null> {
   }
 }
 
+// Whether the install has any admin user yet. `/login` calls this to send
+// first-boot visitors to `/setup`; the wizard's first step calls it again
+// to decide whether to render the create-admin form or a "use /login"
+// nudge. Failures are treated as "bootstrapped" so the wizard never
+// pre-empts a healthy install if the API is briefly unreachable.
+export async function getSetupStatus(): Promise<{ bootstrapped: boolean }> {
+  try {
+    return await serverFetch<{ bootstrapped: boolean }>('/auth/setup-status');
+  } catch {
+    return { bootstrapped: true };
+  }
+}
+
 export const apiServer = {
   get: <T>(path: string) => serverFetch<T>(path, { method: 'GET' }),
 };
