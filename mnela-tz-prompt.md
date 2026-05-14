@@ -37,6 +37,11 @@
 7. **Confidence-based linking.** Связи имеют статус (auto/needs_review/manual/rejected). Низкая confidence не пишется молча — идёт в Inbox для review.
 8. **Open-source ready.** Архитектура такая, что в будущем можно сделать публичным без переделки. **Но в первой версии не оптимизируем под open-source** (не делаем landing-page, contributor docs, multi-language UI). Только под одного пользователя — автора.
 
+> **Amendments (post-Phase 9):**
+>
+> - Принцип 2 («Никаких внешних AI API») переосмыслен в [ADR-0049](./DECISIONS.md#adr-0049--pluggable-llm-provider-abstraction): по умолчанию `claude-cli` (как и раньше), но в `/admin/system → AI Providers` можно опционально подключить Anthropic API или OpenAI-compatible endpoint. Ключи AES-256-GCM-шифруются в `LlmProvider.apiKeyEnc`.
+> - Принцип 8 (не оптимизируем под OSS в v1) пересмотрен по факту: репо переехало на github.com/SmartDogg/mnela под MIT с явным курсом на one-click deploy и сторонних пользователей. Не landing-page, но `.env.example`, README features, prod Dockerfiles и Setup Wizard — да.
+
 ---
 
 ## 2. Стек технологий (зафиксировано)
@@ -53,7 +58,7 @@
 
 - **Next.js 15+** (App Router, RSC)
 - **TailwindCSS** + **shadcn/ui** для компонентов
-- **Cytoscape.js** для графа
+- **react-force-graph-2d** (canvas + d3-force) для графа — заменил Cytoscape.js в [ADR-0047](./DECISIONS.md#adr-0047--graph-page-react-force-graph-2d-overview-zero-state-overlay-panel-dynamic-facets)
 - **TanStack Query** для server state
 - **Zustand** для client state
 - **Socket.io-client** для real-time updates
@@ -118,19 +123,22 @@ mnela/
 │   ├── api/                    # NestJS REST API + WS gateway
 │   ├── mcp/                    # NestJS MCP server
 │   ├── web/                    # Next.js Web UI
-│   ├── worker/                 # NestJS BullMQ workers
-│   ├── orchestrator/           # NestJS Claude Code orchestrator
+│   ├── worker/                 # NestJS BullMQ workers (ingestion + transcription)
+│   ├── orchestrator/           # NestJS Claude Code orchestrator + projects suggester
+│   ├── tg-bot/                 # Telegram bot frontend (ADR-0053, post-Phase 9)
 │   └── cli/                    # Mnela CLI (для админских команд)
 ├── packages/
-│   ├── core/                   # Domain models, DTOs, schemas (Zod)
+│   ├── core/                   # Domain models, DTOs, schemas (Zod), SystemConfig registry
 │   ├── db/                     # Prisma schema + migrations + repositories
-│   ├── ingestion/              # Парсеры: chatgpt, claude, docx, pdf, image
+│   ├── ingestion/              # Парсеры: chatgpt, claude, docx, pdf, image, audio
 │   ├── search/                 # FTS, trigram, hybrid search adapters
-│   ├── graph/                  # Entity/edge management, Cytoscape data builders
-│   ├── claude-runner/          # Обёртка над Claude Code CLI
-│   ├── mcp-tools/              # Определения MCP tools (используются в apps/mcp)
+│   ├── llm-providers/          # LLM provider abstraction (ADR-0049): cli + anthropic + openai-compatible
+│   ├── claude-runner/          # Низкоуровневая обёртка над Claude CLI; зовётся только из llm-providers
+│   ├── mcp-tools/              # Shared tool registry, used by apps/mcp + in-process agent loop
+│   ├── queue/                  # BullMQ queue names + Redis pubsub helpers
 │   ├── shared-types/           # TypeScript types общие для backend и frontend
-│   └── ui/                     # Shared React components (shadcn)
+│   └── ui/                     # Shared React components (shadcn) + MnelaGraph
+> **Amendment:** `packages/graph/` упомянут в исходной структуре, но не появился в репо. Логика граф-управления раскидана между `apps/api/src/modules/graph/`, `packages/db` (Entity/Edge repositories) и `packages/ui/src/graph/` (MnelaGraph). Не блокирующее.
 ├── infra/
 │   ├── docker/
 │   │   ├── docker-compose.yml
@@ -961,6 +969,16 @@ POST   /system/claude-test           проверка работоспособн
 /admin/backup                Backup/restore
 ```
 
+> **Amendment (ADR-0052, 2026-05-13):** меню сжато до трёх секций × ~3 маршрута. Действующая v1-структура:
+>
+> - **Workspace:** `/`, `/graph`, `/ask`
+> - **Library:** `/documents`, `/projects` (Active/Suggested/Dismissed), `/projects/new`, `/projects/[slug]` (Files/Timeline/Entities/Decisions/Questions), `/inbox` (sidebar label "Review")
+> - **Admin:** `/activity` (?tab=uploads|queue — заменяет `/imports` + `/jobs`), `/admin/system` (включает Tokens / Claude status / Storage / AI Providers / Telegram карточками)
+>
+> Удалены: `/decisions` (переехало в `/projects/[slug] → Decisions`), `/daily`, `/daily/:date` (заменены AskSidebar Daily-табом по [ADR-0050](./DECISIONS.md#adr-0050--pinned-chat-turns-become-documents-daily-merges-into-ask)), `/admin/{tokens,claude,backup}`, `/search` (стал Cmd-K palette только).
+>
+> Активные: `/imports/new`, `/imports/:id` (deep-link surfaces, не list views).
+
 ### 7.2 Главные UX-фичи
 
 **Глобальный поиск (⌘K / Ctrl+K)** — открывает overlay, instant search через FTS + fuzzy. Результаты с highlight matched текста, фильтры, навигация стрелками.
@@ -1002,12 +1020,13 @@ POST   /system/claude-test           проверка работоспособн
 - Кнопка «сохранить вывод как заметку» → создаёт документ типа `synthesis`
 - Если Claude Code не доступен — показывает «AI Smart Mode disabled» и режим работает только как FTS поиск
 
-**Daily View**:
+**Daily View** _(заменено [ADR-0050](./DECISIONS.md#adr-0050--pinned-chat-turns-become-documents-daily-merges-into-ask), 2026-05-13)_:
 
-- Calendar widget сверху
-- Текущий день: markdown editor (отдельный для основного контента, отдельный для mood)
-- Под ним: автоматически сгенерированный summary дня (что было создано, какие решения, какие чаты)
-- Клик на день в календаре → переход
+`/daily` как самостоятельный маршрут удалён. Его функции:
+
+- Дневная история — теперь Daily-таб в `AskSidebar` на `/ask`: группирует `Document(source IN 'chat','daily')` по дню через `GET /search/pinned-by-day`.
+- Mood + произвольный markdown за день — пишутся как обычный `Document(source='daily')`. Старые `DailyNote` записи мигрированы в Documents (status='raw'), таблица `DailyNote` дропнута.
+- MCP-инструмент `mnela_get_daily_note(date)` сохранён — контракт стабилен, возвращает Document или null.
 
 **Project Page**:
 
@@ -1437,6 +1456,16 @@ CF_TUNNEL_TOKEN=
 MNELA_LOG_LEVEL=info
 ```
 
+> **Amendment (2026-05-13):** актуальный `.env.example` — единственный источник истины по env-vars. Большинство «user-facing» knobs переехали в типизированный `SystemConfig` registry (`packages/core/src/system-registry.ts`), хот-релоадятся через `/admin/system → Restart Services` и не требуют редактирования `.env`. В env остаются только boot-critical / secret / deploy-infra значения.
+>
+> **Удалены из env (теперь в SystemConfig):** `MNELA_CLAUDE_MODE`, `MNELA_CLAUDE_MAX_CONCURRENT`, `MNELA_CLAUDE_RATE_LIMIT_PER_HOUR`, `MNELA_CLAUDE_TIMEOUT_SECONDS`, `MNELA_TRANSCRIPTION*`, `MNELA_MCP_READ_ONLY`, `MNELA_BACKUP_*`. Управляйте ими через `/admin/system`.
+>
+> **Удалён вообще:** `JWT_SECRET` — Mnela использует Redis-backed session cookies (см. [ADR-0007](./DECISIONS.md#adr-0007--sessions-redis-backed-signed-cookie)), подписываемые `COOKIE_SECRET`. JWT нигде не выпускаются.
+>
+> **Появились в env (ADR-0049 / ADR-0053):** `MNELA_PROVIDER_SECRET` (32-байтный мастер-ключ для AES-256-GCM шифрования `LlmProvider.apiKeyEnc` + `TelegramBot.tokenEnc`; опционально, авто-генерится в `keystore/provider.key`), `MNELA_INTERNAL_TOKEN` (service-bearer, которым `apps/tg-bot` ходит в `apps/api`).
+>
+> Полный актуальный список с комментариями: см. `.env.example` в корне репо.
+
 ---
 
 ## 14a. AI Providers (ADR-0049)
@@ -1649,7 +1678,7 @@ MNELA_LOG_LEVEL=info
 
 Чтобы Claude Code не залезал в это:
 
-- Telegram бот — отдельный проект
+- ~~Telegram бот — отдельный проект~~ → переведено in-scope в [ADR-0053](./DECISIONS.md#adr-0053--telegram-bot-integration-single-tenant-frontend-over-searchask--documentsupload) (2026-05-13). Шипится как `apps/tg-bot`.
 - Mobile app
 - Public landing page
 - Multi-language UI (только RU + EN на старте)

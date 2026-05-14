@@ -61,7 +61,7 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 - [x] `apps/web` — Next.js 15 App Router, Tailwind, shadcn/ui, dark default
 - [x] Layout: sidebar nav + main + right context pane
-- [x] Pages: `/login`, `/setup`, `/`, `/search`, `/documents`, `/documents/:id`, `/projects`, `/projects/:slug`, `/decisions`, `/daily`, `/daily/:date`, `/inbox` (skeleton), `/imports`, `/imports/new`, `/imports/:id` (skeleton), `/admin/{system,tokens,claude,backup}`
+- [x] Pages (post-ADR-0052 v1 menu — see also ADR-0050): `/login`, `/setup`, `/`, `/ask`, `/graph`, `/documents`, `/documents/:id`, `/projects` (Active/Suggested/Dismissed tabs), `/projects/new`, `/projects/[slug]` (Files/Timeline/Entities/Decisions/Questions tabs), `/inbox` (labeled "Review"), `/imports/new`, `/imports/:id`, `/activity` (?tab=uploads|queue), `/admin/system`. Legacy `/imports`, `/jobs`, `/admin/jobs` redirect to `/activity`. `/daily` removed (ADR-0050). `/decisions`, `/admin/{tokens,claude,backup}`, `/search` removed (ADR-0052).
 - [x] i18n via next-intl (English first, Russian dictionary)
 - [x] Auth flow with session cookie
 - [x] Cmd-K global search
@@ -142,25 +142,88 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 ## Phase 10 — Deploy & DX (TZ §8)
 
-**Acceptance:** Fresh `bash <(curl …)` on a clean VPS produces a running Mnela with HTTPS; `mnela update` works; backup/restore round-trips data.
+**Acceptance:** Fresh `bash <(curl …)` on a clean VPS produces a running Mnela with HTTPS; `mnela update` works; backup/restore round-trips data **including the keystore + encrypted provider/Telegram secrets**.
 
-- [ ] `scripts/install.sh` with full wizard
-- [ ] `scripts/update.sh`, `backup.sh`, `restore.sh`
-- [ ] `apps/cli` — `mnela` CLI (status/logs/backup/restore/claude:test)
-- [ ] Caddyfile templates (domain / IP / tunnel)
-- [ ] Multi-stage Dockerfiles for api/web/mcp/worker/orchestrator
+- [ ] `scripts/install.sh` with full wizard (generates `.env`, runs migrations, builds compose, prints first URL)
+- [ ] `scripts/update.sh`, `backup.sh`, `restore.sh` — `backup.sh` MUST include `$MNELA_DATA_DIR/keystore/provider.key` plus `LlmProvider.apiKeyEnc` + `TelegramBot.tokenEnc` rows; `restore.sh` MUST verify the keystore decrypts before importing SQL
+- [ ] `apps/cli` — `mnela` CLI (status/logs/backup/restore/claude:test/`providers export`)
+- [ ] Caddyfile templates (domain / IP / tunnel) with `flush_interval -1` on `/api/v1/search/ask` for SSE
+- [ ] Multi-stage Dockerfiles for api/web/mcp/worker/orchestrator/**tg-bot**
+- [ ] `infra/docker/docker-compose.yml --profile prod` — all 6 apps + caddy + (optional) whisper. Today only postgres/redis/mcp boot from compose.
+- [ ] `POST /auth/bootstrap` server endpoint backing the Setup Wizard (replace env-var-only `ADMIN_INITIAL_*` bootstrap path)
+- [ ] Setup Wizard expands relevant `/admin/system` cards on first visit (Providers / Telegram / Transcription if applicable)
+- [ ] Fix `infra/claude/claude-mcp-config.json` hardcoded `/opt/mnela/...` path; ship envsubst variant + dev-local variant
 - [ ] Docs: README.md (final), DEPLOYMENT.md, EXPORT_GUIDES/{chatgpt,claude,obsidian}.md, TROUBLESHOOTING.md
 - [ ] Issue templates
 
 ## Phase 11 — Polish
 
-**Acceptance:** Smoke E2E suite passes; perf and memory profiled; healthchecks return; optional Sentry wires up.
+**Acceptance:** Smoke E2E suite passes; perf and memory profiled; healthchecks return; optional Sentry wires up. UX rough edges from the ADR-0049/0050/0051/0052/0053 sprint are smoothed.
 
 - [ ] Perf profiling
 - [ ] Index audit
-- [ ] Container memory limits + healthchecks
+- [ ] Container memory limits + healthchecks (incl. apps/tg-bot, apps/orchestrator projects queue)
 - [ ] Optional Sentry
 - [ ] Playwright E2E in `apps/web/e2e`
+- [ ] **Honest Restart Services UX** — per-subscriber ack via `mnela:events` (worker/orchestrator/api reply, UI shows ack/timeout), replacing the current 2.5s timer overlay (see CLAUDE.md "SystemConfig & hot-reload")
+- [ ] `/admin/system` command-bar search across SystemConfig keys + section names + anchor links (`/admin/system#telegram`)
+- [ ] Cmd-K palette: index Projects + Decisions + Conversations alongside Documents + Entities
+- [ ] Mobile sidebar (`Sheet` drawer from header hamburger, or `lg:flex md:flex` icon-only collapsed variant)
+- [ ] Persist `apps/tg-bot` `TurnBuffer` to Redis with TTL (currently in-process, lost on restart)
+- [ ] Per-day budget cap for `projects.suggestions` rescans (`projects.suggestions.maxPassesPerDay`)
+- [ ] Cost telemetry on provider `usage` frames (`Message.tokensIn/Out` + per-provider rate table → "$X this week" in admin)
+- [ ] Provider tool-use detection — badge non-tool-use models as "no citations" in admin
+- [ ] Dashboard first-visit empty state with CTAs ("Upload your first export", "Connect Telegram", "Connect Dropbox")
+- [ ] Scope chip moved from `/ask` composer footer to chat header (visible while reading, not just composing)
+- [ ] `useCollapsibleSection` localStorage key scoped per-user (avoid shared-workstation cross-user persistence)
+
+---
+
+## Done after Phase 8 — ADR-0049: Pluggable LLM provider abstraction (2026-05-13)
+
+**Acceptance:** Every AI call (Ask Brain, enrichment, vision, project-context) routes through `@mnela/llm-providers`. Built-in `claude-cli` is the default and the no-config path; users can add Anthropic API / OpenAI-compatible providers in `/admin/system → AI Providers` and route per feature. API keys live AES-256-GCM-encrypted in `LlmProvider.apiKeyEnc`. Supersedes TZ §1 principle 2 ("никаких внешних AI API" → "по умолчанию никаких; опционально настраивается в /admin/system").
+
+- [x] `packages/llm-providers` — `LLMProvider` interface, 3 implementations (`ClaudeCliProvider`, `AnthropicApiProvider`, `OpenAiCompatibleProvider`), in-process agent loop reusing `@mnela/mcp-tools`
+- [x] `LlmProvider` Prisma model + migration `20260513120000_llm_providers`; built-in CLI virtual (never persisted)
+- [x] Keystore: `MNELA_PROVIDER_SECRET` env or auto-generated `<MNELA_DATA_DIR>/keystore/provider.key`
+- [x] `/admin/system → AI Providers` hero card with per-feature router + "Apply default to all" + Add-provider dialog (presets for OpenAI / DeepSeek / Grok / Gemini / OpenRouter / Ollama / LM Studio)
+- [x] Chat tool-call timeline rendered uniformly for CLI + API providers
+
+## Done after Phase 8 — ADR-0050: Pinned chat → Documents, /daily merges into /ask (2026-05-13)
+
+**Acceptance:** Chat composer has a Pin / Ask toggle; pinning a Q&A turn promotes it to a `Document(source='chat')` and enrichment runs. `/daily` route deleted; Daily history surfaces as the AskSidebar's Daily tab grouping `Document(source IN 'chat','daily')` by day. Citations are derived from `tool_result` frames, not body regex.
+
+- [x] `MessageKind = ephemeral | pinned` + `Message.pinnedDocumentId` back-reference
+- [x] `AskService.promoteToDocument` bundles Q+A into a single Document and enqueues `enrich_document`
+- [x] `SourceType.chat` + `SourceType.daily`; migration of legacy `DailyNote` rows → `Document(source='daily', status='raw')`; `DailyNote` table dropped
+- [x] `CitationParser` regex removed; `mnela_find_similar` / `mnela_search` / `mnela_get_document` / `mnela_get_chunks` tool-result IDs become citation chips
+- [x] SSE heartbeat (15s) + idle-timeout watcher (60s) + client retry-once
+- [x] AskSidebar with Chats + Daily tabs; `/daily*` routes and `DailyModule` deleted; `mnela_get_daily_note` MCP tool preserved
+
+## Done after Phase 8 — ADR-0052: v1 menu consolidation (2026-05-13)
+
+**Acceptance:** Sidebar has exactly three sections (Workspace / Library / Admin) with 8 routes total. Imports + Jobs collapse into `/activity`; Decisions move into the project detail tab; `/admin/{tokens,claude,backup}` fold into `/admin/system`; `/daily` is gone (ADR-0050); `/search` becomes the Cmd-K palette only.
+
+- [x] `/activity?tab=uploads|queue` page; `/imports`, `/jobs`, `/admin/jobs` redirect there
+- [x] `/projects/[slug] → Decisions tab` is the only place to list/create decisions in the UI (API endpoint still accepts global POST for MCP/CLI callers)
+- [x] `TokensSection`, `ClaudeStatusBlock`, Storage moved as cards into `/admin/system`
+- [x] Sidebar i18n: Workspace (`/`, `/graph`, `/ask`), Library (`/documents`, `/projects`, `/inbox` as "Review"), Admin (`/activity`, `/admin/system`)
+- [ ] Redirect stubs for `/decisions`, `/admin/{tokens,claude,backup}`, `/search` — old bookmarks 404 (Phase 10 polish; tracked in Bucket C)
+
+## Done after Phase 9 — ADR-0053: Telegram bot integration (2026-05-13)
+
+**Acceptance:** A new `apps/tg-bot` (NestJS + grammY) is the second canonical client of `/search/ask` + `/documents/upload`. Single-tenant (`TelegramBot` singleton + `TelegramAllowedUser` whitelist), configured under `/admin/system → Telegram`, hot-reloaded via `mnela:events telegram:reload`. **Supersedes TZ §18** — "Telegram бот — отдельный проект" is no longer accurate; the bot ships in-scope as `apps/tg-bot`.
+
+- [x] `apps/tg-bot` NestJS process; grammY + Bot API 9.5 `sendMessageDraft` streaming (fallback to single `sendMessage`)
+- [x] Schema: `TelegramBot` singleton + `TelegramAllowedUser` + `TelegramChatLink`; `TelegramBot.tokenEnc` AES-256-GCM via shared keystore; `tokenLast4` for UI
+- [x] Multi-modal `TurnBuffer<chatId>` debounce (`telegram.bundleWindowMs`, default 4s) merging voice + photo + text into one `/search/ask` call
+- [x] Provenance on every uploaded Document: `source='telegram'`, `metadata.telegram = { chatId, msgId, userId, turnId }`
+- [x] Reaction-as-status: 👀 received, 🎧 transcribing, 📷 analysing, ✍️ generating, ✅ done, ❌ error
+- [x] Commands: `/scope <slug>`, `/save <text>`, `/last [N]`
+- [x] `/admin/system → Telegram` card with token rotation, whitelist editor, `Test` (grammY `getMe()`), `Enabled` toggle
+- [x] `/activity` source filter shows telegram-originated documents
+- [ ] `Dockerfile.tg-bot` + `tg-bot` service in `infra/docker/docker-compose.yml --profile prod` (Phase 10)
+- [ ] `TurnBuffer` persisted to Redis with TTL — currently in-process, lost on restart (Phase 11)
 
 ---
 
@@ -180,6 +243,8 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 
 ---
 
-## Out of scope for v1 (TZ §18)
+## Out of scope for v1 (TZ §18, amended by ADR-0053)
 
-Telegram bot, mobile app, public landing, multi-tenant, plugins API, marketplace, federated search, LLM proxy, TTS, image gen, realtime sync to Notion/Drive/GitHub.
+Mobile app, public landing, multi-tenant, plugins API, marketplace, federated search, LLM proxy, TTS, image gen, realtime sync to Notion/Drive/GitHub.
+
+> **Amendment:** TZ §18 originally listed "Telegram bot — отдельный проект" as out-of-scope. Reversed by [ADR-0053](./DECISIONS.md#adr-0053--telegram-bot-integration-single-tenant-frontend-over-searchask--documentsupload) (2026-05-13); Telegram bot ships in-scope as `apps/tg-bot`.

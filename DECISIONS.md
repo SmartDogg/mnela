@@ -53,7 +53,7 @@ A separate concern is that the user evaluated [OpenClaw](https://openclaw.ai/) (
 
 - _editMessageText streaming instead of sendMessageDraft._ The historical workaround for "live typing" — throttle edits at ~1/sec to stay inside flood limits. Now superseded by Bot API 9.5's native draft method; keeping the editMessage fallback only for API-version-mismatch safety.
 
-**Status:** Accepted (2026-05-13).
+**Status:** Accepted (2026-05-13). **Supersedes TZ §18** ("Telegram бот — отдельный проект" was listed out-of-scope; ADR-0053 brings it into v1 scope as `apps/tg-bot`). PLAN.md §"Out of scope for v1" is amended accordingly.
 
 ---
 
