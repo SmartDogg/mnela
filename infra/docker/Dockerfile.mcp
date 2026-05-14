@@ -27,6 +27,9 @@ RUN pnpm install --frozen-lockfile
 
 # Now copy the rest of the source and build.
 COPY . .
+# @mnela/mcp imports @mnela/db (and through it the Prisma Client).
+# Generate the Prisma Client before tsc so typed exports resolve.
+RUN pnpm --filter @mnela/db exec prisma generate
 RUN pnpm exec turbo run build --filter=@mnela/mcp...
 
 # Prune to production-only deps for the runtime stage.

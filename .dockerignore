@@ -12,7 +12,12 @@ node_modules
 .pnpm-store
 .pnpm-debug.log*
 
-# Build output
+# Build output. Patterns without `**/` only match the repo root — and
+# the .tsbuildinfo files actually live at packages/*/tsconfig.tsbuildinfo,
+# so without the `**/` form tsc inside the Docker builder reads them and
+# decides "nothing changed; skip" → exit 0 with empty `dist/`, then the
+# next package can't find @mnela/db type declarations and the whole
+# turbo run blows up. Don't relax these — empirically verified bug.
 dist
 build
 .next
@@ -22,6 +27,7 @@ out
 **/dist
 **/.next
 **/.turbo
+**/*.tsbuildinfo
 
 # Tests / coverage / e2e
 coverage

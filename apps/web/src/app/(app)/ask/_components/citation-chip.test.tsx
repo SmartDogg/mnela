@@ -47,6 +47,10 @@ describe('CitationChip', () => {
     );
     const link = screen.getByRole('link');
     expect(link).toHaveTextContent('1');
-    expect(link).toHaveTextContent('Source not found');
+    // setup.ts mocks next-intl so `t(key)` returns the key string itself
+    // — and the component scopes useTranslations('ask.citation'), so the
+    // namespace prefix is dropped. We test the fallback slot fires, not
+    // the actual copy.
+    expect(link).toHaveTextContent('tooltipMissing');
   });
 });

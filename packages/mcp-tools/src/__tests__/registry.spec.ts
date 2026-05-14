@@ -31,6 +31,7 @@ describe('registry', () => {
       'mnela_save_decision',
       'mnela_save_note',
       'mnela_search',
+      'mnela_set_attachment_analysis',
       'mnela_traverse_graph',
       'mnela_trigger_enrichment',
       'mnela_update_project_context',

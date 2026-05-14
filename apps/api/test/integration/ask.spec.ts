@@ -1,8 +1,16 @@
 /**
  * Phase 8 integration tests for /search/ask SSE endpoint, conversations, and
  * save-synthesis. Mocks `streamClaude` to feed scripted NDJSON frames so we
- * cover Dumb Mode fallback, citation parsing, rate-limit detection, and
- * persistence without a real Claude subprocess.
+ * cover Dumb Mode fallback, rate-limit detection, conversation persistence,
+ * and save-as-document without a real Claude subprocess.
+ *
+ * Citation parsing used to live here too — the original Phase 8 design parsed
+ * inline `<cite doc-id="…">…</cite>` tags out of the assistant stream. ADR-0050
+ * deleted that path; citations now derive from `tool_result` frames produced
+ * by `mnela_find_similar` / `mnela_search` / `mnela_get_document`. That code
+ * path is covered by the provider unit tests in
+ * packages/llm-providers/src/__tests__/, not here — the SSE-level test would
+ * have to mock the entire provider tool-use loop.
  */
 import { type INestApplication } from '@nestjs/common';
 import type { ClaudeFrame, RunResult } from '@mnela/claude-runner';
@@ -188,16 +196,14 @@ describe('POST /search/ask (Phase 8)', () => {
     expect(messages[1]!.dumbMode).toBe(true);
   });
 
-  it('Smart Mode streams tokens, emits citations from inline <cite> tags, persists Message rows', async () => {
+  it('Smart Mode streams tokens, persists Message rows + audit log', async () => {
     await writeClaudeStatus(redis, { available: true, checkedAt: new Date().toISOString() });
     await makeDocument(VALID_DOC, 'Strict typing', 'use strict typing always');
 
+    // Plain assistant prose — no inline <cite>; citation extraction lives in
+    // the provider tool-use loop (see ADR-0050) and is tested separately.
     streamClaudeMock.mockReturnValue(
-      script([
-        streamEvent('You prefer '),
-        streamEvent(`<cite doc-id="${VALID_DOC}">strict typing</cite>`),
-        streamEvent(' across the stack.'),
-      ]),
+      script([streamEvent('You prefer strict typing across the stack.')]),
     );
 
     const { status, raw } = await postAskRaw({ query: 'what do I prefer?' });
@@ -209,14 +215,8 @@ describe('POST /search/ask (Phase 8)', () => {
       .filter((f) => f.event === 'token')
       .map((f) => (f.data as { delta: string }).delta);
     const assembled = tokens.join('');
-    expect(assembled, `streamed text was: ${JSON.stringify(assembled)}`).toContain('You prefer ');
-    expect(assembled).toContain('[1]');
+    expect(assembled).toContain('You prefer strict typing');
     expect(assembled).toContain(' across the stack.');
-
-    const citations = frames.filter((f) => f.event === 'citation');
-    expect(citations).toHaveLength(1);
-    expect((citations[0]!.data as { docId: string; ord: number }).docId).toBe(VALID_DOC);
-    expect((citations[0]!.data as { ord: number }).ord).toBe(1);
 
     expect(frames.find((f) => f.event === 'done')).toBeTruthy();
 
@@ -225,7 +225,6 @@ describe('POST /search/ask (Phase 8)', () => {
     const assistant = messages[1]!;
     expect(assistant.role).toBe('assistant');
     expect(Array.isArray(assistant.citations)).toBe(true);
-    expect((assistant.citations as unknown as { docId: string }[])[0]?.docId).toBe(VALID_DOC);
 
     const audit = await prisma.client.auditLog.findFirst({ where: { action: 'ask.completed' } });
     expect(audit).toBeTruthy();
@@ -255,24 +254,10 @@ describe('POST /search/ask (Phase 8)', () => {
     expect((err!.data as { reason: string }).reason).toBe('rate-limit');
   });
 
-  it('persists chunks-spanning <cite> tag correctly (state-machine invariant)', async () => {
-    await writeClaudeStatus(redis, { available: true, checkedAt: new Date().toISOString() });
-    await makeDocument(VALID_DOC, 'Doc', 'body');
-
-    streamClaudeMock.mockReturnValue(
-      script([
-        streamEvent('start <ci'),
-        streamEvent(`te doc-id="${VALID_DOC.slice(0, 10)}`),
-        streamEvent(`${VALID_DOC.slice(10)}">a snippet</cite> end`),
-      ]),
-    );
-
-    const { raw } = await postAskRaw({ query: 'cross-chunk tag' });
-    const frames = parseSse(raw);
-    const citation = frames.find((f) => f.event === 'citation');
-    expect(citation).toBeTruthy();
-    expect((citation!.data as { docId: string }).docId).toBe(VALID_DOC);
-  });
+  // Removed Phase-8 test "persists chunks-spanning <cite> tag" — exercised the
+  // state-machine that handled `<cite>` tags split across stream chunks. ADR-0050
+  // deleted that whole code path; assistant prose now flows through the SSE
+  // untouched, and `citation` frames originate from `tool_result` events.
 });
 
 describe('Conversation REST + save-synthesis', () => {

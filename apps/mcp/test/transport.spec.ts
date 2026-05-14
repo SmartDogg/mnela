@@ -81,7 +81,8 @@ describe('Streamable HTTP transport on POST /mcp', () => {
     expect(names).toContain('mnela_search');
     expect(names).toContain('mnela_save_note');
     expect(names).toContain('mnela_trigger_enrichment');
-    expect(names).toHaveLength(20);
+    expect(names).toContain('mnela_set_attachment_analysis');
+    expect(names).toHaveLength(21);
   });
 
   it('executes a read-only tool (mnela_list_projects) for any scope', async () => {
