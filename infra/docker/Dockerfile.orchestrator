@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1.7
+#
+# apps/orchestrator — BullMQ consumer that spawns the `claude` CLI as a child
+# subprocess for enrichment / project-context / vision / project suggestions.
+# Two extras vs. Dockerfile.worker:
+#   1. The Anthropic native installer for `claude` lives on $PATH.
+#   2. /home/mnela/.claude is a volume so OAuth tokens persist; the operator
+#      runs `docker exec -it mnela-orchestrator claude login` once.
+# See docs/DEPLOYMENT.md for the login flow.
+
+FROM node:22-slim AS builder
+
+ENV PNPM_HOME=/pnpm \
+    PATH="/pnpm:$PATH" \
+    CI=true
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates python3 build-essential \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable
+
+WORKDIR /repo
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/mcp/package.json apps/mcp/
+COPY apps/cli/package.json apps/cli/
+COPY apps/orchestrator/package.json apps/orchestrator/
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY apps/tg-bot/package.json apps/tg-bot/
+COPY packages ./packages-manifests-only
+RUN find packages-manifests-only -mindepth 2 -maxdepth 2 -name 'package.json' -exec sh -c \
+    'mkdir -p packages/$(basename $(dirname "$1")) && cp "$1" packages/$(basename $(dirname "$1"))/package.json' _ {} \; \
+ && rm -rf packages-manifests-only
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+COPY . .
+RUN pnpm --filter @mnela/db exec prisma generate
+RUN pnpm exec turbo run build --filter=@mnela/orchestrator...
+RUN pnpm --filter @mnela/orchestrator deploy --prod /out
+
+# ---------- runtime ----------
+FROM node:22-slim AS runtime
+
+# - tini: PID 1 + signal forwarding
+# - curl / ca-certs: required by Anthropic's installer
+# - ripgrep / git: runtime deps of the `claude` CLI itself
+# - jq: convenience for `mnela claude:test` debugging
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini openssl ca-certificates curl ripgrep git jq \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -r mnela \
+ && useradd -r -g mnela -m -d /home/mnela -s /bin/bash mnela
+
+WORKDIR /app
+COPY --from=builder --chown=mnela:mnela /out/dist ./dist
+COPY --from=builder --chown=mnela:mnela /out/node_modules ./node_modules
+COPY --from=builder --chown=mnela:mnela /out/package.json ./package.json
+
+RUN mkdir -p /data && chown -R mnela:mnela /data
+
+# Install the Anthropic `claude` CLI for the `mnela` user. Stable channel by
+# default; override with `--build-arg CLAUDE_INSTALL_REF=2.x.y` to pin. The
+# installer lays the binary under ~/.local/bin so we add that to $PATH.
+ARG CLAUDE_INSTALL_REF=stable
+USER mnela
+ENV HOME=/home/mnela \
+    PATH="/home/mnela/.local/bin:${PATH}" \
+    CLAUDE_CONFIG_DIR=/home/mnela/.claude
+RUN curl -fsSL https://claude.ai/install.sh | bash -s "${CLAUDE_INSTALL_REF}" \
+ && claude --version
+
+ENV NODE_ENV=production \
+    MNELA_DATA_DIR=/data
+
+# Volume for the OAuth credentials + per-user claude state. Bootstrap once:
+#   docker exec -it mnela-orchestrator claude login
+VOLUME ["/home/mnela/.claude"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/main.js"]

@@ -2,7 +2,13 @@
 // Source of truth for all persistent state.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  // `native` lets pnpm dev keep working on every developer host (macOS arm/
+  // intel, Linux glibc, Linux musl, Windows). The extra debian engine ships
+  // with the prod runtime image which is `node:22-slim` (Debian, openssl 3.x),
+  // so the multi-stage Dockerfile doesn't have to re-run `prisma generate`
+  // inside the smaller runtime layer.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

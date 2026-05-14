@@ -1,0 +1,84 @@
+# syntax=docker/dockerfile:1.7
+#
+# apps/api — NestJS HTTP API. Multi-stage build keyed off pnpm v10 + turbo.
+# Style mirrors infra/docker/Dockerfile.mcp; the difference is the runtime
+# base is node:22-slim (Debian/glibc) so the Prisma `debian-openssl-3.0.x`
+# engine + argon2 prebuilt binary work without recompile.
+
+FROM node:22-slim AS builder
+
+ENV PNPM_HOME=/pnpm \
+    PATH="/pnpm:$PATH" \
+    CI=true
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl ca-certificates python3 build-essential \
+ && rm -rf /var/lib/apt/lists/* \
+ && corepack enable
+
+WORKDIR /repo
+
+# Manifests-only first layer — maximises cache hits on the pnpm install
+# step when only source changes.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/
+COPY apps/mcp/package.json apps/mcp/
+COPY apps/cli/package.json apps/cli/
+COPY apps/orchestrator/package.json apps/orchestrator/
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY apps/tg-bot/package.json apps/tg-bot/
+COPY packages ./packages-manifests-only
+RUN find packages-manifests-only -mindepth 2 -maxdepth 2 -name 'package.json' -exec sh -c \
+    'mkdir -p packages/$(basename $(dirname "$1")) && cp "$1" packages/$(basename $(dirname "$1"))/package.json' _ {} \; \
+ && rm -rf packages-manifests-only
+
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm install --frozen-lockfile
+
+# Now the full source. We rebuild the Prisma client against the Debian
+# binary target the runtime stage uses (schema.prisma lists both `native`
+# and `debian-openssl-3.0.x`).
+COPY . .
+RUN pnpm --filter @mnela/db exec prisma generate
+RUN pnpm exec turbo run build --filter=@mnela/api...
+
+# `pnpm deploy --prod` materialises an isolated production tree (no
+# workspace symlinks) into /out.
+RUN pnpm --filter @mnela/api deploy --prod /out
+
+# ---------- runtime ----------
+FROM node:22-slim AS runtime
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tini openssl ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd -r mnela \
+ && useradd -r -g mnela -d /app -s /usr/sbin/nologin mnela
+
+WORKDIR /app
+COPY --from=builder --chown=mnela:mnela /out/dist ./dist
+COPY --from=builder --chown=mnela:mnela /out/node_modules ./node_modules
+COPY --from=builder --chown=mnela:mnela /out/package.json ./package.json
+COPY --chown=mnela:mnela infra/docker/healthcheck.js ./healthcheck.js
+
+# Data dir + keystore + dropbox + vault all materialise here. The compose
+# file bind-mounts a host volume; the directory exists so file watchers
+# don't fail before any volume mount.
+RUN mkdir -p /data && chown -R mnela:mnela /data
+
+ENV NODE_ENV=production \
+    HTTP_HOST=0.0.0.0 \
+    HTTP_PORT=3000 \
+    MNELA_DATA_DIR=/data \
+    HEALTHCHECK_PORT=3000 \
+    HEALTHCHECK_PATH=/api/v1/system/health
+
+USER mnela
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD ["node", "healthcheck.js"]
+
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["node", "dist/main.js"]

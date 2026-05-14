@@ -1,17 +1,19 @@
 {
+  "_comment": "Reference template only — the live config is generated at orchestrator boot by apps/orchestrator/src/mcp/mcp-config.boot.ts and written to ${MNELA_DATA_DIR}/claude/claude-mcp-config.json with the actual host paths and env values. This file documents the shape; install.sh + dev runs both ignore it. Placeholders below: ${MNELA_STDIO_HOST_PATH} = absolute path to apps/orchestrator/dist/mcp/stdio-host.js; ${MNELA_VAULT_DIR} = absolute path to ${MNELA_DATA_DIR}/vault.",
   "mcpServers": {
     "mnela": {
       "command": "node",
-      "args": ["/opt/mnela/orchestrator/dist/mcp/stdio-host.js"],
+      "args": ["${MNELA_STDIO_HOST_PATH}"],
       "env": {
         "DATABASE_URL": "${DATABASE_URL}",
         "REDIS_URL": "${REDIS_URL}",
-        "MNELA_LOG_LEVEL": "info"
+        "MNELA_LOG_LEVEL": "info",
+        "MNELA_DATA_DIR": "${MNELA_DATA_DIR}"
       }
     },
     "filesystem": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/var/lib/mnela/vault"]
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "${MNELA_VAULT_DIR}"]
     }
   }
 }
