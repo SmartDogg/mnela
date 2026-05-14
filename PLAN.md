@@ -209,7 +209,7 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 - [x] `/projects/[slug] → Decisions tab` is the only place to list/create decisions in the UI (API endpoint still accepts global POST for MCP/CLI callers)
 - [x] `TokensSection`, `ClaudeStatusBlock`, Storage moved as cards into `/admin/system`
 - [x] Sidebar i18n: Workspace (`/`, `/graph`, `/ask`), Library (`/documents`, `/projects`, `/inbox` as "Review"), Admin (`/activity`, `/admin/system`)
-- [ ] Redirect stubs for `/decisions`, `/admin/{tokens,claude,backup}`, `/search` — old bookmarks 404 (Phase 10 polish; tracked in Bucket C)
+- [x] Redirect stubs for `/decisions`, `/admin/{tokens,claude,backup}`, `/search` — shipped in commit `188d79b` as part of the Bucket C cleanup
 
 ## Done after Phase 9 — ADR-0053: Telegram bot integration (2026-05-13)
 
@@ -223,7 +223,7 @@ Each phase below MUST end in a working state. After each phase: tag `phase-N`.
 - [x] Commands: `/scope <slug>`, `/save <text>`, `/last [N]`
 - [x] `/admin/system → Telegram` card with token rotation, whitelist editor, `Test` (grammY `getMe()`), `Enabled` toggle
 - [x] `/activity` source filter shows telegram-originated documents
-- [ ] `Dockerfile.tg-bot` + `tg-bot` service in `infra/docker/docker-compose.yml --profile prod` (Phase 10)
+- [x] `Dockerfile.tg-bot` + `tg-bot` service in `infra/docker/docker-compose.yml --profile prod` (shipped in Phase 10, commits `887e034` + `a595ed9`)
 - [ ] `TurnBuffer` persisted to Redis with TTL — currently in-process, lost on restart (Phase 11)
 
 ---

@@ -1,0 +1,66 @@
+# .dockerignore — keep the build context tight.
+#
+# Every `docker build` (or compose build) copies the full repo root as
+# context before evaluating COPY directives. Without this file, that
+# means uploading node_modules/, .next/, data/, and .git into the
+# build daemon — many hundreds of MB on a multi-app monorepo, plus the
+# risk of bleeding `data/keystore/provider.key` into a layer.
+
+# Local dev artefacts
+node_modules
+**/node_modules
+.pnpm-store
+.pnpm-debug.log*
+
+# Build output
+dist
+build
+.next
+.turbo
+out
+*.tsbuildinfo
+**/dist
+**/.next
+**/.turbo
+
+# Tests / coverage / e2e
+coverage
+*.lcov
+.nyc_output
+test-results
+playwright-report
+playwright/.cache
+
+# Env / secrets (never bake into images)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# Runtime data (created by the running stack, never source)
+data
+backups
+attachments
+vault
+dropbox
+**/data
+apps/api/.test-data
+apps/*/data
+
+# Git + IDE state
+.git
+.gitignore
+.gitattributes
+.github
+.idea
+.vscode
+.cache
+.tmp-*
+
+# Test data archives that live at repo root
+data-*.zip
+*.tgz
+
+# Claude Code session lock
+.claude

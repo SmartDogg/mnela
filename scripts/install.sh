@@ -286,8 +286,12 @@ fi
 set -a; . "$ENV_FILE"; set +a
 
 # ----- materialise Caddyfile --------------------------------------------
-cp "$CADDY_TEMPLATE" "$REPO_ROOT/Caddyfile"
-green "  Caddyfile: $CADDY_TEMPLATE → $REPO_ROOT/Caddyfile"
+if [[ -f "$REPO_ROOT/Caddyfile" && "$FORCE" != "1" ]]; then
+  yellow "  Caddyfile already present — keeping operator edits. Re-run with --force to regenerate."
+else
+  cp "$CADDY_TEMPLATE" "$REPO_ROOT/Caddyfile"
+  green "  Caddyfile: $CADDY_TEMPLATE → $REPO_ROOT/Caddyfile"
+fi
 
 # ----- pull / build ------------------------------------------------------
 cyan "▸ Pulling / building images ($MNELA_IMAGES mode)"

@@ -177,6 +177,11 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.orchestrator
+      args:
+        # Pin the Anthropic claude CLI version so image rebuilds are
+        # reproducible. Bump in lockstep with releases. Override per-host
+        # by exporting CLAUDE_INSTALL_REF before `docker compose build`.
+        CLAUDE_INSTALL_REF: ${CLAUDE_INSTALL_REF:-stable}
     container_name: mnela-orchestrator
     restart: unless-stopped
     depends_on:

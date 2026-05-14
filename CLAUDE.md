@@ -16,6 +16,20 @@ This file is read by Claude Code when working inside the Mnela repo. The Server-
 - `packages/db` — Prisma schema + repositories. Migrations are hand-written when `migrate dev` is impractical on Windows (see ADR-0048 stopgap pattern).
 - `packages/claude-runner` — low-level wrapper around the `claude` CLI subprocess. **Never import directly from app code** — go through `@mnela/llm-providers`.
 
+## Deploy & DX paths (Phase 10)
+
+- `scripts/install.sh` — one-command VPS bootstrap (`curl … | sudo bash`). Generates `.env` with random secrets, clones to `/opt/mnela`, materialises a Caddyfile, runs the `migrate` one-shot compose service, issues the install-time AuthToken for tg-bot, then `--profile prod up -d`. Flags: `--domain HOST | --ip ADDR | --tunnel HOST | --no-claude | --branch TAG | --force`. Non-interactive without a mode flag is rejected.
+- `scripts/update.sh` — `git fetch latest v* tag → compose pull|build → migrate → up -d`. Wired as `mnela update [--tag X]`.
+- `scripts/backup.sh` — `pg_dump` + `mnela-data` tar (incl. `keystore/provider.key`) + optional `mnela-claude-creds`, single .tar.gz output. Refuses to run without keystore unless `--allow-no-keystore`.
+- `scripts/restore.sh` — calls `scripts/validate-keystore.mjs` (AES-GCM via `crypto.createDecipheriv`, not `openssl -aead_tag_hex`) BEFORE wiping target DB. Uses `--profile migrate run --rm migrate` for schema catch-up.
+- `apps/cli/src/main.ts` — `mnela <status|logs|backup|restore|update|claude:test|providers:export>`. Hand-rolled arg parsing, zero deps; shells into `scripts/*.sh` or `docker compose exec`.
+- `apps/api/scripts/issue-bootstrap-token.mjs` — install-time AuthToken provisioner. Reads plaintext from `MNELA_INTERNAL_TOKEN` (env or argv), sha256-hashes, INSERTs `AuthToken(scope=mcp)`. Idempotent. Required so tg-bot can authenticate against api on first boot. Baked into Dockerfile.api via `apps/api/package.json` `files: ["dist", "scripts"]`.
+- `infra/caddy/Caddyfile.{domain,ip,tunnel}.template` — three reverse-proxy variants; `install.sh` materialises the chosen one to `Caddyfile` at repo root (the compose mount expects it there). All carry `flush_interval -1` on `/api/v1/search/ask` for SSE.
+- `infra/docker/Dockerfile.{api,web,worker,orchestrator,tg-bot,mcp,whisper}` — multi-stage, `node:22-slim`, non-root `mnela` user, BuildKit cache mounts. `Dockerfile.web` accepts `ARG NEXT_PUBLIC_MNELA_API_ORIGIN` because Next.js inlines `NEXT_PUBLIC_*` at build time. `Dockerfile.orchestrator` installs the Anthropic `claude` CLI at build time (network call to claude.ai/install.sh — pin with `--build-arg CLAUDE_INSTALL_REF=X.Y.Z`).
+- `infra/docker/docker-compose.yml` — three profiles. No profile = dev (postgres + redis only, for `pnpm dev`). `--profile prod` = all 6 apps + Caddy. `--profile migrate` = one-shot `migrate` service reusing the api image with `prisma migrate deploy` as CMD; runs to completion via `run --rm`.
+- `.github/workflows/release.yml` — on `v*` tag, builds + pushes all 6 multi-arch images to GHCR and publishes a GitHub Release with auto-generated changelog.
+- `docs/EXPORT_GUIDES/{chatgpt,claude,obsidian}.md`, `DEPLOYMENT.md`, `TROUBLESHOOTING.md` — user-facing operator docs.
+
 ## Project suggestions (ADR-0051)
 
 - Every `enrich_document` success triggers `ProjectsQueueService.debounceBatchSuggest(batchId)` on the import's `__import.batchId`. Five-minute debounce coalesces all docs in one batch into a single detector run.

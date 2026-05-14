@@ -19,6 +19,40 @@ creates the first admin via `POST /auth/bootstrap`.
   use Cloudflare Tunnel)
 - **Domain (recommended):** DNS A record pointing at the VPS IP
 
+## VPS prep (5 minutes before `install.sh`)
+
+The install script handles Docker for you. These are the host-level
+steps you typically still want on a fresh VPS:
+
+```bash
+# 1. SSH in as root, then update + install basics.
+apt update && apt upgrade -y
+apt install -y ca-certificates curl ufw fail2ban
+
+# 2. Open the public ports the install script will need.
+#    (Cloudflare Tunnel users: skip ufw allow 80/443 — Cloudflare proxies
+#    inbound, only outbound 7844 to cloudflared is required.)
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw --force enable
+
+# 3. (recommended on a 1 GB box) add 2 GB swap so the orchestrator
+#    doesn't OOM when a Claude subprocess + ingestion run together.
+fallocate -l 2G /swapfile
+chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 4. Optional: create a non-root sudo user. install.sh itself needs
+#    root (`EUID=0`); subsequent `mnela …` calls work fine as a
+#    sudo-capable user.
+adduser mnela-admin && usermod -aG sudo,docker mnela-admin
+```
+
+`fail2ban` is paranoia-mode against SSH brute force. `ufw` (Uncomplicated
+Firewall) blocks every port except SSH + 80 + 443. The swap is the
+single biggest reliability win on a $5 VPS.
+
 ## One-command install
 
 ```bash
@@ -156,9 +190,33 @@ postgres connection pool.
 
 Containers cap memory implicitly via Docker's defaults. If you run on a 1 GB
 VPS and BullMQ stalls, drop the worker concurrency in `/admin/system →
-Ingestion` and click **Restart Services**. The api/orchestrator have no
-hot-reload subscriber yet (PLAN.md Phase 11 / Bucket B); for those `docker
-compose restart api orchestrator` is still the way to apply the change.
+Ingestion` and click **Restart Services**. After the Phase-10 hot-reload
+work the api / orchestrator / worker all re-bind on the click; no
+container restart needed (`api.rateLimit.*` included).
+
+### Hard memory limits (optional, recommended on tiny boxes)
+
+Add `mem_limit:` per service if a single rogue process must never OOM
+the host. Drop the following into an override file
+`infra/docker/docker-compose.limits.yml`:
+
+```yaml
+services:
+  postgres: { mem_limit: 512m }
+  redis: { mem_limit: 256m }
+  api: { mem_limit: 512m }
+  web: { mem_limit: 384m }
+  worker: { mem_limit: 1g }
+  orchestrator: { mem_limit: 1g }
+  tg-bot: { mem_limit: 256m }
+  mcp: { mem_limit: 256m }
+  caddy: { mem_limit: 128m }
+```
+
+Then bring up with `-f docker-compose.yml -f docker-compose.limits.yml`.
+Tune for your hardware — the numbers above are conservative for a 4 GB
+VPS. Containers exceeding their limit are SIGKILL'd by the kernel; the
+`unless-stopped` restart policy bounces them back up.
 
 ## What's NOT yet auto-managed
 
