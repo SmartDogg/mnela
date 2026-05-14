@@ -60,6 +60,7 @@ WORKDIR /app
 COPY --from=builder --chown=mnela:mnela /out/dist ./dist
 COPY --from=builder --chown=mnela:mnela /out/node_modules ./node_modules
 COPY --from=builder --chown=mnela:mnela /out/package.json ./package.json
+COPY --from=builder --chown=mnela:mnela /out/scripts ./scripts
 COPY --chown=mnela:mnela infra/docker/healthcheck.js ./healthcheck.js
 
 # Data dir + keystore + dropbox + vault all materialise here. The compose

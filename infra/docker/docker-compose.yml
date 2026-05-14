@@ -104,12 +104,42 @@ services:
     expose:
       - '3000'
 
+  # One-shot migration runner. Uses the same image as the api but with a
+  # custom command. Invoke via:
+  #   docker compose --profile migrate run --rm migrate
+  # install.sh + restore.sh both call this; never enters the prod profile
+  # so `up -d` doesn't keep it running.
+  migrate:
+    profiles: [migrate]
+    image: ghcr.io/smartdogg/mnela-api:${MNELA_VERSION:-latest}
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    container_name: mnela-migrate
+    restart: 'no'
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      <<: *mnela-env
+    command:
+      - node
+      - node_modules/.bin/prisma
+      - migrate
+      - deploy
+      - --schema=node_modules/@mnela/db/prisma/schema.prisma
+
   web:
     profiles: [prod]
     image: ghcr.io/smartdogg/mnela-web:${MNELA_VERSION:-latest}
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.web
+      args:
+        # Next.js inlines NEXT_PUBLIC_* at build time. We MUST pass it
+        # through build args (Dockerfile.web hoists it into the builder
+        # ENV); setting it under `environment:` below would never reach
+        # the browser bundle.
+        NEXT_PUBLIC_MNELA_API_ORIGIN: ${MNELA_PUBLIC_ORIGIN:-http://localhost:3000}
     container_name: mnela-web
     restart: unless-stopped
     depends_on:
@@ -118,8 +148,9 @@ services:
       NODE_ENV: production
       PORT: '3001'
       MNELA_API_ORIGIN: http://api:3000
-      MNELA_API_INTERNAL_BASE: http://api:3000
-      NEXT_PUBLIC_MNELA_API_ORIGIN: ${MNELA_PUBLIC_ORIGIN:-http://localhost:3000}
+      # /api/v1 suffix REQUIRED — apps/web/src/lib/api/server.ts:10 +
+      # client.ts:43 concat the relative `/auth/me` etc. onto this base.
+      MNELA_API_INTERNAL_BASE: http://api:3000/api/v1
     expose:
       - '3001'
 

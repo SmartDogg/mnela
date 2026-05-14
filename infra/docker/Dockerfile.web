@@ -7,6 +7,13 @@
 
 FROM node:22-slim AS builder
 
+# Next.js inlines NEXT_PUBLIC_* variables into the client bundle at build
+# time. Compose-level env overrides on the runtime container don't reach
+# the browser. Pass these in via build args; install.sh derives them from
+# MNELA_PUBLIC_ORIGIN and docker-compose.yml plumbs the value through.
+ARG NEXT_PUBLIC_MNELA_API_ORIGIN=
+ENV NEXT_PUBLIC_MNELA_API_ORIGIN=$NEXT_PUBLIC_MNELA_API_ORIGIN
+
 ENV PNPM_HOME=/pnpm \
     PATH="/pnpm:$PATH" \
     CI=true \
