@@ -73,3 +73,9 @@ data-*.zip
 
 # Claude Code session lock (Anthropic CLI)
 .claude/
+
+# Local scratch / debug captures (LLM transcripts, ad-hoc dumps).
+# Move to apps/<app>/test/fixtures/ if intentional.
+_doc_*.txt
+_scratch_*
+nohup.out
