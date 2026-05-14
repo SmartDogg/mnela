@@ -112,7 +112,32 @@ export interface SystemClaudeStatusChangedEvent {
   type: 'system.claude_status_changed';
   payload: { available: boolean; reason?: string };
 }
-export type SystemEvent = SystemClaudeStatusChangedEvent;
+export interface BackupStartedEvent {
+  type: 'backup.started';
+  payload: { jobId: string; startedAt: string };
+}
+export interface BackupProgressEvent {
+  type: 'backup.progress';
+  payload: {
+    jobId: string;
+    stage: 'pg_dump' | 'tar_data' | 'tar_claude' | 'tar_bundle';
+    label: string;
+  };
+}
+export interface BackupDoneEvent {
+  type: 'backup.done';
+  payload: { jobId: string; filename: string; sizeBytes: number; durationMs: number };
+}
+export interface BackupFailedEvent {
+  type: 'backup.failed';
+  payload: { jobId: string; error: string; durationMs: number };
+}
+export type SystemEvent =
+  | SystemClaudeStatusChangedEvent
+  | BackupStartedEvent
+  | BackupProgressEvent
+  | BackupDoneEvent
+  | BackupFailedEvent;
 
 /**
  * Enrichment-specific live signals. Mirrors `EnrichmentEvent` from
@@ -191,6 +216,10 @@ export const ALL_EVENT_TYPES: readonly MnelaEventType[] = [
   'inbox.item_added',
   'inbox.item_resolved',
   'system.claude_status_changed',
+  'backup.started',
+  'backup.progress',
+  'backup.done',
+  'backup.failed',
   'enrichment.document.started',
   'enrichment.document.finished',
   'enrichment.queue.tick',

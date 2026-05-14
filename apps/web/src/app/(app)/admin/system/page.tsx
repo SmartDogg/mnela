@@ -40,6 +40,7 @@ import { ClaudeStatusBlock } from './_components/claude-status-block';
 import { ProviderCard } from './_components/provider-card';
 import { PerFeatureSelector } from './_components/per-feature-selector';
 import { TelegramSection } from './_components/telegram-section';
+import { BackupsSection } from './_components/backups-section';
 import { TokensSection } from './_components/tokens-section';
 
 const SECTION_ORDER: ConfigSection[] = [
@@ -250,6 +251,10 @@ export default function AdminSystemPage(): JSX.Element {
             />
           );
         })}
+
+        {/* Backups — UI for scripts/backup.sh artifacts (list, run, download, delete).
+            Restore stays CLI-only (api would shut itself down mid-operation). */}
+        <BackupsSection />
 
         {/* API tokens used to live at /admin/tokens; folded into System after v1 menu consolidation. */}
         <TokensSection />

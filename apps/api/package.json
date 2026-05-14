@@ -51,9 +51,11 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.1",
+    "tar": "^7.4.3",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/tar": "^6.1.13",
     "@mnela/ingestion": "workspace:*",
     "@mnela/worker": "workspace:*",
     "@nestjs/testing": "^11.0.0",

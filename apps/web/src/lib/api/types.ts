@@ -398,6 +398,38 @@ export interface MergedConfigEntry {
   updatedAt: string | null;
 }
 
+export interface BackupManifest {
+  mnela_backup_version: number;
+  created_at_utc: string;
+  postgres_user: string;
+  postgres_db: string;
+  source?: 'ui' | 'cli';
+  includes: {
+    postgres: boolean;
+    data_volume: boolean;
+    claude_creds: boolean;
+  };
+}
+
+export interface BackupSummary {
+  filename: string;
+  sizeBytes: number;
+  createdAt: string;
+  manifest: BackupManifest | null;
+}
+
+export interface BackupRunStatus {
+  running: boolean;
+  jobId?: string;
+  stage?: string;
+  startedAt?: string;
+}
+
+export interface BackupListResponse {
+  backups: BackupSummary[];
+  status: BackupRunStatus;
+}
+
 export interface ReloadAck {
   service: 'api' | 'worker' | 'orchestrator';
   subscriber: string;

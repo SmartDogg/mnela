@@ -138,6 +138,7 @@ cat >"$WORK/manifest.json" <<EOF
   "postgres_user": "$POSTGRES_USER",
   "postgres_db": "$POSTGRES_DB",
   "compose_project_name": "$COMPOSE_PROJECT_NAME",
+  "source": "cli",
   "includes": {
     "postgres": true,
     "data_volume": true,
@@ -147,6 +148,19 @@ cat >"$WORK/manifest.json" <<EOF
 EOF
 
 tar -C "$WORK" -czf "$OUT" .
+
+# Also publish a copy into the mnela-backups named volume so the
+# /admin/system → Backups UI lists CLI-produced bundles alongside
+# UI-produced ones. Silent skip if the volume doesn't exist (dev mode
+# without `--profile prod up -d`).
+if docker volume inspect mnela-backups >/dev/null 2>&1; then
+  OUT_NAME=$(basename "$OUT")
+  docker run --rm \
+    -v mnela-backups:/out \
+    -v "$OUT:/in/bundle.tar.gz:ro" \
+    alpine:3 \
+    cp "/in/bundle.tar.gz" "/out/$OUT_NAME" || true
+fi
 
 SIZE=$(wc -c < "$OUT")
 SIZE_H=$(numfmt --to=iec --suffix=B "$SIZE" 2>/dev/null || echo "${SIZE}B")

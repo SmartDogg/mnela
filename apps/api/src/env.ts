@@ -24,6 +24,13 @@ const EnvSchema = z.object({
 
   MNELA_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   MNELA_DATA_DIR: z.string().default('./data'),
+  /**
+   * Where backup .tar.gz files land. In prod a named `mnela-backups`
+   * volume is mounted here; in dev the resolver below points it inside
+   * the resolved data dir so both CLI (`scripts/backup.sh`) and the UI
+   * Backups card write to the same place.
+   */
+  MNELA_BACKUPS_DIR: z.string().optional(),
 
   /** Boot-time fallback for the global rate limit when SystemConfig is
    * not yet reachable. Live tuning lives at `api.rateLimit.global`. */
@@ -82,4 +89,18 @@ export function claudeMcpConfigPath(env: AppEnv = loadEnv()): string {
     env.MNELA_CLAUDE_MCP_CONFIG ??
     path.resolve(resolvedDataDir(env), 'claude/claude-mcp-config.json')
   );
+}
+
+/**
+ * Where the backup bundle .tar.gz files live. Mounted in prod as the
+ * named `mnela-backups` volume at `/backups`; in dev it defaults to a
+ * sibling of MNELA_DATA_DIR so both CLI and UI converge.
+ */
+export function backupsDir(env: AppEnv = loadEnv()): string {
+  if (env.MNELA_BACKUPS_DIR && env.MNELA_BACKUPS_DIR.length > 0) {
+    return path.isAbsolute(env.MNELA_BACKUPS_DIR)
+      ? env.MNELA_BACKUPS_DIR
+      : path.resolve(resolveDataDir(env.MNELA_BACKUPS_DIR));
+  }
+  return path.resolve(resolvedDataDir(env), '..', 'backups');
 }

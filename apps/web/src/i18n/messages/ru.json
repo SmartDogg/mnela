@@ -639,9 +639,41 @@
           "description": "Авто-подсказки проектов. Выключите детектор — пост-импортный скан остановится и токены тратиться не будут. По умолчанию ВКЛ."
         },
         "storage": {
-          "title": "Хранилище и бэкап",
-          "description": "Статистика БД и операции бэкапа.",
-          "backupNote": "Инструменты бэкапа в плане. Пока делайте регулярные `pg_dump` из MNELA_DATA_DIR."
+          "title": "Хранилище",
+          "description": "Размер БД и вложений.",
+          "backupNote": "Операции с бэкапом — в карточке Backups ниже."
+        },
+        "backups": {
+          "title": "Бэкапы",
+          "subtitle": "Снимок БД + data volume в один .tar.gz. Зашифрованные ключи провайдеров и токен Telegram-бота переезжают через keystore.",
+          "runDescription": "Запустить бэкап сейчас или поставить ежедневный cron (см. DEPLOYMENT.md).",
+          "runButton": "Сделать бэкап",
+          "runStartedToast": "Бэкап запущен — прогресс в реальном времени.",
+          "runDoneToast": "Бэкап готов: {filename} ({size})",
+          "runFailedToast": "Бэкап не удался: {error}",
+          "runFailedGenericToast": "Не удалось запустить бэкап",
+          "runConflictToast": "Другой бэкап уже выполняется.",
+          "loading": "Загружаю бэкапы…",
+          "empty": "Бэкапов пока нет. Нажмите «Сделать бэкап» чтобы создать первый.",
+          "download": "Скачать",
+          "delete": "Удалить",
+          "cancel": "Отмена",
+          "confirmDelete": "Удалить",
+          "confirmDeleteTitle": "Удалить этот бэкап?",
+          "confirmDeleteDescription": "{filename} будет навсегда удалён с volume. Копии на других хостах не затронуты.",
+          "deleteOk": "Бэкап удалён",
+          "deleteFailed": "Не удалось удалить бэкап",
+          "elapsed": "прошло {seconds} с",
+          "restoreNoteTitle": "Восстановление",
+          "restoreNoteBody": "Восстановление выполняется на хосте — api сам себя останавливает по ходу операции, поэтому из UI это сделать нельзя. Скопируйте .tar.gz на целевую машину и запустите:",
+          "stages": {
+            "starting": "Запуск",
+            "pg_dump": "Дамп PostgreSQL",
+            "tar_data": "Архив data volume",
+            "tar_claude": "Архив креденшелов Claude",
+            "tar_bundle": "Сборка .tar.gz",
+            "running": "Выполняется"
+          }
         },
         "advanced": {
           "title": "Расширенные",

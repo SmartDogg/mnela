@@ -639,9 +639,41 @@
           "description": "Auto-suggested projects. Turn the suggestion detector off to stop the post-import scan and avoid any token use. Default ON."
         },
         "storage": {
-          "title": "Storage & Backup",
-          "description": "Database stats and backup operations.",
-          "backupNote": "Backup tooling is on the roadmap. For now, take regular `pg_dump`s of MNELA_DATA_DIR."
+          "title": "Storage",
+          "description": "Database + attachments footprint.",
+          "backupNote": "See the Backups card below for snapshot operations."
+        },
+        "backups": {
+          "title": "Backups",
+          "subtitle": "Snapshot the database + data volume into a portable .tar.gz. Round-trips encrypted provider keys and the Telegram bot token via the keystore.",
+          "runDescription": "Run a backup now or schedule daily via cron (see DEPLOYMENT.md).",
+          "runButton": "Run backup",
+          "runStartedToast": "Backup started — progress streams live.",
+          "runDoneToast": "Backup complete: {filename} ({size})",
+          "runFailedToast": "Backup failed: {error}",
+          "runFailedGenericToast": "Could not start backup",
+          "runConflictToast": "Another backup is already running.",
+          "loading": "Loading backups…",
+          "empty": "No backups yet. Click Run backup to create the first one.",
+          "download": "Download",
+          "delete": "Delete",
+          "cancel": "Cancel",
+          "confirmDelete": "Delete",
+          "confirmDeleteTitle": "Delete this backup?",
+          "confirmDeleteDescription": "{filename} will be permanently removed from the backups volume. Existing copies on other hosts are unaffected.",
+          "deleteOk": "Backup deleted",
+          "deleteFailed": "Could not delete backup",
+          "elapsed": "{seconds}s elapsed",
+          "restoreNoteTitle": "Restore",
+          "restoreNoteBody": "Restore happens on the host — the api shuts itself down mid-operation, so it cannot drive its own restore. Copy the .tar.gz to the target machine and run:",
+          "stages": {
+            "starting": "Starting",
+            "pg_dump": "Dumping PostgreSQL",
+            "tar_data": "Archiving data volume",
+            "tar_claude": "Archiving Claude credentials",
+            "tar_bundle": "Bundling .tar.gz",
+            "running": "Running"
+          }
         },
         "advanced": {
           "title": "Advanced",

@@ -162,12 +162,49 @@ export interface SystemServiceReloadAckEvent {
     note?: string;
   };
 }
+/**
+ * Backup lifecycle frames published by `apps/api/src/modules/system/backups`
+ * during a UI-triggered backup. The admin's Backups card subscribes via the
+ * existing Socket.io `/live` namespace to render a live progress bar.
+ *
+ * `jobId` is the cuid generated when the run starts; UI uses it to discard
+ * frames from previous (already-done) backups.
+ */
+export interface BackupStartedEvent {
+  type: 'backup.started';
+  payload: { jobId: string; startedAt: string };
+}
+export interface BackupProgressEvent {
+  type: 'backup.progress';
+  payload: {
+    jobId: string;
+    stage: 'pg_dump' | 'tar_data' | 'tar_claude' | 'tar_bundle';
+    label: string;
+  };
+}
+export interface BackupDoneEvent {
+  type: 'backup.done';
+  payload: {
+    jobId: string;
+    filename: string;
+    sizeBytes: number;
+    durationMs: number;
+  };
+}
+export interface BackupFailedEvent {
+  type: 'backup.failed';
+  payload: { jobId: string; error: string; durationMs: number };
+}
 export type SystemEvent =
   | SystemClaudeStatusChangedEvent
   | SystemWhisperStatusChangedEvent
   | SystemTelegramReloadEvent
   | SystemServiceReloadEvent
-  | SystemServiceReloadAckEvent;
+  | SystemServiceReloadAckEvent
+  | BackupStartedEvent
+  | BackupProgressEvent
+  | BackupDoneEvent
+  | BackupFailedEvent;
 
 /**
  * Enrichment-specific live signals. The pipeline already emits
