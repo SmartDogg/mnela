@@ -11,6 +11,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  type OnModuleInit,
   NotFoundException,
 } from '@nestjs/common';
 import { publishEvent } from '@mnela/queue';
@@ -21,7 +22,12 @@ import { backupsDir, loadEnv, resolvedDataDir } from '../../../env.js';
 import { RedisService } from '../../../redis.service.js';
 
 const BACKUP_LOCK_KEY = 'mnela:backup:lock';
-const BACKUP_LOCK_TTL_SECONDS = 60 * 30; // 30 min — long enough for a multi-GB vault
+// Short TTL + heartbeat from the running pipeline. Without heartbeat
+// (e.g. the api process gets killed mid-backup — common in dev with
+// `node --watch` on every file save) the lock auto-expires within this
+// window so a new run isn't blocked indefinitely.
+const BACKUP_LOCK_TTL_SECONDS = 60 * 5;
+const BACKUP_LOCK_HEARTBEAT_MS = 30_000;
 
 export interface BackupSummary {
   filename: string;
@@ -52,11 +58,40 @@ export interface BackupRunStatus {
 }
 
 @Injectable()
-export class BackupsService {
+export class BackupsService implements OnModuleInit {
   private readonly logger = new Logger(BackupsService.name);
   private active: { jobId: string; stage: string; startedAt: string } | null = null;
 
   constructor(private readonly redis: RedisService) {}
+
+  /**
+   * On boot: if a previous process held the backup lock and died before
+   * `backup.done`, the lock will still be in Redis but no pipeline is
+   * running. Clear it and publish `backup.failed` so any UI client that
+   * was watching the old job stops spinning.
+   *
+   * We don't know the prior jobId — the lock VALUE is it. Read, delete,
+   * emit. This runs once per api boot and is racy-but-safe: if another
+   * api replica is genuinely mid-backup, its heartbeat will re-acquire
+   * the lock within `BACKUP_LOCK_HEARTBEAT_MS`. Single-tenant Mnela has
+   * exactly one api anyway.
+   */
+  async onModuleInit(): Promise<void> {
+    const orphanJobId = await this.redis.client.get(BACKUP_LOCK_KEY);
+    if (!orphanJobId) return;
+    await this.redis.client.del(BACKUP_LOCK_KEY).catch(() => undefined);
+    await publishEvent(this.redis.client, {
+      type: 'backup.failed',
+      payload: {
+        jobId: orphanJobId,
+        error: 'api process restarted before the backup finished',
+        durationMs: 0,
+      },
+    }).catch(() => undefined);
+    this.logger.warn(
+      `cleared orphan backup lock from previous boot (jobId=${orphanJobId}) — pipeline did not survive process restart`,
+    );
+  }
 
   /**
    * Resolved path where bundles live. Created on demand — first list/run
@@ -172,6 +207,14 @@ export class BackupsService {
     const out = path.join(backupsRoot, filename);
     const dataDir = resolvedDataDir(env);
 
+    // Heartbeat — extend the lock TTL while we're alive so a killed
+    // process auto-releases within BACKUP_LOCK_TTL_SECONDS instead of
+    // blocking the next run for 30 minutes.
+    const heartbeat = setInterval(() => {
+      this.redis.client.expire(BACKUP_LOCK_KEY, BACKUP_LOCK_TTL_SECONDS).catch(() => undefined);
+    }, BACKUP_LOCK_HEARTBEAT_MS);
+    heartbeat.unref();
+
     try {
       // 1. pg_dump → work/postgres.sql.gz
       await this.setStage(jobId, 'pg_dump', 'Dumping PostgreSQL');
@@ -239,6 +282,7 @@ export class BackupsService {
       await unlink(out).catch(() => undefined);
       throw err;
     } finally {
+      clearInterval(heartbeat);
       this.active = null;
       await this.redis.client.del(BACKUP_LOCK_KEY).catch(() => undefined);
       await rm(work, { recursive: true, force: true }).catch(() => undefined);
