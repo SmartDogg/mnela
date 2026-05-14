@@ -430,6 +430,24 @@ export interface BackupListResponse {
   status: BackupRunStatus;
 }
 
+export interface RestoreValidationResult {
+  valid: boolean;
+  manifest: BackupManifest | null;
+  keystoreMatches: boolean | 'no-rows';
+  error?: string;
+}
+
+export interface RestoreLastResult {
+  jobId: string;
+  filename: string;
+  status: 'running' | 'done' | 'failed';
+  stage?: string;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  error?: string;
+}
+
 export interface ReloadAck {
   service: 'api' | 'worker' | 'orchestrator';
   subscriber: string;

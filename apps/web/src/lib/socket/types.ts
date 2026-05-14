@@ -132,12 +132,43 @@ export interface BackupFailedEvent {
   type: 'backup.failed';
   payload: { jobId: string; error: string; durationMs: number };
 }
+export interface BackupRestoreStartedEvent {
+  type: 'backup.restore.started';
+  payload: { jobId: string; filename: string; startedAt: string };
+}
+export interface BackupRestoreProgressEvent {
+  type: 'backup.restore.progress';
+  payload: {
+    jobId: string;
+    stage:
+      | 'validating'
+      | 'draining'
+      | 'pg_restore'
+      | 'untar_data'
+      | 'migrate'
+      | 'reopen'
+      | 'reload';
+    label: string;
+  };
+}
+export interface BackupRestoreDoneEvent {
+  type: 'backup.restore.done';
+  payload: { jobId: string; filename: string; durationMs: number };
+}
+export interface BackupRestoreFailedEvent {
+  type: 'backup.restore.failed';
+  payload: { jobId: string; error: string; durationMs: number };
+}
 export type SystemEvent =
   | SystemClaudeStatusChangedEvent
   | BackupStartedEvent
   | BackupProgressEvent
   | BackupDoneEvent
-  | BackupFailedEvent;
+  | BackupFailedEvent
+  | BackupRestoreStartedEvent
+  | BackupRestoreProgressEvent
+  | BackupRestoreDoneEvent
+  | BackupRestoreFailedEvent;
 
 /**
  * Enrichment-specific live signals. Mirrors `EnrichmentEvent` from
@@ -220,6 +251,10 @@ export const ALL_EVENT_TYPES: readonly MnelaEventType[] = [
   'backup.progress',
   'backup.done',
   'backup.failed',
+  'backup.restore.started',
+  'backup.restore.progress',
+  'backup.restore.done',
+  'backup.restore.failed',
   'enrichment.document.started',
   'enrichment.document.finished',
   'enrichment.queue.tick',

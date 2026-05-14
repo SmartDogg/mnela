@@ -1,9 +1,19 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Database, Download, Loader2, Play, Trash2 } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Database,
+  Download,
+  Loader2,
+  Play,
+  RotateCcw,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import {
@@ -22,17 +32,28 @@ import { ApiError, api } from '@/lib/api/client';
 import type { BackupListResponse, BackupSummary } from '@/lib/api/types';
 import { useLiveEvents } from '@/lib/socket/useLiveEvents';
 import { formatBytes } from '@/lib/utils';
+import { RestoreDialog } from './restore-dialog';
+import { RestoreOverlay } from './restore-overlay';
 
 const BACKUP_EVENT_TYPES = [
   'backup.started',
   'backup.progress',
   'backup.done',
   'backup.failed',
+  'backup.restore.started',
+  'backup.restore.done',
+  'backup.restore.failed',
 ] as const;
 
 interface ActiveRun {
   jobId: string;
   stage: string;
+  startedAt: number;
+}
+
+interface ActiveRestore {
+  jobId: string;
+  filename: string;
   startedAt: number;
 }
 
@@ -51,6 +72,9 @@ export function BackupsSection(): JSX.Element {
   // locally to keep the UI consistent even if /admin/backups list lags.
   const { events } = useLiveEvents({ types: [...BACKUP_EVENT_TYPES] });
   const [active, setActive] = useState<ActiveRun | null>(null);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
+  const [activeRestore, setActiveRestore] = useState<ActiveRestore | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (events.length === 0) return;
@@ -81,6 +105,18 @@ export function BackupsSection(): JSX.Element {
         setActive(null);
         toast.error(t('runFailedToast', { error: e.payload.error }));
         queryClient.invalidateQueries({ queryKey: ['admin', 'backups'] });
+        break;
+      case 'backup.restore.started':
+        setActiveRestore({
+          jobId: e.payload.jobId,
+          filename: e.payload.filename,
+          startedAt: Date.now(),
+        });
+        break;
+      case 'backup.restore.done':
+      case 'backup.restore.failed':
+        // Overlay handles its own polling-based termination; we leave
+        // it mounted so the user sees the result + auto-redirect.
         break;
     }
   }, [events, queryClient, t]);
@@ -127,6 +163,50 @@ export function BackupsSection(): JSX.Element {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : t('deleteFailed')),
   });
 
+  const upload = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      // Direct fetch — `api.post` would JSON-stringify the body.
+      const res = await fetch('/_api/admin/backups/upload', {
+        method: 'POST',
+        body: fd,
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new ApiError(text || `HTTP ${res.status}`, res.status);
+      }
+      return res.json() as Promise<{ filename: string; sizeBytes: number }>;
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'backups'] });
+      toast.success(t('uploadOk', { filename: res.filename, size: formatBytes(res.sizeBytes) }));
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : t('uploadFailed')),
+  });
+
+  const restore = useMutation({
+    mutationFn: ({ filename, backupFirst }: { filename: string; backupFirst: boolean }) =>
+      runRestoreFlow(filename, backupFirst, run.mutateAsync, t),
+    onSuccess: (res) => {
+      setActiveRestore({
+        jobId: res.jobId,
+        filename: res.filename,
+        startedAt: Date.now(),
+      });
+      setRestoreTarget(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        toast.warning(t('restoreConflict'));
+      } else {
+        toast.error(err instanceof ApiError ? err.message : t('restoreFailed'));
+      }
+      setRestoreTarget(null);
+    },
+  });
+
   const backups = listQuery.data?.backups ?? [];
   const totalSize = useMemo(() => backups.reduce((s, b) => s + b.sizeBytes, 0), [backups]);
 
@@ -168,14 +248,46 @@ export function BackupsSection(): JSX.Element {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="text-sm text-muted-foreground">{t('runDescription')}</div>
-            <Button onClick={() => run.mutate()} disabled={isRunning} size="sm" className="gap-1.5">
-              {isRunning ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              {t('runButton')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".tar.gz,.tgz,application/gzip,application/x-gzip"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) upload.mutate(file);
+                  e.target.value = '';
+                }}
+              />
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={upload.isPending || isRunning}
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+              >
+                {upload.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                {t('uploadButton')}
+              </Button>
+              <Button
+                onClick={() => run.mutate()}
+                disabled={isRunning}
+                size="sm"
+                className="gap-1.5"
+              >
+                {isRunning ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {t('runButton')}
+              </Button>
+            </div>
           </div>
 
           {active && (
@@ -198,14 +310,35 @@ export function BackupsSection(): JSX.Element {
                   key={bk.filename}
                   backup={bk}
                   onDelete={() => deleteOne.mutate(bk.filename)}
+                  onRestore={() => setRestoreTarget(bk.filename)}
                   deleting={deleteOne.isPending}
+                  restoreDisabled={activeRestore !== null || restore.isPending}
                 />
               ))}
             </ul>
           )}
 
-          <RestoreNote />
+          <RestoreCliNote />
         </CardContent>
+      )}
+
+      {restoreTarget && (
+        <RestoreDialog
+          filename={restoreTarget}
+          open={true}
+          onClose={() => setRestoreTarget(null)}
+          onConfirmed={({ backupFirst }) =>
+            restore.mutate({ filename: restoreTarget, backupFirst })
+          }
+        />
+      )}
+
+      {activeRestore && (
+        <RestoreOverlay
+          jobId={activeRestore.jobId}
+          filename={activeRestore.filename}
+          startedAt={activeRestore.startedAt}
+        />
       )}
     </Card>
   );
@@ -241,11 +374,15 @@ function ActiveRunBanner({
 function BackupRow({
   backup,
   onDelete,
+  onRestore,
   deleting,
+  restoreDisabled,
 }: {
   backup: BackupSummary;
   onDelete: () => void;
+  onRestore: () => void;
   deleting: boolean;
+  restoreDisabled: boolean;
 }): JSX.Element {
   const t = useTranslations('admin.system.sections.backups');
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -280,7 +417,7 @@ function BackupRow({
           )}
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
         <Button asChild variant="outline" size="sm" className="gap-1.5">
           <a
             href={`/_api/admin/backups/${encodeURIComponent(backup.filename)}/download`}
@@ -289,6 +426,17 @@ function BackupRow({
             <Download className="h-3.5 w-3.5" />
             {t('download')}
           </a>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={onRestore}
+          disabled={restoreDisabled}
+          title={t('restore.restoreTooltip')}
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          {t('restore.restoreButton')}
         </Button>
         <Button
           variant="ghost"
@@ -344,17 +492,42 @@ function ContentBadge({ label, included }: { label: string; included: boolean })
   );
 }
 
-function RestoreNote(): JSX.Element {
+function RestoreCliNote(): JSX.Element {
   const t = useTranslations('admin.system.sections.backups');
   return (
     <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-      <p className="font-medium text-foreground">{t('restoreNoteTitle')}</p>
-      <p className="mt-1">{t('restoreNoteBody')}</p>
+      <p className="font-medium text-foreground">{t('restoreCliNoteTitle')}</p>
+      <p className="mt-1">{t('restoreCliNoteBody')}</p>
       <pre className="mt-2 rounded bg-background p-2 font-mono">
         mnela restore &lt;file.tar.gz&gt;
       </pre>
     </div>
   );
+}
+
+async function runRestoreFlow(
+  filename: string,
+  backupFirst: boolean,
+  startBackup: () => Promise<{ jobId: string }>,
+  t: (key: string) => string,
+): Promise<{ jobId: string; filename: string }> {
+  if (backupFirst) {
+    toast.info(t('safetyBackupStart'));
+    await startBackup();
+    // Poll /admin/backups until running=false (i.e. safety backup done).
+    // Cap at 60s — restore should not block forever on a stuck backup.
+    const start = Date.now();
+    while (Date.now() - start < 60_000) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const list = await api.get<{ status: { running: boolean } }>('/admin/backups');
+      if (!list.status.running) break;
+    }
+    toast.success(t('safetyBackupDone'));
+  }
+  const res = await api.post<{ jobId: string }>(
+    `/admin/backups/${encodeURIComponent(filename)}/restore`,
+  );
+  return { jobId: res.jobId, filename };
 }
 
 function formatRelative(date: Date): string {

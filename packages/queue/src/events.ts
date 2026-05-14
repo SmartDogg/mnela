@@ -195,6 +195,41 @@ export interface BackupFailedEvent {
   type: 'backup.failed';
   payload: { jobId: string; error: string; durationMs: number };
 }
+
+/**
+ * Restore lifecycle frames. The api process never shuts down — instead
+ * it flips a `restoring` flag that turns every non-status request into
+ * 503 while pg_restore + /data untar run in-process. UI subscribes to
+ * these frames to render a full-page overlay and to detect "done" so
+ * it can redirect to /login (sessions are wiped by the DB replace).
+ */
+export interface BackupRestoreStartedEvent {
+  type: 'backup.restore.started';
+  payload: { jobId: string; filename: string; startedAt: string };
+}
+export interface BackupRestoreProgressEvent {
+  type: 'backup.restore.progress';
+  payload: {
+    jobId: string;
+    stage:
+      | 'validating'
+      | 'draining'
+      | 'pg_restore'
+      | 'untar_data'
+      | 'migrate'
+      | 'reopen'
+      | 'reload';
+    label: string;
+  };
+}
+export interface BackupRestoreDoneEvent {
+  type: 'backup.restore.done';
+  payload: { jobId: string; filename: string; durationMs: number };
+}
+export interface BackupRestoreFailedEvent {
+  type: 'backup.restore.failed';
+  payload: { jobId: string; error: string; durationMs: number };
+}
 export type SystemEvent =
   | SystemClaudeStatusChangedEvent
   | SystemWhisperStatusChangedEvent
@@ -204,7 +239,11 @@ export type SystemEvent =
   | BackupStartedEvent
   | BackupProgressEvent
   | BackupDoneEvent
-  | BackupFailedEvent;
+  | BackupFailedEvent
+  | BackupRestoreStartedEvent
+  | BackupRestoreProgressEvent
+  | BackupRestoreDoneEvent
+  | BackupRestoreFailedEvent;
 
 /**
  * Enrichment-specific live signals. The pipeline already emits

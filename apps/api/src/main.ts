@@ -11,6 +11,7 @@ import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module.js';
 import { loadEnv } from './env.js';
 import { ProblemDetailsFilter } from './filters/problem-details.filter.js';
+import { maintenanceMiddleware } from './middleware/maintenance.js';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
@@ -21,6 +22,9 @@ async function bootstrap(): Promise<void> {
   app.useLogger(app.get(PinoLogger));
 
   app.use(helmet({ contentSecurityPolicy: false }));
+  // Maintenance gate must run before cookieParser so even unauthenticated
+  // calls receive a clean 503 during restore.
+  app.use(maintenanceMiddleware);
   app.use(cookieParser(env.COOKIE_SECRET));
 
   app.setGlobalPrefix('api/v1', { exclude: ['api/docs', 'api/docs-json'] });
