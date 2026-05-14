@@ -157,6 +157,68 @@ docker compose -f infra/docker/docker-compose.yml -p mnela exec postgres \
 
 Now `/setup` works again — but every session is invalidated.
 
+## Telegram bot не отвечает на сообщения
+
+**Симптом.** Бот в Telegram молчит на любые сообщения; в логах
+`mnela-tg-bot` повторяющиеся `401 Unauthorized` от api или crash-loop
+по `MNELA_INTERNAL_TOKEN must be at least 20 chars`.
+
+**Причина.** apps/tg-bot ходит в apps/api как Bearer `MNELA_INTERNAL_TOKEN`.
+API ищет в БД запись `AuthToken.tokenHash = sha256(token)`. Если строки
+нет — все вызовы 401. Это случается когда:
+
+1. install.sh запускался до 2026-05 (без `apps/api/scripts/issue-bootstrap-token.mjs`).
+2. `MNELA_INTERNAL_TOKEN` был ротирован в `.env`, но в БД остался старый hash.
+3. Запись `AuthToken` была отозвана (`revokedAt IS NOT NULL`).
+
+**Лечение.**
+
+```bash
+# Из репо-рута. Перевыпускает запись, идемпотентно.
+docker compose -f infra/docker/docker-compose.yml -p mnela exec -T \
+  -e MNELA_INTERNAL_TOKEN="$(grep ^MNELA_INTERNAL_TOKEN= .env | cut -d= -f2-)" \
+  api node scripts/issue-bootstrap-token.mjs
+
+docker compose -f infra/docker/docker-compose.yml -p mnela restart tg-bot
+```
+
+Если ротируете `MNELA_INTERNAL_TOKEN` сами — сначала отзовите старую
+запись через `/admin/system → API tokens`, потом обновите `.env`, потом
+выполните команду выше.
+
+## Web показывает "Runtime TypeError: fetch failed" на любой странице
+
+**Симптом.** Любая страница на :3001 падает с `serverFetch / fetch failed`
+в трейсе. Health-чек api при этом отвечает 200.
+
+**Причина — одна из двух.**
+
+1. **api-процесс не запущен** (typical post-pnpm-dev). Проверь:
+
+   ```bash
+   curl -sf http://localhost:3000/api/v1/system/health || echo "api down"
+   ```
+
+2. **`MNELA_API_INTERNAL_BASE` без суффикса `/api/v1`** (был баг до
+   2026-05-15). `apps/web/src/lib/api/server.ts` конкатит относительные
+   пути вида `/auth/me` к base. Без суффикса получается
+   `http://api:3000/auth/me` → 404. В compose должно быть
+   `MNELA_API_INTERNAL_BASE: http://api:3000/api/v1`.
+
+**Лечение.**
+
+```bash
+# Перезапустить api в dev:
+pnpm --filter @mnela/api dev
+
+# Или production:
+docker compose -f infra/docker/docker-compose.yml -p mnela restart api web
+
+# Если фиксили compose:
+grep MNELA_API_INTERNAL_BASE infra/docker/docker-compose.yml
+# должно быть http://api:3000/api/v1
+```
+
 ## "MCP config file not found" in orchestrator logs
 
 The orchestrator generates `${MNELA_DATA_DIR}/claude/claude-mcp-config.json`
