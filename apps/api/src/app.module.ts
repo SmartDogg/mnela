@@ -20,6 +20,7 @@ import { ProvidersModule } from './modules/providers/providers.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SystemModule } from './modules/system/system.module.js';
 import { TelegramModule } from './modules/telegram/telegram.module.js';
+import { rateLimitHolder } from './modules/system/rate-limit.holder.js';
 import { PrismaModule, RepositoriesModule, SystemConfigRepository } from '@mnela/db';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis.module.js';
@@ -49,29 +50,25 @@ const env = loadEnv();
         },
       },
     }),
-    // ThrottlerModule is configured once at NestJS DI-graph construction;
-    // live re-configure would require rebuilding the full app. The
-    // /admin/system Restart Services button does NOT (and cannot
-    // honestly) hot-reload it — the api ReloadService registers a
-    // "noop" handler that surfaces a clear note in the admin overlay
-    // so the operator knows changes to `api.rateLimit.*` only take
-    // effect after a real OS-level restart. See
-    // ./modules/system/throttler-reload.boot.ts.
-    //
-    // We deliberately read env here as the BOOT default (zod fallback)
-    // before SystemConfig is even reachable; if the registry override
-    // exists, the boot-time read in AppModule.imports will use it.
+    // ThrottlerModule is configured once at NestJS DI-graph construction,
+    // but `limit` accepts a `Resolvable<number> = number | ((ctx) =>
+    // Promise<number>)` — we pass a function backed by `rateLimitHolder`
+    // (10s in-memory cache, invalidated by RateLimitReloadBoot on
+    // service_reload). Net effect: changes to `api.rateLimit.global` /
+    // `api.rateLimit.login` from /admin/system take effect on the next
+    // inbound request, no process restart required.
     ThrottlerModule.forRootAsync({
       imports: [PrismaModule, RepositoriesModule],
       inject: [SystemConfigRepository],
-      useFactory: async (systemConfig: SystemConfigRepository) => {
-        const { readRegistryValue } = await import('@mnela/core');
-        const limit = await readRegistryValue<number>(
-          systemConfig,
-          'api.rateLimit.global',
-          env.RATE_LIMIT_GLOBAL_PER_MINUTE,
-        );
-        return [{ name: 'default', ttl: 60_000, limit }];
+      useFactory: (systemConfig: SystemConfigRepository) => {
+        rateLimitHolder.bind(systemConfig);
+        return [
+          {
+            name: 'default',
+            ttl: 60_000,
+            limit: () => rateLimitHolder.getGlobal(),
+          },
+        ];
       },
     }),
     PrismaModule,

@@ -4,22 +4,22 @@ import type { Redis } from 'ioredis';
 
 import { RedisService } from '../../redis.service.js';
 
-export type ReloadHandler = () => Promise<{ note?: string } | void>;
+export type ReloadHandler = () => Promise<void>;
 
 const SERVICE_NAME = 'api' as const;
 
 /**
  * In-process hot-reload for the api process. Mirrors the worker /
  * orchestrator ReloadService: subscribers (SearchService weights,
- * Throttler honest-noop, …) register a callback that re-reads the
+ * rate-limit holder cache, …) register a callback that re-reads the
  * registry. Each handler emits a `system.service_reload_ack` frame
  * the SystemService.requestRestart caller collects to render an
  * honest per-subscriber overlay instead of a blind timer.
  *
- * `ThrottlerModule` is bound at DI-graph construction so it can't be
- * hot-reloaded in-place — that handler registers as a "noop" with a
- * note so the operator knows the rate-limit change really needs an
- * OS-level restart. Don't silently lie about it.
+ * `ThrottlerModule.forRootAsync` uses `Resolvable<number>` for `limit`
+ * (a function called per-request), so `api.rateLimit.*` IS hot-
+ * reloadable — see `RateLimitReloadBoot` + `rateLimitHolder` for the
+ * cache-invalidation glue.
  */
 @Injectable()
 export class ReloadService implements OnModuleInit, OnModuleDestroy {
@@ -32,11 +32,6 @@ export class ReloadService implements OnModuleInit, OnModuleDestroy {
   register(name: string, handler: ReloadHandler): void {
     this.handlers.push({ name, fn: handler });
     this.logger.debug(`reload handler registered: ${name}`);
-  }
-
-  registerNoop(name: string, note: string): void {
-    this.handlers.push({ name, fn: async () => ({ note }) });
-    this.logger.debug(`reload noop handler registered: ${name} (${note})`);
   }
 
   async onModuleInit(): Promise<void> {
@@ -65,12 +60,10 @@ export class ReloadService implements OnModuleInit, OnModuleDestroy {
     for (const { name, fn } of this.handlers) {
       const startedAt = Date.now();
       try {
-        const result = await fn();
+        await fn();
         const durationMs = Date.now() - startedAt;
-        const note = result && typeof result === 'object' ? result.note : undefined;
-        const status = note ? 'noop' : 'ok';
-        this.logger.debug(`reload handler ${status}: ${name} (${durationMs}ms)`);
-        await this.publishAck(requestId, name, { status, durationMs, note });
+        this.logger.debug(`reload handler ok: ${name} (${durationMs}ms)`);
+        await this.publishAck(requestId, name, { status: 'ok', durationMs });
       } catch (err) {
         const durationMs = Date.now() - startedAt;
         const message = err instanceof Error ? err.message : String(err);

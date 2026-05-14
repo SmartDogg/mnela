@@ -349,11 +349,10 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     group: 'api',
     section: 'api',
     description:
-      'Requests / minute per IP on the global NestJS throttler. Default 100 fits a single-user vault. Restart the api after changing — ThrottlerModule is configured once at startup.',
+      'Requests / minute per IP on the global NestJS throttler. Default 100 fits a single-user vault. Hot-reloaded on Restart Services via `rateLimitHolder` (10s cache, invalidated by the reload event).',
     default: 100,
     min: 1,
     max: 100_000,
-    requiresRestart: true,
   },
   'api.rateLimit.login': {
     key: 'api.rateLimit.login',
@@ -361,11 +360,10 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
     group: 'api',
     section: 'api',
     description:
-      'Stricter window on the /auth/login endpoint — guards against credential-stuffing.',
+      'Stricter window on the /auth/login endpoint — guards against credential-stuffing. Hot-reloaded the same way as `api.rateLimit.global`.',
     default: 10,
     min: 1,
     max: 1000,
-    requiresRestart: true,
   },
 
   // ---- Ingestion: Dropbox watcher toggle (was env WORKER_DROPBOX_DISABLED) ----

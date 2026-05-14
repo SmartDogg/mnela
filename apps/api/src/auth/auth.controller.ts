@@ -16,6 +16,7 @@ import type { Request, Response } from 'express';
 
 import { Audit } from '../audit/audit.decorator.js';
 import { loadEnv } from '../env.js';
+import { rateLimitHolder } from '../modules/system/rate-limit.holder.js';
 import { AuthService } from './auth.service.js';
 import { CreateTokenDto, LoginDto } from './dto.js';
 import { CurrentPrincipal } from './principal.decorator.js';
@@ -31,7 +32,11 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(200)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  // Stricter window than the global throttler — guards against credential
+  // stuffing. The numeric limit is resolved per-request from
+  // `rateLimitHolder` so /admin/system → `api.rateLimit.login` is
+  // hot-reloadable without a process restart (see RateLimitReloadBoot).
+  @Throttle({ default: { limit: () => rateLimitHolder.getLogin(), ttl: 60_000 } })
   @ApiOperation({ summary: 'Log in with username + password, sets a session cookie' })
   @ApiResponse({ status: 200, description: 'Login OK, sets HttpOnly signed cookie' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
