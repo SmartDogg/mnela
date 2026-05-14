@@ -96,3 +96,68 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  docker-build-smoke:
+    name: Docker build smoke
+    runs-on: ubuntu-latest
+    # Cheap PR check: each Dockerfile completes its multi-stage build
+    # (no push). Catches Dockerfile bitrot before a release tag has to.
+    # ~6-8 minutes total with buildx caching.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.api
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.web
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Build worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.worker
+          push: false
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,scope=worker,mode=max
+
+      - name: Build orchestrator image (with claude CLI)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.orchestrator
+          push: false
+          cache-from: type=gha,scope=orchestrator
+          cache-to: type=gha,scope=orchestrator,mode=max
+
+      - name: Build tg-bot image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.tg-bot
+          push: false
+          cache-from: type=gha,scope=tg-bot
+          cache-to: type=gha,scope=tg-bot,mode=max
+
+      - name: Build mcp image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/Dockerfile.mcp
+          push: false
+          cache-from: type=gha,scope=mcp
+          cache-to: type=gha,scope=mcp,mode=max
