@@ -69,7 +69,7 @@ export class RealHandlersFactory implements BotHandlersFactory {
       const text = msg.text;
       if (!text || text.startsWith('/')) return;
       await this.reactions.set(ctx.api, ctx.chat.id, msg.message_id, REACTION_RECEIVED);
-      this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, {
+      await this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, {
         kind: 'text',
         msgId: msg.message_id,
         text,
@@ -87,7 +87,7 @@ export class RealHandlersFactory implements BotHandlersFactory {
         filename: `voice-${msg.message_id}.ogg`,
       };
       if (msg.caption) item.text = msg.caption;
-      this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
+      await this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
     });
 
     bot.on('message:photo', async (ctx) => {
@@ -104,7 +104,7 @@ export class RealHandlersFactory implements BotHandlersFactory {
         filename: `photo-${msg.message_id}.jpg`,
       };
       if (msg.caption) item.text = msg.caption;
-      this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
+      await this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
     });
 
     bot.on('message:document', async (ctx) => {
@@ -118,7 +118,7 @@ export class RealHandlersFactory implements BotHandlersFactory {
       };
       if (msg.document.mime_type) item.mime = msg.document.mime_type;
       if (msg.caption) item.text = msg.caption;
-      this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
+      await this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
     });
 
     bot.on('message:audio', async (ctx) => {
@@ -132,7 +132,7 @@ export class RealHandlersFactory implements BotHandlersFactory {
       };
       if (msg.audio.mime_type) item.mime = msg.audio.mime_type;
       if (msg.caption) item.text = msg.caption;
-      this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
+      await this.turnBuffer.add(ctx.chat.id, ctx.from?.id ?? 0, item);
     });
   }
 

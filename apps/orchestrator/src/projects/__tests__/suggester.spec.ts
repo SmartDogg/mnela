@@ -24,7 +24,17 @@ interface MockedRegistry {
   get: ReturnType<typeof vi.fn>;
 }
 
-function makeService(opts: { enabled: boolean; candidate?: unknown; existing?: unknown[] }) {
+interface MockedRedis {
+  client: { incr: ReturnType<typeof vi.fn>; expire: ReturnType<typeof vi.fn> };
+}
+
+function makeService(opts: {
+  enabled: boolean;
+  candidate?: unknown;
+  existing?: unknown[];
+  /** Pre-set the daily counter — defaults to 1 so the budget never trips. */
+  passesToday?: number;
+}) {
   const detector: MockedDetector = {
     detectBatch: vi.fn().mockResolvedValue(opts.candidate ?? null),
     detectClusters: vi.fn().mockResolvedValue([]),
@@ -48,7 +58,17 @@ function makeService(opts: { enabled: boolean; candidate?: unknown; existing?: u
     updateById: vi.fn(),
   };
   const registry: MockedRegistry = {
-    get: vi.fn().mockResolvedValue({ value: opts.enabled }),
+    get: vi.fn().mockImplementation((key: string) => {
+      if (key === 'projects.suggestions.enabled') return Promise.resolve({ value: opts.enabled });
+      if (key === 'projects.suggestions.maxPassesPerDay') return Promise.resolve({ value: 50 });
+      return Promise.resolve({ value: null });
+    }),
+  };
+  const redis: MockedRedis = {
+    client: {
+      incr: vi.fn().mockResolvedValue(opts.passesToday ?? 1),
+      expire: vi.fn().mockResolvedValue(1),
+    },
   };
 
   const service = new ProjectsSuggesterService(
@@ -56,8 +76,9 @@ function makeService(opts: { enabled: boolean; candidate?: unknown; existing?: u
     namer as never,
     projects as never,
     registry as never,
+    redis as never,
   );
-  return { service, detector, namer, projects, registry };
+  return { service, detector, namer, projects, registry, redis };
 }
 
 describe('ProjectsSuggesterService', () => {

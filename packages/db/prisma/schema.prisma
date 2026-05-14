@@ -558,6 +558,16 @@ model Message {
   citations      Json        @default("[]")
   tokensIn       Int?
   tokensOut      Int?
+  /// USD spent for this message turn — populated by api/.../search at
+  /// persist time from the per-model rate table (see Phase 11 Bucket
+  /// C). Null for CLI-backed turns that don't emit usage frames and
+  /// for messages predating the rate table.
+  costUsd        Decimal?    @db.Decimal(10, 6)
+  /// Soft FK — the LlmProvider that produced the message. No
+  /// constraint, so deleting a provider doesn't rewrite history.
+  providerId     String?
+  /// Breadcrumb of the model id at call time. Survives provider rename.
+  model          String?
   durationMs     Int?
   dumbMode       Boolean     @default(false)
   aborted        Boolean     @default(false)

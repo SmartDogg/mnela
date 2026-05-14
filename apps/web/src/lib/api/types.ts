@@ -639,4 +639,6 @@ export interface ProviderTestResult {
   latencyMs: number;
   version?: string;
   error?: string;
+  /** True if the probe saw a tool_call frame; false if model skipped it. */
+  toolUse?: boolean;
 }

@@ -37,8 +37,10 @@ import { formatBytes } from '@/lib/utils';
 
 import { AddProviderDialog } from './_components/add-provider-dialog';
 import { ClaudeStatusBlock } from './_components/claude-status-block';
+import { CostStatsRow } from './_components/cost-stats-row';
 import { ProviderCard } from './_components/provider-card';
 import { PerFeatureSelector } from './_components/per-feature-selector';
+import { SettingsSearch, sectionMatchesQuery } from './_components/settings-search';
 import { TelegramSection } from './_components/telegram-section';
 import { BackupsSection } from './_components/backups-section';
 import { TokensSection } from './_components/tokens-section';
@@ -84,7 +86,9 @@ function sectionOf(entry: MergedConfigEntry): ConfigSection {
 
 export default function AdminSystemPage(): JSX.Element {
   const t = useTranslations('admin.system');
+  const tSections = useTranslations('admin.system.sections');
   const queryClient = useQueryClient();
+  const [filterQuery, setFilterQuery] = useState('');
 
   const stats = useQuery({
     queryKey: ['system', 'stats'],
@@ -218,46 +222,84 @@ export default function AdminSystemPage(): JSX.Element {
           </ul>
         </div>
       )}
+      <SettingsSearch query={filterQuery} onQueryChange={setFilterQuery} />
       <div className="space-y-4 px-8 py-6">
         {/* ---- AI Providers card (the new hero) ---- */}
-        <ProvidersSection
-          providers={providers.data}
-          isLoading={providers.isLoading}
-          onChanged={() => {
-            queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
-            queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
-          }}
-        />
+        {sectionMatchesQuery(filterQuery, [
+          tSections('providers.title'),
+          'providers',
+          'ai',
+          'llm',
+        ]) && (
+          <div id="section-providers">
+            <ProvidersSection
+              providers={providers.data}
+              isLoading={providers.isLoading}
+              onChanged={() => {
+                queryClient.invalidateQueries({ queryKey: ['admin', 'providers'] });
+                queryClient.invalidateQueries({ queryKey: ['system', 'config'] });
+              }}
+            />
+          </div>
+        )}
 
         {/* ---- All non-provider sections ---- */}
         {SECTION_ORDER.filter((s) => s !== 'providers').map((section) => {
+          const sectionTitle = (() => {
+            try {
+              return tSections(`${section}.title`);
+            } catch {
+              return section;
+            }
+          })();
+          const entries = grouped.get(section) ?? [];
+          const keys = entries.map((e) => e.spec.key);
+          const descriptions = entries.map((e) => e.spec.description);
+          const haystack = [sectionTitle, section, ...keys, ...descriptions];
+          if (!sectionMatchesQuery(filterQuery, haystack)) return null;
           if (section === 'storage') {
-            return <StorageCard key={section} stats={stats.data} isLoading={stats.isLoading} />;
+            return (
+              <div key={section} id="section-storage">
+                <StorageCard stats={stats.data} isLoading={stats.isLoading} />
+              </div>
+            );
           }
           // Telegram has its own custom block (token + whitelist + registry rows).
           if (section === 'telegram') {
-            return <TelegramSection key={section} />;
+            return (
+              <div key={section} id="section-telegram">
+                <TelegramSection />
+              </div>
+            );
           }
-          const entries = grouped.get(section);
-          if (!entries || entries.length === 0) return null;
+          if (entries.length === 0) return null;
           return (
-            <SectionCard
-              key={section}
-              section={section}
-              entries={entries}
-              saving={save.isPending}
-              onSave={(key, value) => save.mutate({ key, value })}
-              onReset={(key) => reset.mutate(key)}
-            />
+            <div key={section} id={`section-${section}`}>
+              <SectionCard
+                section={section}
+                entries={entries}
+                saving={save.isPending}
+                onSave={(key, value) => save.mutate({ key, value })}
+                onReset={(key) => reset.mutate(key)}
+              />
+            </div>
           );
         })}
 
         {/* Backups — UI for scripts/backup.sh artifacts (list, run, download, delete).
             Restore stays CLI-only (api would shut itself down mid-operation). */}
-        <BackupsSection />
+        {sectionMatchesQuery(filterQuery, [tSections('backups.title'), 'backups', 'restore']) && (
+          <div id="section-backups">
+            <BackupsSection />
+          </div>
+        )}
 
         {/* API tokens used to live at /admin/tokens; folded into System after v1 menu consolidation. */}
-        <TokensSection />
+        {sectionMatchesQuery(filterQuery, [tSections('tokens.title'), 'tokens', 'auth', 'api']) && (
+          <div id="section-tokens">
+            <TokensSection />
+          </div>
+        )}
 
         {config.isLoading && <Skeleton className="h-24 w-full" />}
       </div>
@@ -300,6 +342,7 @@ function ProvidersSection({
           {isLoading && <Skeleton className="h-24 w-full" />}
           {providers && (
             <>
+              <CostStatsRow />
               <div className="grid gap-3 sm:grid-cols-2">
                 {providers.providers.map((p) => (
                   <ProviderCard key={p.id} provider={p} onChanged={onChanged} />

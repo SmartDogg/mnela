@@ -201,11 +201,41 @@ export class ProvidersController {
   @HttpCode(HttpStatus.OK)
   @Audit({ action: 'providers.test', targetType: 'LlmProvider', targetIdParam: 'id' })
   @ApiOperation({ summary: 'Send a 16-token "say ok" probe to the provider.' })
-  async test(
-    @Param('id') id: string,
-  ): Promise<{ ok: boolean; latencyMs: number; version?: string; error?: string }> {
+  async test(@Param('id') id: string): Promise<{
+    ok: boolean;
+    latencyMs: number;
+    version?: string;
+    error?: string;
+    toolUse?: boolean;
+  }> {
     const provider = await this.providers.build(id);
-    return provider.test();
+    const result = await provider.test();
+    /*
+     * Persist the latest tool-use detection onto extra.toolUseDetected so
+     * the admin UI can badge models that quietly skip the agent loop —
+     * citations come back empty on those. Built-ins (id starts with
+     * `builtin:`) and missing rows are skipped to avoid spurious updates.
+     */
+    if (typeof result.toolUse === 'boolean' && !id.startsWith('builtin:')) {
+      try {
+        const row = await this.providersRepo.findById(id);
+        if (row) {
+          const prevExtra =
+            row.extra && typeof row.extra === 'object' && !Array.isArray(row.extra)
+              ? (row.extra as Record<string, unknown>)
+              : {};
+          const nextExtra = {
+            ...prevExtra,
+            toolUseDetected: result.toolUse,
+            toolUseDetectedAt: new Date().toISOString(),
+          };
+          await this.providersRepo.update(id, { extra: nextExtra as Prisma.InputJsonValue });
+        }
+      } catch {
+        // best-effort — tool-use telemetry is non-critical
+      }
+    }
+    return result;
   }
 
   @Post('defaults')

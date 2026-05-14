@@ -115,6 +115,46 @@ export class SystemService {
     return { accepted: true, requestId, windowMs: RELOAD_ACK_WINDOW_MS, acks };
   }
 
+  /**
+   * Aggregated provider spend over the last 7 / 30 days. The query is
+   * raw SQL so we can group by provider+model in one round-trip and
+   * dodge Decimal-to-number coercion gotchas — Prisma's
+   * `groupBy({ _sum })` returns Decimal objects that don't JSON.stringify
+   * cleanly. Null `costUsd` rows (CLI turns, pre-Phase-11 messages) are
+   * filtered out so they don't show as `$0.00 unpriced` clutter.
+   */
+  async costStats(): Promise<{
+    last7d: number;
+    last30d: number;
+    byProvider: { providerId: string | null; model: string | null; costUsd: number }[];
+  }> {
+    const client = this.prisma.client;
+    const rows = await client.$queryRaw<
+      { providerId: string | null; model: string | null; sum: string | null }[]
+    >`SELECT "providerId", "model", SUM("costUsd")::text AS sum
+        FROM "Message"
+       WHERE "costUsd" IS NOT NULL
+         AND "createdAt" >= NOW() - INTERVAL '30 days'
+       GROUP BY "providerId", "model"
+       ORDER BY SUM("costUsd") DESC
+       LIMIT 50`;
+    const totals = await client.$queryRaw<{ last7: string | null; last30: string | null }[]>`
+      SELECT
+        COALESCE(SUM("costUsd") FILTER (WHERE "createdAt" >= NOW() - INTERVAL '7 days'),  0)::text AS last7,
+        COALESCE(SUM("costUsd") FILTER (WHERE "createdAt" >= NOW() - INTERVAL '30 days'), 0)::text AS last30
+      FROM "Message"
+      WHERE "costUsd" IS NOT NULL`;
+    return {
+      last7d: Number(totals[0]?.last7 ?? 0),
+      last30d: Number(totals[0]?.last30 ?? 0),
+      byProvider: rows.map((r) => ({
+        providerId: r.providerId,
+        model: r.model,
+        costUsd: Number(r.sum ?? 0),
+      })),
+    };
+  }
+
   async stats(): Promise<SystemStats> {
     const client = this.prisma.client;
     const [documents, entities, edges, projects, decisions, inboxPending, jobsQueued, sizeRows] =

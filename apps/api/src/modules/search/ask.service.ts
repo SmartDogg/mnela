@@ -45,6 +45,7 @@ import { sha256File } from '../imports/upload.config.js';
 import { ProvidersService } from '../providers/providers.service.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { AskAttachmentsService, type StagedAttachment } from './ask-attachments.service.js';
+import { lookupCost } from './cost-rates.js';
 import { SearchService } from './search.service.js';
 
 const SLOT_TTL_SEC = 180;
@@ -780,6 +781,9 @@ export class AskService {
         }
       }
 
+      const providerId = args.provider.config.id;
+      const model = args.provider.config.model || null;
+      const costUsd = lookupCost(model, totalTokensIn, totalTokensOut);
       await this.persistAssistantMessage({
         conversationId: args.conversationId,
         assistantMessageId: args.assistantMessageId,
@@ -790,6 +794,9 @@ export class AskService {
         aborted,
         tokensIn: totalTokensIn,
         tokensOut: totalTokensOut,
+        providerId,
+        model,
+        costUsd,
         kind: args.kind,
         pinnedDocumentId,
         auditAction: aborted ? 'ask.aborted' : errorEmitted ? 'ask.failed' : 'ask.completed',
@@ -797,11 +804,13 @@ export class AskService {
           durationMs,
           tokensIn: totalTokensIn,
           tokensOut: totalTokensOut,
+          costUsd,
           citationsTotal: collected.length,
           dumbMode: false,
           aborted,
           errorEmitted,
-          providerId: args.provider.config.id,
+          providerId,
+          model,
           kind: args.kind,
           pinnedDocumentId,
           attachedFiles: args.ingestedAttachments.length,
@@ -1057,6 +1066,9 @@ export class AskService {
     aborted: boolean;
     tokensIn?: number | null;
     tokensOut?: number | null;
+    providerId?: string | null;
+    model?: string | null;
+    costUsd?: number | null;
     kind: AskMessageKind;
     pinnedDocumentId?: string;
     auditAction: string;
@@ -1072,6 +1084,9 @@ export class AskService {
         citations: args.cites as unknown as Prisma.InputJsonValue,
         tokensIn: args.tokensIn ?? null,
         tokensOut: args.tokensOut ?? null,
+        providerId: args.providerId ?? null,
+        model: args.model ?? null,
+        costUsd: args.costUsd ?? null,
         durationMs: args.durationMs,
         dumbMode: args.dumbMode,
         aborted: args.aborted,

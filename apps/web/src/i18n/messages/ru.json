@@ -634,6 +634,10 @@
       "restartWithNoop": "{noops} из {total} — noop (нужен рестарт процесса)",
       "reloadAcksTitle": "Acks от подписчиков",
       "reloadAcksDismiss": "Скрыть",
+      "search": {
+        "placeholder": "Поиск по настройкам…",
+        "clear": "Очистить"
+      },
       "sections": {
         "providers": {
           "title": "AI провайдеры",
@@ -662,6 +666,12 @@
         "projects": {
           "title": "Проекты",
           "description": "Авто-подсказки проектов. Выключите детектор — пост-импортный скан остановится и токены тратиться не будут. По умолчанию ВКЛ."
+        },
+        "tokens": {
+          "title": "API-токены"
+        },
+        "advanced": {
+          "title": "Дополнительно"
         },
         "storage": {
           "title": "Хранилище",
@@ -788,6 +798,14 @@
       "probeFailed": "Проба не удалась",
       "probeOk": "{name}: ok ({latency}мс)",
       "probeError": "{name}: {error}",
+      "noCitations": "без цитат",
+      "cost": {
+        "title": "Расходы провайдеров",
+        "last7d": "7д",
+        "last30d": "30д",
+        "unknownModel": "(модель неизвестна)",
+        "empty": "Пока нет тарифицированных сообщений. CLI-вызовы не учитываются."
+      },
       "kinds": {
         "claude_cli": "Claude Code (CLI)",
         "anthropic_api": "Anthropic API",

@@ -3,6 +3,7 @@ import { ProjectRepository, SystemConfigRepository } from '@mnela/db';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma, Project } from '@prisma/client';
 
+import { RedisService } from '../redis.service.js';
 import {
   DEFAULT_THRESHOLDS,
   type SuggestionCandidate,
@@ -18,13 +19,21 @@ export interface SuggesterRunInput {
 }
 
 export interface SuggesterOutcome {
-  status: 'ok' | 'disabled' | 'skipped';
+  status: 'ok' | 'disabled' | 'skipped' | 'budget-exhausted';
   emitted: number;
   skippedExisting: number;
   reason?: string;
+  passesToday?: number;
+  budget?: number;
 }
 
 const SUGGESTIONS_GATE = 'projects.suggestions.enabled';
+const SUGGESTIONS_BUDGET_KEY = 'projects.suggestions.maxPassesPerDay';
+const BUDGET_TTL_SECONDS = 26 * 3600; // a bit more than a UTC day; key auto-expires.
+
+function todayUtcStamp(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
 
 /**
  * High-level driver for the project_suggest job. Reads the master gate,
@@ -43,12 +52,40 @@ export class ProjectsSuggesterService {
     private readonly namer: SuggestionNamer,
     private readonly projects: ProjectRepository,
     private readonly systemConfig: SystemConfigRepository,
+    private readonly redis: RedisService,
   ) {}
 
   async run(input: SuggesterRunInput): Promise<SuggesterOutcome> {
     const enabled = await readRegistryValue<boolean>(this.systemConfig, SUGGESTIONS_GATE);
     if (!enabled) {
       return { status: 'disabled', emitted: 0, skippedExisting: 0, reason: 'gate-off' };
+    }
+
+    const budget = await readRegistryValue<number>(this.systemConfig, SUGGESTIONS_BUDGET_KEY);
+    /*
+     * Per-day pass budget. INCR returns the new count atomically; only
+     * the first INCR of the UTC day needs the EXPIRE call. We over-shoot
+     * the TTL by 2 h so the key always covers the full day even if the
+     * server clock drifts slightly past midnight.
+     */
+    const stamp = todayUtcStamp();
+    const counterKey = `mnela:suggester:passes:${stamp}`;
+    const passesToday = await this.redis.client.incr(counterKey);
+    if (passesToday === 1) {
+      await this.redis.client.expire(counterKey, BUDGET_TTL_SECONDS);
+    }
+    if (passesToday > budget) {
+      this.logger.warn(
+        `suggester budget exhausted (${passesToday}/${budget}); skipping pass until ${stamp} rolls over`,
+      );
+      return {
+        status: 'budget-exhausted',
+        emitted: 0,
+        skippedExisting: 0,
+        reason: 'budget-exhausted',
+        passesToday,
+        budget,
+      };
     }
 
     const candidates =
@@ -82,7 +119,7 @@ export class ProjectsSuggesterService {
       }
     }
 
-    return { status: 'ok', emitted, skippedExisting };
+    return { status: 'ok', emitted, skippedExisting, passesToday, budget };
   }
 
   private async collectBatchCandidates(batchId?: string): Promise<SuggestionCandidate[]> {

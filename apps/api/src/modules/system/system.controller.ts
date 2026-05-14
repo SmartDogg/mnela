@@ -42,6 +42,16 @@ export class SystemController {
     return this.system.stats();
   }
 
+  @Get('cost-stats')
+  @RequiredScope('admin')
+  @ApiOperation({
+    summary:
+      'Aggregate Message.costUsd by provider/model + total for the last 7 and 30 days. Powers the AI Providers spend widget.',
+  })
+  costStats() {
+    return this.system.costStats();
+  }
+
   @Get('config')
   @RequiredScope('admin')
   @ApiOperation({

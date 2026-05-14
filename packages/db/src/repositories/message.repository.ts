@@ -15,6 +15,12 @@ export interface AppendMessageInput {
   citations?: Prisma.InputJsonValue;
   tokensIn?: number | null;
   tokensOut?: number | null;
+  /** USD spent on this turn, computed from per-model rate table. */
+  costUsd?: number | null;
+  /** Soft-FK to LlmProvider — no constraint; survives provider delete. */
+  providerId?: string | null;
+  /** Model id breadcrumb (e.g. "claude-opus-4-7"). */
+  model?: string | null;
   durationMs?: number | null;
   dumbMode?: boolean;
   aborted?: boolean;
@@ -47,6 +53,31 @@ export class MessageRepository {
     };
     if (input.id) data.id = input.id;
     const msg = await this.getPrisma().message.create({ data });
+    /*
+     * costUsd / providerId / model also go through raw SQL — the
+     * Prisma client may not have regenerated yet on the developer's
+     * Windows box (same query-engine .dll lock as `kind`). Falling back
+     * to the underlying ALTER TABLE columns directly keeps the write
+     * non-fatal: if the migration hasn't run, the columns don't exist,
+     * the UPDATE fails, and the message persists without telemetry.
+     */
+    if (
+      input.costUsd !== undefined ||
+      input.providerId !== undefined ||
+      input.model !== undefined
+    ) {
+      try {
+        await this.getPrisma().$executeRawUnsafe(
+          `UPDATE "Message" SET "costUsd" = $1, "providerId" = $2, "model" = $3 WHERE id = $4`,
+          input.costUsd ?? null,
+          input.providerId ?? null,
+          input.model ?? null,
+          msg.id,
+        );
+      } catch {
+        // Migration not applied; telemetry silently skipped.
+      }
+    }
     if (input.kind && input.kind !== 'ephemeral') {
       try {
         await this.getPrisma().$executeRawUnsafe(

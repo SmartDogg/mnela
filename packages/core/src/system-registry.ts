@@ -464,6 +464,15 @@ export const CONFIG_REGISTRY: Record<string, ConfigSpec> = {
       'Gate for the LLM-generated project summary shown on /projects/[slug]. When off, the header falls back to top-entities + doc count without any LLM call. Default ON.',
     default: true,
   },
+  'projects.suggestions.maxPassesPerDay': {
+    key: 'projects.suggestions.maxPassesPerDay',
+    type: 'int',
+    group: 'projects',
+    section: 'projects',
+    description:
+      'Per-day budget cap on suggestion detector passes. A pass is a single ProjectsSuggesterService.run() — both the debounced batch trigger and manual rescans count. When the counter hits this number, further passes are skipped (no SQL, no LLM) until the UTC day rolls over. Default 50 — generous for a single admin user but bounds the worst case where a malformed retry loop hammers the detector.',
+    default: 50,
+  },
 
   // ---- Telegram bot (ADR-0053) ----
   // Master gate for the Telegram-bot integration. The bot process polls

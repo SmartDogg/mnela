@@ -283,11 +283,14 @@ export class OpenAiCompatibleProvider implements LLMProvider {
         choices?: { message?: { content?: string } }[];
       };
       const text = json.choices?.[0]?.message?.content ?? '';
-      return {
+      const toolUse = await this.probeToolUse(headers).catch(() => undefined);
+      const out: ProviderTestResult = {
         ok: text.toLowerCase().includes('ok'),
         latencyMs: Date.now() - t0,
         version: this.config.model,
       };
+      if (typeof toolUse === 'boolean') out.toolUse = toolUse;
+      return out;
     } catch (err) {
       return {
         ok: false,
@@ -295,6 +298,47 @@ export class OpenAiCompatibleProvider implements LLMProvider {
         error: err instanceof Error ? err.message : String(err),
       };
     }
+  }
+
+  /**
+   * Best-effort detection: ship the OpenAI tool schema with a question
+   * the model can only answer by calling the tool. If a `tool_calls`
+   * entry comes back, the model speaks the tools dialect; if it
+   * returns plain content, it doesn't. Errors map to `undefined` so
+   * the admin badge stays in the "unknown" state and we keep using
+   * the static `supportsTools=true` declaration.
+   */
+  private async probeToolUse(headers: Record<string, string>): Promise<boolean> {
+    const url = joinUrl(this.config.baseUrl!, 'chat/completions');
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: this.config.model,
+        max_tokens: 64,
+        messages: [{ role: 'user', content: 'Use the add tool to compute 7+8.' }],
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'add',
+              description: 'Add two integers and return the sum.',
+              parameters: {
+                type: 'object',
+                properties: { a: { type: 'integer' }, b: { type: 'integer' } },
+                required: ['a', 'b'],
+              },
+            },
+          },
+        ],
+        tool_choice: 'auto',
+      }),
+    });
+    if (!res.ok) return false;
+    const json = (await res.json()) as {
+      choices?: { message?: { tool_calls?: unknown[] } }[];
+    };
+    return Boolean(json.choices?.[0]?.message?.tool_calls?.length);
   }
 }
 

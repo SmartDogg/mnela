@@ -198,7 +198,9 @@ export class ClaudeCliProvider implements LLMProvider {
       };
     }
     const result = await claudeTest(this.runtime.bin);
-    const out: ProviderTestResult = { ok: result.ok, latencyMs: result.latencyMs };
+    // Claude Code subprocess owns its own MCP tool loop; tool-use is
+    // always supported. Declare it statically so the admin badge knows.
+    const out: ProviderTestResult = { ok: result.ok, latencyMs: result.latencyMs, toolUse: true };
     if (result.version) out.version = result.version;
     if (result.error) out.error = result.error;
     return out;

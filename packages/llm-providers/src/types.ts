@@ -196,6 +196,14 @@ export interface ProviderTestResult {
   latencyMs: number;
   /** Why the probe failed — short human-readable. */
   error?: string;
+  /**
+   * Did the probe see a tool_call frame in response to a dummy tool
+   * definition? Used to badge "no citations" on providers/models that
+   * skip the agent loop (some older OpenAI-compatible models, local
+   * llama.cpp endpoints, etc). `true` = tools work, `false` = no tool
+   * frame emitted, `undefined` = not probed (claude_cli skips for speed).
+   */
+  toolUse?: boolean;
 }
 
 /** Map kind → human label for UI rendering. */

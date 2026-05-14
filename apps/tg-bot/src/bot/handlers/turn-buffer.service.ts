@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+
+import { type RedisService } from '../../redis/redis.service.js';
 
 export type TurnItemKind = 'text' | 'voice' | 'photo' | 'document' | 'audio';
 
@@ -19,13 +21,12 @@ export interface TurnItem {
   mime?: string;
 }
 
-interface PendingTurn {
+interface PersistedTurn {
   turnId: string;
   chatId: number;
   userId: number;
   items: TurnItem[];
   firstAt: number;
-  timer: NodeJS.Timeout;
 }
 
 export type TurnReadyHandler = (turn: ReadyTurn) => Promise<void>;
@@ -38,6 +39,10 @@ export interface ReadyTurn {
   firstAt: number;
 }
 
+const KEY_PREFIX = 'mnela:tg:turn:';
+const GRACE_MS = 30_000;
+const SCAN_COUNT = 100;
+
 /**
  * Debounced multi-modal turn bundler.
  *
@@ -49,18 +54,37 @@ export interface ReadyTurn {
  * batched save), reflecting the user's mental model of "I sent that
  * stuff as one message."
  *
- * The buffer is in-memory and per-process; restarting the bot mid-burst
- * drops the buffer. That's acceptable: a 4s window means at most 4s of
- * un-processed media on restart, and the user can always retry. We do
- * NOT persist this to Redis — the complexity isn't worth the rare
- * recovery scenario.
+ * Storage is split:
+ *   - Items live in Redis under `mnela:tg:turn:<chatId>` with TTL =
+ *     bundleWindow + 30 s grace, so a bot restart mid-burst no longer
+ *     drops the buffer.
+ *   - The debounce timer (`setTimeout`) is in-memory. On startup,
+ *     `recoverPending()` scans the key prefix and immediately fires any
+ *     persisted turns — the next 4 s window of "should I wait for more?"
+ *     is sacrificed for "don't lose what's already there", which is the
+ *     right call: the next user message restarts the buffer cleanly.
  */
 @Injectable()
-export class TurnBufferService {
+export class TurnBufferService implements OnModuleInit {
   private readonly logger = new Logger(TurnBufferService.name);
-  private readonly pending = new Map<number, PendingTurn>();
+  private readonly timers = new Map<number, NodeJS.Timeout>();
   private handler: TurnReadyHandler | null = null;
   private bundleWindowMs = 4000;
+
+  constructor(private readonly redis: RedisService) {}
+
+  async onModuleInit(): Promise<void> {
+    // Defer the recovery sweep — the handler is registered later by
+    // RealHandlersFactory.bind(). One tick later it will exist; even
+    // if it doesn't, the persisted items survive in Redis until TTL.
+    setImmediate(() => {
+      void this.recoverPending().catch((err) => {
+        this.logger.warn(
+          `turn recovery sweep failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    });
+  }
 
   setBundleWindowMs(ms: number): void {
     this.bundleWindowMs = Math.max(500, Math.min(30_000, ms));
@@ -70,28 +94,26 @@ export class TurnBufferService {
     this.handler = handler;
   }
 
-  add(chatId: number, userId: number, item: TurnItem): void {
-    let turn = this.pending.get(chatId);
-    if (!turn) {
-      turn = {
-        turnId: randomUUID(),
-        chatId,
-        userId,
-        items: [],
-        firstAt: Date.now(),
-        timer: setTimeout(() => undefined, this.bundleWindowMs),
-      };
-      this.pending.set(chatId, turn);
-    }
+  async add(chatId: number, userId: number, item: TurnItem): Promise<void> {
+    const key = this.keyFor(chatId);
+    const raw = await this.redis.client.get(key);
+    const turn: PersistedTurn = raw
+      ? (JSON.parse(raw) as PersistedTurn)
+      : { turnId: randomUUID(), chatId, userId, items: [], firstAt: Date.now() };
     turn.items.push(item);
-    clearTimeout(turn.timer);
-    turn.timer = setTimeout(() => {
+    const ttlMs = this.bundleWindowMs + GRACE_MS;
+    await this.redis.client.set(key, JSON.stringify(turn), 'PX', ttlMs);
+    const prev = this.timers.get(chatId);
+    if (prev) clearTimeout(prev);
+    const t = setTimeout(() => {
+      this.timers.delete(chatId);
       void this.fire(chatId).catch((err) => {
         this.logger.error(
           `turn fire failed chat=${chatId}: ${err instanceof Error ? err.message : String(err)}`,
         );
       });
     }, this.bundleWindowMs);
+    this.timers.set(chatId, t);
     this.logger.debug(
       `chat=${chatId} +${item.kind} → ${turn.items.length} items, debounce=${this.bundleWindowMs}ms`,
     );
@@ -103,16 +125,42 @@ export class TurnBufferService {
    * full debounce for a "just remember this" intent.
    */
   flush(chatId: number): Promise<void> {
+    const t = this.timers.get(chatId);
+    if (t) {
+      clearTimeout(t);
+      this.timers.delete(chatId);
+    }
     return this.fire(chatId);
   }
 
+  private keyFor(chatId: number): string {
+    return `${KEY_PREFIX}${chatId}`;
+  }
+
   private async fire(chatId: number): Promise<void> {
-    const turn = this.pending.get(chatId);
-    if (!turn) return;
-    this.pending.delete(chatId);
-    clearTimeout(turn.timer);
+    const key = this.keyFor(chatId);
+    /*
+     * GETDEL is atomic — between GET and DEL nothing else can sneak in
+     * a new item and have it dropped. Falls back to a transaction on
+     * older Redis (<6.2) but the docker image is redis:7-alpine.
+     */
+    const raw = await this.redis.client.getdel(key);
+    if (!raw) return;
+    let turn: PersistedTurn;
+    try {
+      turn = JSON.parse(raw) as PersistedTurn;
+    } catch {
+      this.logger.warn(`turn at ${key} unparseable; dropping`);
+      return;
+    }
+    if (turn.items.length === 0) return;
     if (!this.handler) {
-      this.logger.warn(`turn ready but no handler registered; dropping ${turn.items.length} items`);
+      // Re-stash for the next handler binding so we don't drop work.
+      const ttlMs = this.bundleWindowMs + GRACE_MS;
+      await this.redis.client.set(key, raw, 'PX', ttlMs);
+      this.logger.warn(
+        `turn ready but no handler registered; re-stashed ${turn.items.length} items`,
+      );
       return;
     }
     await this.handler({
@@ -122,5 +170,31 @@ export class TurnBufferService {
       items: turn.items,
       firstAt: turn.firstAt,
     });
+  }
+
+  /**
+   * On boot, fire any turn whose TTL didn't expire. We skip the
+   * debounce here — restart already cost more than the bundle window.
+   */
+  private async recoverPending(): Promise<void> {
+    let cursor = '0';
+    let recovered = 0;
+    do {
+      const [next, keys] = await this.redis.client.scan(
+        cursor,
+        'MATCH',
+        `${KEY_PREFIX}*`,
+        'COUNT',
+        SCAN_COUNT,
+      );
+      cursor = next;
+      for (const key of keys) {
+        const chatId = Number(key.slice(KEY_PREFIX.length));
+        if (!Number.isFinite(chatId)) continue;
+        await this.fire(chatId);
+        recovered += 1;
+      }
+    } while (cursor !== '0');
+    if (recovered > 0) this.logger.log(`recovered ${recovered} pending turn(s) after restart`);
   }
 }

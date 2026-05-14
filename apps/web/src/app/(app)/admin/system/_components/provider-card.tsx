@@ -63,9 +63,24 @@ export function ProviderCard({
             </Badge>
           </div>
         </div>
-        <div className="text-[11px] text-muted-foreground">
-          {provider.model || '—'}
-          {provider.baseUrl && <span className="ml-2 font-mono">{provider.baseUrl}</span>}
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span>{provider.model || '—'}</span>
+          {provider.baseUrl && <span className="font-mono">{provider.baseUrl}</span>}
+          {/*
+            Tool-use badge — set when the latest provider.test() probed a
+            dummy tool definition and got no `tool_calls` back. Without
+            tool use the agent loop can't issue mnela_search /
+            mnela_find_similar, so the chat answer comes back without
+            citation chips. Built-ins always support tools.
+          */}
+          {provider.extra?.toolUseDetected === false && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 bg-amber-500/10 text-[9px] text-amber-600 dark:text-amber-400"
+            >
+              {t('noCitations')}
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-0 text-xs">

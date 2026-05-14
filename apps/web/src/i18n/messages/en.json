@@ -634,6 +634,10 @@
       "restartWithNoop": "{noops} of {total} subscriber(s) noop (need process restart)",
       "reloadAcksTitle": "Reload acks",
       "reloadAcksDismiss": "Dismiss",
+      "search": {
+        "placeholder": "Search settings…",
+        "clear": "Clear search"
+      },
       "sections": {
         "providers": {
           "title": "AI Providers",
@@ -662,6 +666,12 @@
         "projects": {
           "title": "Projects",
           "description": "Auto-suggested projects. Turn the suggestion detector off to stop the post-import scan and avoid any token use. Default ON."
+        },
+        "tokens": {
+          "title": "API tokens"
+        },
+        "advanced": {
+          "title": "Advanced"
         },
         "storage": {
           "title": "Storage",
@@ -788,6 +798,14 @@
       "probeFailed": "Probe failed",
       "probeOk": "{name}: ok ({latency}ms)",
       "probeError": "{name}: {error}",
+      "noCitations": "no citations",
+      "cost": {
+        "title": "Provider spend",
+        "last7d": "7d",
+        "last30d": "30d",
+        "unknownModel": "(unknown model)",
+        "empty": "No priced messages yet. CLI-backed turns aren't counted."
+      },
       "kinds": {
         "claude_cli": "Claude Code (CLI)",
         "anthropic_api": "Anthropic API",

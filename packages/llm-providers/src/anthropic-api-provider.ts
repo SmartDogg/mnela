@@ -207,10 +207,12 @@ export class AnthropicApiProvider implements LLMProvider {
         messages: [{ role: 'user', content: 'reply with the single word: ok' }],
       });
       const text = collectText(msg.content);
+      // Anthropic models all support tool use as of 2026; statically true.
       return {
         ok: text.toLowerCase().includes('ok'),
         latencyMs: Date.now() - t0,
         version: this.config.model,
+        toolUse: true,
       };
     } catch (err) {
       return {
