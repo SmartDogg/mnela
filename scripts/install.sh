@@ -220,27 +220,46 @@ set -a; . "$ENV_FILE"; set +a
 cp "$CADDY_TEMPLATE" "$REPO_ROOT/Caddyfile"
 green "  Caddyfile: $CADDY_TEMPLATE → $REPO_ROOT/Caddyfile"
 
-# ----- pull / build + up -------------------------------------------------
-cyan "▸ Bringing up Mnela ($MNELA_IMAGES mode)"
+# ----- pull / build ------------------------------------------------------
+cyan "▸ Pulling / building images ($MNELA_IMAGES mode)"
 COMPOSE="docker compose -f infra/docker/docker-compose.yml -p mnela"
 
 if [[ "$MNELA_IMAGES" == "registry" ]]; then
-  $COMPOSE --profile prod pull
-  $COMPOSE --profile prod up -d
+  $COMPOSE --profile prod --profile migrate pull
 else
-  $COMPOSE --profile prod up -d --build
+  # Need both the api image (for migrate) and the rest. Build everything once.
+  $COMPOSE --profile prod --profile migrate build
 fi
 
-# ----- migrations --------------------------------------------------------
+# ----- migrations (one-shot before the app stack comes up) ---------------
 cyan "▸ Applying database migrations"
-# Wait for the api container to settle so prisma sees a healthy db.
-sleep 5
-$COMPOSE exec -T api node \
-  ./node_modules/@mnela/db/node_modules/.bin/prisma migrate deploy \
-  --schema=./node_modules/@mnela/db/prisma/schema.prisma 2>/dev/null \
-  || yellow "  migrations not run from the api image (no prisma binary bundled)."
-yellow "  if migrations didn't apply, run them manually once:"
-yellow "    $COMPOSE exec api node ./node_modules/@mnela/db/scripts/migrate.js"
+# Postgres starts first via service_healthy dependency; the migrate
+# container exits when prisma is done. `--rm` removes the stopped
+# container, --service-ports off by default.
+$COMPOSE --profile migrate run --rm migrate \
+  || abort "prisma migrate deploy failed — fix the error above and re-run scripts/install.sh."
+green "  migrations applied"
+
+# ----- bring up the prod stack ------------------------------------------
+cyan "▸ Starting prod services"
+$COMPOSE --profile prod up -d
+
+# ----- issue the install-time AuthToken so tg-bot can authenticate ------
+# install.sh generated MNELA_INTERNAL_TOKEN in .env, but apps/api verifies
+# bearer tokens by sha256 lookup in the AuthToken table. Without a row,
+# every tg-bot → api call returns 401 and the tg-bot container crash-loops.
+# Wait for the api to be healthy first so prisma client can connect.
+cyan "▸ Provisioning AuthToken for tg-bot"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+  if $COMPOSE exec -T api node healthcheck.js >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+$COMPOSE exec -T -e MNELA_INTERNAL_TOKEN="$MNELA_INTERNAL_TOKEN" api \
+  node scripts/issue-bootstrap-token.mjs \
+  || abort "could not issue install-time AuthToken — tg-bot will fail auth. See logs."
+green "  AuthToken issued"
 
 # ----- done --------------------------------------------------------------
 green "✓ Mnela is up"

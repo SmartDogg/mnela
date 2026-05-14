@@ -54,7 +54,7 @@ require() { command -v "$1" >/dev/null 2>&1 || { echo "✘ missing prerequisite:
 require docker
 require tar
 require gunzip
-require openssl
+require node
 docker compose version >/dev/null 2>&1 || { echo "✘ docker compose plugin missing" >&2; exit 1; }
 
 # Load .env so POSTGRES_USER / POSTGRES_DB are visible.
@@ -79,14 +79,22 @@ tar -C "$WORK" -xzf "$BACKUP_FILE"
 # ----- 2. ensure postgres + redis are up ---------------------------------
 echo "  [2/7] bringing postgres + redis online (they stay up through the restore)"
 docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" up -d postgres redis
-# Wait for healthy postgres
+# Wait for healthy postgres. Fail fast with a clear message instead of
+# pressing on; the next step's psql restore would otherwise crash with
+# an unhelpful "connection refused".
+PG_READY=0
 for i in {1..30}; do
   if docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T postgres \
        pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+    PG_READY=1
     break
   fi
   sleep 1
 done
+if [[ "$PG_READY" != "1" ]]; then
+  echo "✘ postgres did not become healthy within 30s — check 'docker compose logs postgres'" >&2
+  exit 1
+fi
 
 # ----- 3. validate keystore decrypts at least one provider row -----------
 echo "  [3/7] validating keystore against SQL dump"
@@ -104,49 +112,20 @@ if [[ ! -f "$PROVIDER_KEY" ]]; then
     exit 1
   fi
 else
-  # Pluck the first non-NULL LlmProvider.apiKeyEnc out of the SQL dump and
-  # attempt to AES-256-GCM decrypt with the bundled key. Layout per
-  # packages/llm-providers/src/keystore.ts: 12B IV ‖ 16B tag ‖ ciphertext.
-  CIPHER_HEX=$(
-    gunzip -c "$WORK/postgres.sql.gz" \
-      | grep -A1 'COPY public."LlmProvider"' \
-      | tail -n +2 \
-      | awk -F'\t' '$1 != "" { for (i=1;i<=NF;i++) if ($i ~ /^\\\\x[0-9a-f]+$/) { sub(/^\\\\x/, "", $i); print $i; exit } }' \
-      || true
-  )
-
-  if [[ -z "$CIPHER_HEX" ]]; then
-    echo "       no LlmProvider rows with apiKeyEnc in dump — keystore unused, OK"
+  # validate-keystore.mjs decrypts the first non-NULL LlmProvider.apiKeyEnc
+  # row using Node's crypto.createDecipheriv — works on every Node 22 host,
+  # unlike the previous openssl -aead_tag_hex hack which only LibreSSL
+  # builds support.
+  if node "$REPO_ROOT/scripts/validate-keystore.mjs" "$PROVIDER_KEY" "$WORK/postgres.sql.gz"; then
+    :
+  elif [[ "$SKIP_KEYSTORE_CHECK" == "1" ]]; then
+    echo "       ⚠ keystore did NOT decrypt — continuing because --skip-keystore-check"
   else
-    BLOB="$WORK/cipher.bin"
-    printf '%s' "$CIPHER_HEX" | xxd -r -p > "$BLOB"
-    KEY_HEX=$(xxd -p -c 64 "$PROVIDER_KEY" | tr -d '\n')
-
-    IV_HEX=$(xxd -p -c 24 -l 12 "$BLOB")
-    TAG_HEX=$(xxd -p -c 32 -l 16 -s 12 "$BLOB")
-    # tail -c+29 = bytes from offset 28 onward (1-indexed)
-    CT_LEN=$(($(wc -c < "$BLOB") - 28))
-    if [[ "$CT_LEN" -le 0 ]]; then
-      echo "✘ ciphertext truncated; bundle corrupt" >&2
-      exit 1
-    fi
-
-    if tail -c "$CT_LEN" "$BLOB" \
-        | openssl enc -aes-256-gcm -d \
-            -K "$KEY_HEX" -iv "$IV_HEX" \
-            -aead_tag_hex "$TAG_HEX" 2>/dev/null \
-        | head -c 1 >/dev/null; then
-      echo "       ✓ keystore decrypts LlmProvider rows"
-    elif [[ "$SKIP_KEYSTORE_CHECK" == "1" ]]; then
-      echo "       ⚠ keystore did NOT decrypt — continuing because --skip-keystore-check"
-    else
-      # openssl on some distros lacks -aead_tag_hex; fall through with a
-      # warning rather than blocking a real restore.
-      echo "       ⚠ could not verify decryption with this openssl build" >&2
-      echo "         (probably missing -aead_tag_hex). Re-run with --skip-keystore-check" >&2
-      echo "         to proceed if you trust the bundle." >&2
-      exit 1
-    fi
+    echo "       ✘ keystore validation failed. Refusing to wipe the target DB." >&2
+    echo "         Re-run with --skip-keystore-check if you accept that every" >&2
+    echo "         encrypted LlmProvider.apiKeyEnc + TelegramBot.tokenEnc will" >&2
+    echo "         become unreadable after restore." >&2
+    exit 1
   fi
 fi
 
@@ -164,11 +143,13 @@ gunzip -c "$WORK/postgres.sql.gz" \
 
 # ----- 6. restore /data + claude creds -----------------------------------
 echo "  [6/7] restoring /data volume"
+# `find -mindepth 1 -delete` covers hidden + dot-prefixed entries that the
+# bash glob `.[!.]*` misses; busybox-find on alpine supports the same flags.
 docker run --rm \
   -v mnela-data:/data \
   -v "$WORK:/in:ro" \
   alpine:3 \
-  sh -c 'rm -rf /data/* /data/.[!.]* 2>/dev/null; tar -C /data -xf /in/data.tar'
+  sh -c 'find /data -mindepth 1 -delete; tar -C /data -xf /in/data.tar'
 
 if [[ -f "$WORK/claude-creds.tar" ]]; then
   echo "       restoring claude credentials"
@@ -176,16 +157,16 @@ if [[ -f "$WORK/claude-creds.tar" ]]; then
     -v mnela-claude-creds:/cc \
     -v "$WORK:/in:ro" \
     alpine:3 \
-    sh -c 'rm -rf /cc/* /cc/.[!.]* 2>/dev/null; tar -C /cc -xf /in/claude-creds.tar'
+    sh -c 'find /cc -mindepth 1 -delete; tar -C /cc -xf /in/claude-creds.tar'
 fi
 
 # ----- 7. migrate + reindex FTS + restart apps ---------------------------
 echo "  [7/7] running migrations + FTS reindex + restarting apps"
+# Use the one-shot migrate service (--profile migrate) so we don't depend
+# on the api container being healthy first.
 docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" \
-  --profile prod run --rm api \
-  node_modules/.bin/prisma migrate deploy \
-    --schema=node_modules/@mnela/db/prisma/schema.prisma 2>/dev/null \
-  || echo "       (skipping migrate — prisma binary not bundled into api image; run manually if needed)"
+  --profile migrate run --rm migrate \
+  || { echo "✘ prisma migrate deploy failed — backup schema is newer than image" >&2; exit 1; }
 
 docker compose -f "$COMPOSE_FILE" -p "$COMPOSE_PROJECT_NAME" exec -T postgres \
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'REINDEX SCHEMA public;' >/dev/null
