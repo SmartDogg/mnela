@@ -7,6 +7,7 @@ const PUBLIC_PATHS = [
   '/_next',
   '/favicon.ico',
   '/icon',
+  '/icon.svg',
   '/logo.svg',
   '/robots.txt',
 ];
