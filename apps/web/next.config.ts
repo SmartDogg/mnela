@@ -14,6 +14,7 @@ const apiOrigin = process.env.MNELA_API_ORIGIN ?? 'http://127.0.0.1:3000';
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  devIndicators: false,
   // Standalone output: bundles only what's needed to run `node server.js`
   // into `.next/standalone/`. The prod Dockerfile copies that into a
   // minimal node:22-slim runtime instead of dragging the entire workspace
