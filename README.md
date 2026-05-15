@@ -10,6 +10,7 @@
 **Your second brain becomes an MCP server, in one click.**
 
 [![CI](https://github.com/SmartDogg/mnela/actions/workflows/ci.yml/badge.svg)](https://github.com/SmartDogg/mnela/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SmartDogg/mnela?display_name=tag&color=blue)](https://github.com/SmartDogg/mnela/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node 22 LTS](https://img.shields.io/badge/node-22%20LTS-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
