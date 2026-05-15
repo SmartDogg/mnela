@@ -1,13 +1,8 @@
 <div align="center">
 
-```
-███╗   ███╗ ███╗   ██╗ ███████╗ ██╗      █████╗
-████╗ ████║ ████╗  ██║ ██╔════╝ ██║     ██╔══██╗
-██╔████╔██║ ██╔██╗ ██║ █████╗   ██║     ███████║
-██║╚██╔╝██║ ██║╚██╗██║ ██╔══╝   ██║     ██╔══██║
-██║ ╚═╝ ██║ ██║ ╚████║ ███████╗ ███████╗██║  ██║
-╚═╝     ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝╚═╝  ╚═╝
-```
+<img src="./docs/assets/logo.svg" alt="Mnela" width="160" height="160" />
+
+# Mnela
 
 **Your second brain becomes an MCP server, in one click.**
 
@@ -18,6 +13,10 @@
 [![MCP](https://img.shields.io/badge/MCP-host-8a4fff.svg)](https://modelcontextprotocol.io/)
 
 [Install](#install-one-command-on-a-fresh-vps) · [Features](#features) · [Quick start](#quick-start-local-dev) · [Docs](#documentation)
+
+<br />
+
+<img src="./docs/assets/graph.gif" alt="Live knowledge graph built from imported chats and documents" width="860" />
 
 </div>
 

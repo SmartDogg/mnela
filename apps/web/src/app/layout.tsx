@@ -12,10 +12,12 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin', 'cyrillic'], variable: '--font-sans' });
 const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' });
 
+// Favicon is auto-detected from `src/app/icon.svg` by Next.js 15 — no need
+// to declare `icons` here. Setting it explicitly would override the
+// framework's resolution and break the auto-generated <link> tags.
 export const metadata: Metadata = {
   title: { default: 'Mnela', template: '%s · Mnela' },
   description: 'Self-hosted personal second brain — exposed as an MCP server.',
-  icons: { icon: '/favicon.ico' },
 };
 
 export default async function RootLayout({

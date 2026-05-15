@@ -156,7 +156,14 @@ export function SidebarBrand({ collapsed }: { collapsed: boolean }): JSX.Element
         collapsed ? 'justify-center px-2' : 'px-5',
       )}
     >
-      <span className="inline-block h-5 w-5 shrink-0 rounded-sm bg-sidebar-accent" />
+      <img
+        src="/logo.svg"
+        alt=""
+        aria-hidden="true"
+        className="h-6 w-6 shrink-0"
+        width={24}
+        height={24}
+      />
       {!collapsed && <span className="text-sm font-semibold tracking-tight">Mnela</span>}
     </div>
   );

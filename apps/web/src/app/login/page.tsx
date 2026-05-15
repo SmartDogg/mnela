@@ -27,7 +27,14 @@ export default async function LoginPage({
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
       <div className="hidden lg:flex lg:flex-col lg:justify-between lg:bg-sidebar lg:p-12 lg:text-sidebar-foreground">
         <div className="flex items-center gap-2 text-sm font-medium">
-          <span className="inline-block h-6 w-6 rounded-full bg-primary" />
+          <img
+            src="/logo.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-7 w-7"
+            width={28}
+            height={28}
+          />
           Mnela
         </div>
         <div className="space-y-3 max-w-md">
