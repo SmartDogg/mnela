@@ -59,17 +59,35 @@ single biggest reliability win on a $5 VPS.
 curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh | sudo bash
 ```
 
-The script will:
+The installer is fully interactive — it re-opens stdin from `/dev/tty`, so
+prompts pop up even under `curl | bash`. Pass `--domain`, `--ip`, `--tunnel`,
+`--no-claude`, or `-y` to skip individual prompts. `--help` lists them all.
 
-1. Install Docker + `docker compose` if missing (via `get.docker.com`).
-2. Ask whether you're binding via **domain**, raw **IP**, or **Cloudflare Tunnel**.
-3. Ask whether you have a **Claude Max** subscription you can sign into.
-4. Clone the repo to `/opt/mnela` (skip if already inside a checkout).
-5. Generate `/opt/mnela/.env` with `openssl rand -hex 32` secrets — `chmod 600`.
-6. Copy the appropriate `infra/caddy/Caddyfile.*.template` to `./Caddyfile`.
-7. Pull pinned images from GHCR (or build locally if `MNELA_IMAGES=local` in `.env`).
-8. `docker compose --profile prod up -d` and apply database migrations.
-9. Print the URLs.
+Flow:
+
+1. **Preflight** — installs Docker + `docker compose` (via `get.docker.com`)
+   and the host tools `curl git openssl jq` if missing; checks RAM/disk.
+2. **Source** — resolves the latest `v*` tag (or `--branch X`), clones into
+   `/opt/mnela` if you're not already inside a checkout.
+3. **Configuration** — three arrow-key questions: bind mode (domain/IP/tunnel),
+   the host value, and Claude Max yes/no. Any value pre-filled via flag is
+   skipped.
+4. **Review** — a summary of every answer; confirm or abort.
+5. **Provisioning** —
+   `.env` with `openssl rand -hex 32` secrets (`chmod 600`),
+   the matching `infra/caddy/Caddyfile.*.template` → `./Caddyfile`,
+   `docker compose pull|build`,
+   `--profile migrate run --rm migrate` to apply Prisma,
+   `--profile prod up -d`,
+   then `node scripts/issue-bootstrap-token.mjs` inside the api container so
+   tg-bot can authenticate.
+6. **Claude Max OAuth (inline)** — if you answered yes, the installer waits
+   for the orchestrator's `claude` CLI to come up, then runs `claude login`
+   attached to your terminal. Anthropic prints a one-time URL → open it on
+   your workstation → paste the token back. Credentials land in the
+   `mnela-claude-creds` volume; backups round-trip it. Pass `--no-claude-login`
+   to skip and do it manually later.
+7. **Done** — prints the public URL, next-steps, and an operator cheatsheet.
 
 ## After install
 
@@ -79,15 +97,16 @@ The wizard creates the first admin (`POST /auth/bootstrap` — 12-char password
 minimum) and then walks you through brain name / timezone / Claude / modules /
 MCP token.
 
-### 2. Bootstrap Claude Max (if you chose `yes`)
+### 2. Claude Max (only if you skipped the inline OAuth)
+
+The installer signs you in during step 6 above. If you passed
+`--no-claude-login`, hit Ctrl-C during the OAuth, or want to re-do it:
 
 ```bash
 docker exec -it mnela-orchestrator claude login
 ```
 
-Anthropic prints a one-time URL. Open it on your workstation, finish the
-OAuth flow. The credentials land in the `mnela-claude-creds` volume and
-survive `docker compose down/up` cycles. To verify:
+To verify a successful sign-in any time:
 
 ```bash
 docker exec mnela-orchestrator claude --version

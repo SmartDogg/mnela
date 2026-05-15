@@ -1,375 +1,656 @@
 #!/usr/bin/env bash
 #
-# scripts/install.sh — one-command Mnela install on a fresh Linux VPS.
+# scripts/install.sh — interactive Mnela installer for a fresh Linux VPS.
 #
-# Idempotent: re-running won't overwrite an existing .env or running
-# containers. To start from scratch, `docker compose down -v` first
-# (warning: this drops postgres + all uploads).
+# Always asks questions, even under `curl | bash`: re-opens stdin from
+# /dev/tty when needed. Pass flags to skip individual prompts.
 #
-# Curl-pipe-bash convention:
-#   curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh | bash
-# That mode auto-clones to /opt/mnela. If the script is already inside a
-# git checkout (you ran `git clone` first), it uses the local checkout.
+#   sudo bash install.sh                                   # full interactive
+#   curl -fsSL https://… | sudo bash                       # interactive over curl
+#   sudo bash install.sh --domain foo.com --no-claude -y   # silent
 #
-# Style: defensive, single-purpose, no source-tree assumptions until the
-# clone happens.
+# Idempotent: .env / Caddyfile from a previous run are kept unless --force.
 
-set -euo pipefail
+set -Eeuo pipefail
+
+# ============================================================================
+# 1 — config + terminal capabilities
+# ============================================================================
 
 INSTALL_PREFIX=${INSTALL_PREFIX:-/opt/mnela}
 REPO_URL=${MNELA_REPO_URL:-https://github.com/SmartDogg/mnela}
-# By default we pin to the latest published `v*` tag instead of tracking
-# `main`. Curl-pipe-bash to HEAD would otherwise install whatever
-# arbitrary commit is on main right now, including unstable changes
-# between releases. Set MNELA_REPO_BRANCH=main explicitly to opt in.
 REPO_BRANCH=${MNELA_REPO_BRANCH:-}
 FORCE=${MNELA_FORCE:-0}
+ASSUME_YES=0
+SKIP_CLAUDE_LOGIN=0
 
-cyan()   { printf '\033[36m%s\033[0m\n' "$*"; }
-green()  { printf '\033[32m%s\033[0m\n' "$*"; }
-yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
-red()    { printf '\033[31m%s\033[0m\n' "$*"; }
+# `curl … | bash` pipes the script through stdin, so plain `read` hits EOF
+# instantly and every prompt would silently fall through to defaults. The
+# controlling terminal is still reachable via /dev/tty though, so we
+# re-bind fd 0 to it. After this, `read` and `docker exec` both work.
+if [[ ! -t 0 ]] && [[ -r /dev/tty ]] && [[ -w /dev/tty ]]; then
+  exec </dev/tty
+fi
 
-abort() { red "✘ $*"; exit 1; }
+HAVE_TTY=0
+[[ -t 0 ]] && HAVE_TTY=1
 
-prompt() {
-  # prompt VARNAME "Question" "default"
-  local var="$1" question="$2" default="${3:-}"
-  if [[ -n "${!var:-}" ]]; then return; fi    # already set in env
-  if ! tty -s; then
+USE_COLORS=1
+[[ -t 1 ]] || USE_COLORS=0
+[[ -n "${NO_COLOR:-}" ]] && USE_COLORS=0
+if (( USE_COLORS )); then
+  C0=$'\033[0m'   CB=$'\033[1m'   CD=$'\033[2m'
+  CC=$'\033[36m'  CG=$'\033[32m'  CY=$'\033[33m'  CR=$'\033[31m'  CK=$'\033[90m'
+else
+  C0=""  CB=""  CD=""  CC=""  CG=""  CY=""  CR=""  CK=""
+fi
+
+COLS=${COLUMNS:-72}
+if command -v tput >/dev/null 2>&1; then
+  COLS=$(tput cols 2>/dev/null || echo 72)
+fi
+
+# ============================================================================
+# 2 — output primitives
+# ============================================================================
+
+banner() {
+  [[ "$HAVE_TTY" == "1" ]] && { clear 2>/dev/null || true; }
+  cat <<EOF
+
+${CC}    ███╗   ███╗ ███╗   ██╗ ███████╗ ██╗      █████╗
+    ████╗ ████║ ████╗  ██║ ██╔════╝ ██║     ██╔══██╗
+    ██╔████╔██║ ██╔██╗ ██║ █████╗   ██║     ███████║
+    ██║╚██╔╝██║ ██║╚██╗██║ ██╔══╝   ██║     ██╔══██║
+    ██║ ╚═╝ ██║ ██║ ╚████║ ███████╗ ███████╗██║  ██║
+    ╚═╝     ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝╚═╝  ╚═╝${C0}
+
+       ${CD}Self-hosted personal-knowledge OS${C0}
+       ${CK}github.com/SmartDogg/mnela${C0}
+
+EOF
+}
+
+section() {
+  local title="$1"
+  local pad=$(( COLS - ${#title} - 5 ))
+  (( pad < 3 )) && pad=3
+  printf '\n%s━━ %s%s%s ' "$CC" "$CB" "$title" "$C0$CC"
+  printf '━%.0s' $(seq 1 "$pad")
+  printf '%s\n\n' "$C0"
+}
+
+info()  { printf '    %s%s%s\n' "$CD" "$*" "$C0"; }
+ok()    { printf '    %s✓%s %s\n' "$CG" "$C0" "$*"; }
+warn()  { printf '    %s⚠%s %s\n' "$CY" "$C0" "$*"; }
+err()   { printf '    %s✘%s %s\n' "$CR" "$C0" "$*" >&2; }
+step()  { printf '  %s▸%s %s%s%s\n' "$CC" "$C0" "$CB" "$*" "$C0"; }
+kv()    { printf '    %s%-22s%s %s%s%s\n' "$CD" "$1" "$C0" "$CB" "$2" "$C0"; }
+abort() { __spin_stop; err "$*"; exit 1; }
+
+# ----- spinner (only for genuinely silent operations) -----------------------
+
+__SPID=""
+spin() {
+  local msg="$*"
+  if [[ "$HAVE_TTY" != "1" ]] || (( ! USE_COLORS )); then
+    printf '    … %s\n' "$msg"
+    return
+  fi
+  (
+    local frames=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    local i=0
+    tput civis 2>/dev/null || true
+    while :; do
+      i=$(( (i + 1) % 10 ))
+      printf '\r    %s%s%s %s' "$CC" "${frames[i]}" "$C0" "$msg"
+      sleep 0.08
+    done
+  ) &
+  __SPID=$!
+}
+__spin_stop() {
+  if [[ -n "${__SPID:-}" ]]; then
+    kill "$__SPID" 2>/dev/null || true
+    wait "$__SPID" 2>/dev/null || true
+    __SPID=""
+    printf '\r\033[K'
+    tput cnorm 2>/dev/null || true
+  fi
+}
+spin_ok()   { __spin_stop; [[ $# -gt 0 ]] && ok "$*"; }
+spin_fail() { __spin_stop; err "$*"; exit 1; }
+
+cleanup() {
+  __spin_stop
+  tput cnorm 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'cleanup; err "interrupted"; exit 130' INT TERM
+
+# ============================================================================
+# 3 — input primitives
+# ============================================================================
+
+# ask_text VAR "Question" "default" [validator_fn]
+ask_text() {
+  local var="$1" q="$2" default="${3:-}" validator="${4:-}"
+  if [[ -n "${!var:-}" ]]; then return; fi
+  if [[ "$HAVE_TTY" != "1" ]]; then
+    [[ -n "$default" ]] || abort "no TTY and no value for $var — re-run with the matching flag (--help)."
     printf -v "$var" '%s' "$default"
     return
   fi
-  local input
-  if [[ -n "$default" ]]; then
-    read -r -p "$question [$default]: " input
-    printf -v "$var" '%s' "${input:-$default}"
-  else
-    read -r -p "$question: " input
-    printf -v "$var" '%s' "$input"
-  fi
-}
-
-prompt_choice() {
-  # prompt_choice VARNAME "Question" "opt1|opt2|opt3" "default"
-  local var="$1" question="$2" choices="$3" default="$4"
-  if [[ -n "${!var:-}" ]]; then return; fi
-  if ! tty -s; then printf -v "$var" '%s' "$default"; return; fi
-  local input
+  local raw
   while :; do
-    read -r -p "$question ($choices) [$default]: " input
-    input="${input:-$default}"
-    [[ "|$choices|" == *"|$input|"* ]] && break
-    yellow "  please pick one of: $choices"
+    if [[ -n "$default" ]]; then
+      printf '\n  %s?%s %s %s(default: %s)%s\n  %s›%s ' \
+        "$CC" "$C0" "$q" "$CD" "$default" "$C0" "$CC" "$C0"
+    else
+      printf '\n  %s?%s %s\n  %s›%s ' "$CC" "$C0" "$q" "$CC" "$C0"
+    fi
+    IFS= read -r raw
+    raw="${raw:-$default}"
+    if [[ -z "$raw" ]]; then
+      warn "value required"
+      continue
+    fi
+    if [[ -n "$validator" ]] && ! $validator "$raw"; then
+      continue
+    fi
+    printf -v "$var" '%s' "$raw"
+    return
   done
-  printf -v "$var" '%s' "$input"
 }
 
-# ----- argv parsing ------------------------------------------------------
+# ask_menu VAR "Title" "key1|Label one" "key2|Label two" ...
+# Arrow-key + numeric + vim (j/k) navigation. Q aborts. Enter confirms.
+ask_menu() {
+  local var="$1"; shift
+  local title="$1"; shift
+  if [[ -n "${!var:-}" ]]; then return; fi
+  local keys=() labels=()
+  local opt
+  for opt in "$@"; do
+    keys+=("${opt%%|*}")
+    labels+=("${opt#*|}")
+  done
+  local n=${#keys[@]}
+
+  if [[ "$HAVE_TTY" != "1" ]]; then
+    abort "no TTY for menu '$title' — re-run with the matching flag (--help)."
+  fi
+
+  printf '\n  %s?%s %s%s%s\n' "$CC" "$C0" "$CB" "$title" "$C0"
+  printf '    %s↑/↓ or 1-%d · Enter to confirm · q to abort%s\n\n' "$CK" "$n" "$C0"
+
+  # Reserve N lines, then redraw in-place each iteration.
+  local i
+  for ((i=0;i<n;i++)); do printf '\n'; done
+
+  local sel=0 key esc idx
+  tput civis 2>/dev/null || true
+  while :; do
+    printf '\033[%dA' "$n"
+    for ((i=0;i<n;i++)); do
+      printf '\033[K'
+      if [[ $i -eq $sel ]]; then
+        printf '    %s▸ %s%s%s\n' "$CC" "$CB" "${labels[$i]}" "$C0"
+      else
+        printf '    %s  %s%s\n' "$CK" "${labels[$i]}" "$C0"
+      fi
+    done
+
+    IFS= read -rsn1 key
+    case "$key" in
+      $'\e')
+        IFS= read -rsn2 -t 0.05 esc 2>/dev/null || esc=""
+        case "$esc" in
+          '[A'|'[D') sel=$(( (sel - 1 + n) % n )) ;;
+          '[B'|'[C') sel=$(( (sel + 1) % n )) ;;
+        esac
+        ;;
+      ''|$'\n'|$'\r') break ;;
+      k|K) sel=$(( (sel - 1 + n) % n )) ;;
+      j|J) sel=$(( (sel + 1) % n )) ;;
+      [1-9])
+        idx=$((10#$key - 1))
+        if [[ $idx -lt $n ]]; then sel=$idx; break; fi
+        ;;
+      q|Q)
+        tput cnorm 2>/dev/null || true
+        printf '\n'
+        abort "aborted by user"
+        ;;
+    esac
+  done
+  tput cnorm 2>/dev/null || true
+
+  printf -v "$var" '%s' "${keys[$sel]}"
+  printf '\n'
+}
+
+# ----- validators -----------------------------------------------------------
+
+v_domain() {
+  if [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$ ]]; then
+    return 0
+  fi
+  warn "doesn't look like a domain (e.g. mnela.example.com)"
+  return 1
+}
+v_host() {
+  if [[ "$1" =~ ^[A-Za-z0-9.:_-]+$ ]]; then
+    return 0
+  fi
+  warn "invalid characters in host"
+  return 1
+}
+
+# ============================================================================
+# 4 — argv
+# ============================================================================
+
+print_help() {
+  cat <<EOH
+Mnela installer — interactive setup for a fresh Linux VPS.
+
+Usage:
+  sudo bash install.sh                                  # full interactive run
+  curl -fsSL https://… | sudo bash                      # interactive over curl
+  sudo bash install.sh --domain mnela.example.com -y    # silent
+
+Flags (any unset value still pops a prompt):
+  --domain HOST         bind via Let's Encrypt at HOST
+  --ip ADDR             bind via self-signed TLS at ADDR
+  --tunnel HOST         bind behind Cloudflare Tunnel
+  --no-claude           skip Claude Max (configure API providers later)
+  --claude              answer "yes" to Claude Max non-interactively
+  --no-claude-login     don't run claude login in-script even if Max=yes
+  --branch NAME         install a specific tag/branch (default: latest v*)
+  --force               regenerate .env and Caddyfile
+  -y, --yes             auto-confirm the Review screen
+  -h, --help            show this and exit
+EOH
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --force) FORCE=1; shift ;;
-    --branch) REPO_BRANCH="$2"; shift 2 ;;
-    --domain) MNELA_DOMAIN="$2"; MNELA_BIND_MODE="domain"; shift 2 ;;
-    --ip) MNELA_HOST="$2"; MNELA_BIND_MODE="ip"; shift 2 ;;
-    --tunnel) MNELA_DOMAIN="$2"; MNELA_BIND_MODE="tunnel"; shift 2 ;;
-    --no-claude) CLAUDE_MAX="no"; shift ;;
-    -h|--help)
-      sed -n '2,30p' "$0"
-      cat <<'EOH'
-
-Flags:
-  --domain HOST        run in domain mode (Let's Encrypt)
-  --ip ADDR            run in ip mode (self-signed TLS)
-  --tunnel HOST        run behind Cloudflare Tunnel
-  --no-claude          skip the Claude Max question (will use api providers later)
-  --branch NAME        repo branch / tag to install (default: latest v* tag)
-  --force              re-run on an existing install, overwriting files
-EOH
-      exit 0 ;;
-    *) abort "Unknown flag: $1 (use --help)" ;;
+    --force)            FORCE=1; shift ;;
+    -y|--yes)           ASSUME_YES=1; shift ;;
+    --branch)           REPO_BRANCH="$2"; shift 2 ;;
+    --domain)           MNELA_DOMAIN="$2"; MNELA_BIND_MODE="domain"; shift 2 ;;
+    --ip)               MNELA_HOST="$2"; MNELA_BIND_MODE="ip"; shift 2 ;;
+    --tunnel)           MNELA_DOMAIN="$2"; MNELA_BIND_MODE="tunnel"; shift 2 ;;
+    --no-claude)        CLAUDE_MAX=no; shift ;;
+    --claude)           CLAUDE_MAX=yes; shift ;;
+    --no-claude-login)  SKIP_CLAUDE_LOGIN=1; shift ;;
+    -h|--help)          print_help; exit 0 ;;
+    *)                  print_help; abort "unknown flag: $1" ;;
   esac
 done
 
-# ----- preflight ---------------------------------------------------------
-cyan "▸ Mnela install — preflight"
+# ============================================================================
+# 5 — preflight
+# ============================================================================
+
+banner
+section "Preflight"
+
 [[ "$EUID" -eq 0 ]] || abort "run as root (or via sudo)."
 
-# Refuse to run non-interactively without explicit flags so the operator
-# doesn't end up with a half-configured install from `curl | bash`.
-if ! tty -s && [[ -z "${MNELA_BIND_MODE:-}" ]]; then
-  cat >&2 <<EOF
-✘ install.sh detected a non-interactive environment (curl|bash) but no
-  mode flag was passed. Re-run with one of:
+need=()
+command -v curl    >/dev/null 2>&1 || need+=(curl)
+command -v git     >/dev/null 2>&1 || need+=(git)
+command -v openssl >/dev/null 2>&1 || need+=(openssl)
+command -v jq      >/dev/null 2>&1 || need+=(jq)
 
-    bash <(curl -fsSL …) --domain mnela.example.com
-    bash <(curl -fsSL …) --ip 1.2.3.4
-    bash <(curl -fsSL …) --tunnel mnela.example.com
-
-  Or download the script first and run interactively:
-
-    curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh -o /tmp/install.sh
-    sudo bash /tmp/install.sh
-EOF
-  exit 2
-fi
-
-# We need a recent docker + compose + curl + git + openssl. Install missing.
-need_apt_install=()
-command -v curl >/dev/null 2>&1 || need_apt_install+=(curl)
-command -v git >/dev/null 2>&1 || need_apt_install+=(git)
-command -v openssl >/dev/null 2>&1 || need_apt_install+=(openssl)
-command -v jq >/dev/null 2>&1 || need_apt_install+=(jq)
-command -v ca-certificates >/dev/null 2>&1 || true
-
-if (( ${#need_apt_install[@]} > 0 )); then
+if (( ${#need[@]} > 0 )); then
   if command -v apt-get >/dev/null 2>&1; then
-    DEBIAN_FRONTEND=noninteractive apt-get update -y
-    DEBIAN_FRONTEND=noninteractive apt-get install -y "${need_apt_install[@]}"
+    spin "installing host tools: ${need[*]}"
+    DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 \
+      || spin_fail "apt update failed"
+    DEBIAN_FRONTEND=noninteractive apt-get install -y "${need[@]}" >/dev/null 2>&1 \
+      || spin_fail "apt install failed"
+    spin_ok "installed: ${need[*]}"
   else
-    abort "missing tools: ${need_apt_install[*]} — install them manually then re-run."
+    abort "missing: ${need[*]} — install manually then re-run."
   fi
+else
+  ok "host tools present (curl · git · openssl · jq)"
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  yellow "  docker not found — installing via get.docker.com"
-  curl -fsSL https://get.docker.com | sh
+  spin "installing docker (get.docker.com)"
+  curl -fsSL https://get.docker.com | sh >/dev/null 2>&1 || spin_fail "docker install failed"
+  spin_ok "docker installed"
 fi
-docker version >/dev/null 2>&1 || abort "docker daemon is not running; start it with 'systemctl start docker'"
-docker compose version >/dev/null 2>&1 || abort "docker compose plugin missing. On Debian/Ubuntu: apt install docker-compose-plugin"
+docker version >/dev/null 2>&1 || abort "docker daemon not running — try: systemctl start docker"
+docker compose version >/dev/null 2>&1 || abort "docker compose plugin missing — apt install docker-compose-plugin"
+ok "docker $(docker version --format '{{.Server.Version}}' 2>/dev/null) · compose $(docker compose version --short 2>/dev/null)"
 
-# Disk / memory sanity. 1 GB RAM minimum, 10 GB free.
-MEM_KB=$(grep -E '^MemTotal' /proc/meminfo | awk '{print $2}')
-(( MEM_KB > 700000 )) || yellow "  ⚠ <1 GB RAM detected ($((MEM_KB/1024)) MB) — Mnela may be slow."
-DISK_FREE_KB=$(df -k --output=avail / | tail -n1)
-(( DISK_FREE_KB > 10000000 )) || yellow "  ⚠ <10 GB free disk."
+mem_kb=$(awk '/^MemTotal/ {print $2}' /proc/meminfo)
+disk_kb=$(df -k --output=avail / | tail -n1)
+(( mem_kb  > 700000  )) || warn "<1 GB RAM detected ($((mem_kb/1024)) MB) — Mnela will run slowly."
+(( disk_kb > 10000000 )) || warn "<10 GB free disk."
+ok "$(( mem_kb / 1024 )) MB RAM · $(( disk_kb / 1024 / 1024 )) GB free on /"
 
-# ----- resolve REPO_BRANCH (latest v* tag if not pinned) -----------------
+# ============================================================================
+# 6 — source resolution + clone
+# ============================================================================
+
+section "Source"
+
 if [[ -z "$REPO_BRANCH" ]]; then
-  REPO_BRANCH=$(git ls-remote --tags --sort='-v:refname' "$REPO_URL" 'v*' \
-    | head -n1 | awk -F/ '{print $NF}' | sed 's/\^{}$//')
+  spin "resolving latest release tag"
+  REPO_BRANCH=$(git ls-remote --tags --sort='-v:refname' "$REPO_URL" 'v*' 2>/dev/null \
+    | head -n1 | awk -F/ '{print $NF}' | sed 's/\^{}$//' || true)
   if [[ -z "$REPO_BRANCH" ]]; then
-    yellow "  no v* tags published yet, falling back to main"
+    spin_ok "no v* tags yet — using main"
     REPO_BRANCH=main
   else
-    cyan "▸ Installing release $REPO_BRANCH"
+    spin_ok "release: $REPO_BRANCH"
   fi
 fi
 
-# ----- clone (or reuse local checkout) -----------------------------------
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)
 if [[ -n "$SELF_DIR" && -f "$SELF_DIR/../infra/docker/docker-compose.yml" ]]; then
   REPO_ROOT=$(cd "$SELF_DIR/.." && pwd)
-  cyan "▸ Using local checkout at $REPO_ROOT"
+  ok "using local checkout at $REPO_ROOT"
 else
   if [[ -d "$INSTALL_PREFIX/.git" ]]; then
-    cyan "▸ Updating $INSTALL_PREFIX"
     if [[ "$FORCE" != "1" ]]; then
       if ! git -C "$INSTALL_PREFIX" diff-index --quiet HEAD --; then
-        red "✘ working tree at $INSTALL_PREFIX has local edits."
-        red "  Either commit/stash them, or re-run with --force to discard them."
-        exit 1
+        abort "$INSTALL_PREFIX has uncommitted edits. Stash them or re-run with --force."
       fi
     fi
-    git -C "$INSTALL_PREFIX" fetch --depth=1 origin "$REPO_BRANCH"
-    git -C "$INSTALL_PREFIX" checkout -B "$REPO_BRANCH" "origin/$REPO_BRANCH"
+    spin "updating $INSTALL_PREFIX to $REPO_BRANCH"
+    git -C "$INSTALL_PREFIX" fetch --depth=1 origin "$REPO_BRANCH" >/dev/null 2>&1 \
+      || spin_fail "git fetch failed"
+    git -C "$INSTALL_PREFIX" checkout -B "$REPO_BRANCH" "origin/$REPO_BRANCH" >/dev/null 2>&1 \
+      || spin_fail "git checkout failed"
+    spin_ok "updated to $REPO_BRANCH"
   else
-    cyan "▸ Cloning $REPO_URL into $INSTALL_PREFIX"
+    spin "cloning $REPO_URL @ $REPO_BRANCH into $INSTALL_PREFIX"
     mkdir -p "$INSTALL_PREFIX"
-    git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX"
+    git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX" >/dev/null 2>&1 \
+      || spin_fail "git clone failed (check $REPO_URL & branch $REPO_BRANCH)"
+    spin_ok "cloned"
   fi
   REPO_ROOT="$INSTALL_PREFIX"
 fi
 cd "$REPO_ROOT"
 
-# ----- interactive config ------------------------------------------------
-cyan "▸ Configuration"
-prompt_choice MNELA_BIND_MODE \
-  "  How do you want to reach this Mnela?" \
-  "domain|ip|tunnel" \
-  "domain"
+# ============================================================================
+# 7 — questions
+# ============================================================================
+
+section "Configuration"
+
+if [[ -f "$REPO_ROOT/.env" ]] && [[ "$FORCE" != "1" ]]; then
+  warn "found existing $REPO_ROOT/.env — prior install detected"
+  info "to start completely fresh you'd need to wipe volumes first:"
+  info "    docker compose -f infra/docker/docker-compose.yml -p mnela down -v"
+  info "    rm $REPO_ROOT/.env"
+  info "    bash scripts/install.sh --force"
+  printf '\n'
+  ask_menu __EXISTING "What now?" \
+    "keep|Keep prior config — just (re)bring services up with the same secrets" \
+    "abort|Cancel and exit"
+  [[ "$__EXISTING" == "keep" ]] || abort "cancelled"
+fi
+
+if [[ -f "$REPO_ROOT/.env" ]] && [[ "$FORCE" != "1" ]]; then
+  # Preserve existing config — skip questions.
+  set -a; . "$REPO_ROOT/.env"; set +a
+  case "${MNELA_BIND_MODE:-}" in
+    domain) CADDY_TEMPLATE="infra/caddy/Caddyfile.domain.template" ;;
+    ip)     CADDY_TEMPLATE="infra/caddy/Caddyfile.ip.template" ;;
+    tunnel) CADDY_TEMPLATE="infra/caddy/Caddyfile.tunnel.template" ;;
+    *)      abort "couldn't determine MNELA_BIND_MODE from existing .env" ;;
+  esac
+  ok "loaded prior configuration"
+  : "${CLAUDE_MAX:=no}"
+else
+  ask_menu MNELA_BIND_MODE \
+    "How will users reach this Mnela?" \
+    "domain|Public domain — Let's Encrypt TLS, needs a DNS A record" \
+    "ip|Direct IP / hostname — self-signed TLS, no DNS needed" \
+    "tunnel|Cloudflare Tunnel — no open ports, needs cloudflared sidecar"
+
+  case "$MNELA_BIND_MODE" in
+    domain)
+      ask_text MNELA_DOMAIN "Public domain (DNS must already resolve to this host)" "" v_domain
+      MNELA_PUBLIC_ORIGIN="https://$MNELA_DOMAIN"
+      CADDY_TEMPLATE="infra/caddy/Caddyfile.domain.template"
+      ;;
+    ip)
+      detected_ip=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "")
+      ask_text MNELA_HOST "Public IP or hostname" "$detected_ip" v_host
+      MNELA_PUBLIC_ORIGIN="https://$MNELA_HOST"
+      CADDY_TEMPLATE="infra/caddy/Caddyfile.ip.template"
+      ;;
+    tunnel)
+      ask_text MNELA_DOMAIN "Public hostname Cloudflare routes to localhost:80" "" v_domain
+      MNELA_PUBLIC_ORIGIN="https://$MNELA_DOMAIN"
+      CADDY_TEMPLATE="infra/caddy/Caddyfile.tunnel.template"
+      ;;
+  esac
+
+  if [[ -z "${CLAUDE_MAX:-}" ]]; then
+    ask_menu CLAUDE_MAX \
+      "Built-in AI: do you have a Claude Max subscription?" \
+      "yes|Yes — sign in now (uses your Max quota, no API costs)" \
+      "no|No — I'll add an Anthropic/OpenAI/Ollama key later via /admin/system"
+  fi
+fi
+
+# ============================================================================
+# 8 — review
+# ============================================================================
+
+section "Review"
 
 case "$MNELA_BIND_MODE" in
-  domain)
-    prompt MNELA_DOMAIN "  Public domain (e.g. mnela.example.com)" ""
-    [[ -n "$MNELA_DOMAIN" ]] || abort "domain mode needs a non-empty domain."
-    MNELA_PUBLIC_ORIGIN="https://$MNELA_DOMAIN"
-    CADDY_TEMPLATE="infra/caddy/Caddyfile.domain.template"
-    ;;
-  ip)
-    prompt MNELA_HOST "  Public IP or hostname" "$(hostname -I | awk '{print $1}')"
-    MNELA_PUBLIC_ORIGIN="https://$MNELA_HOST"
-    CADDY_TEMPLATE="infra/caddy/Caddyfile.ip.template"
-    ;;
-  tunnel)
-    prompt MNELA_DOMAIN "  Cloudflare-Tunnel hostname (e.g. mnela.example.com)" ""
-    [[ -n "$MNELA_DOMAIN" ]] || abort "tunnel mode needs the public hostname Cloudflare routes to localhost:80."
-    MNELA_PUBLIC_ORIGIN="https://$MNELA_DOMAIN"
-    CADDY_TEMPLATE="infra/caddy/Caddyfile.tunnel.template"
-    ;;
+  domain) HOST_LABEL="$MNELA_DOMAIN (Let's Encrypt TLS)" ;;
+  ip)     HOST_LABEL="$MNELA_HOST (self-signed TLS)" ;;
+  tunnel) HOST_LABEL="$MNELA_DOMAIN (Cloudflare Tunnel)" ;;
 esac
 
-prompt_choice CLAUDE_MAX \
-  "  Do you have a Claude Max subscription you can sign into for built-in enrichment?" \
-  "yes|no" \
-  "yes"
+kv "Install path"     "$REPO_ROOT"
+kv "Release"          "$REPO_BRANCH"
+kv "Bind mode"        "$MNELA_BIND_MODE"
+kv "Host"             "$HOST_LABEL"
+kv "Public URL"       "$MNELA_PUBLIC_ORIGIN"
+kv "Claude Max"       "$CLAUDE_MAX$([[ "$CLAUDE_MAX" == "yes" ]] && (( ! SKIP_CLAUDE_LOGIN )) && echo " (OAuth in this terminal)" || true)"
+kv ".env action"      "$([[ -f "$REPO_ROOT/.env" && "$FORCE" != "1" ]] && echo "keep existing" || echo "generate fresh (chmod 600)")"
 
-# ----- generate secrets + .env ------------------------------------------
-gensecret() { openssl rand -hex 32; }
+if (( ! ASSUME_YES )); then
+  ask_menu __CONFIRM "Proceed with these settings?" \
+    "go|Yes, install now" \
+    "abort|No, cancel"
+  [[ "$__CONFIRM" == "go" ]] || abort "cancelled at review"
+else
+  ok "auto-confirmed (--yes)"
+fi
 
+# ============================================================================
+# 9 — provisioning
+# ============================================================================
+
+section "Provisioning"
+
+step "[1/6] writing .env"
 ENV_FILE="$REPO_ROOT/.env"
-if [[ ! -f "$ENV_FILE" ]]; then
-  cyan "▸ Generating $ENV_FILE (chmod 600)"
-  POSTGRES_PASSWORD=$(gensecret)
-  REDIS_PASSWORD=$(gensecret)
-  COOKIE_SECRET=$(gensecret)
-  PROVIDER_SECRET=$(gensecret)
+if [[ ! -f "$ENV_FILE" ]] || [[ "$FORCE" == "1" ]]; then
+  POSTGRES_PASSWORD=$(openssl rand -hex 32)
+  REDIS_PASSWORD=$(openssl rand -hex 32)
+  COOKIE_SECRET=$(openssl rand -hex 32)
+  PROVIDER_SECRET=$(openssl rand -hex 32)
   INTERNAL_TOKEN="mn_$(openssl rand -base64 32 | tr -d '=/+' | head -c 40)"
 
   cat >"$ENV_FILE" <<EOF
 # Generated by scripts/install.sh on $(date -u +%Y-%m-%dT%H:%M:%SZ)
 NODE_ENV=production
 
-# Domain / IP / tunnel
 MNELA_BIND_MODE=$MNELA_BIND_MODE
 MNELA_DOMAIN=${MNELA_DOMAIN:-localhost}
 MNELA_HOST=${MNELA_HOST:-localhost}
 MNELA_PUBLIC_ORIGIN=$MNELA_PUBLIC_ORIGIN
 
-# Postgres
 POSTGRES_USER=mnela
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 POSTGRES_DB=mnela
 POSTGRES_PORT=5432
 DATABASE_URL=postgresql://mnela:$POSTGRES_PASSWORD@localhost:5432/mnela?schema=public
 
-# Redis
 REDIS_PASSWORD=$REDIS_PASSWORD
 REDIS_PORT=6379
 REDIS_URL=redis://default:$REDIS_PASSWORD@localhost:6379
 
-# Auth
 COOKIE_SECRET=$COOKIE_SECRET
 SESSION_TTL_SECONDS=604800
 
-# Mnela data dir (mounted as the mnela-data volume in containers).
 MNELA_DATA_DIR=/data
 MNELA_LOG_LEVEL=info
 
-# AES-256-GCM master key for the encrypted-secret keystore (provider API
-# keys + Telegram bot token). DO NOT rotate without re-encrypting every
-# encrypted row — losing this value makes them unreadable. backup.sh and
-# restore.sh both round-trip through it.
+# AES-256-GCM master key for the keystore (provider API keys + Telegram
+# token). DO NOT rotate without re-encrypting every encrypted row.
 MNELA_PROVIDER_SECRET=$PROVIDER_SECRET
 
-# Bearer token apps/tg-bot uses for its own calls into apps/api. Scope mcp.
+# Bearer token apps/tg-bot uses to call apps/api. Scope = mcp.
 MNELA_INTERNAL_TOKEN=$INTERNAL_TOKEN
 
-# Image source: 'local' builds from this checkout (works for fresh OSS
-# users on any commit). Flip to 'registry' once a GHCR release exists
-# for your target MNELA_VERSION — then `mnela update` pulls instead of
-# rebuilding. release.yml in .github/workflows publishes per-tag.
+# 'local' = build from this checkout; flip to 'registry' once a GHCR
+# release matches MNELA_VERSION (mnela update pulls instead of rebuilding).
 MNELA_IMAGES=local
 MNELA_VERSION=latest
 
-# Caddy port mapping (80/443 by default; change only if something else
-# already binds them on the host).
 CADDY_HTTP_PORT=80
 CADDY_HTTPS_PORT=443
 EOF
   chmod 600 "$ENV_FILE"
+  ok "$ENV_FILE (chmod 600)"
 else
-  yellow "▸ $ENV_FILE already exists — keeping. Edit by hand to change values."
+  ok "$ENV_FILE kept (use --force to regenerate)"
 fi
-
-# Re-load for our own use below.
 set -a; . "$ENV_FILE"; set +a
 
-# ----- materialise Caddyfile --------------------------------------------
+step "[2/6] materialising Caddyfile"
 if [[ -f "$REPO_ROOT/Caddyfile" && "$FORCE" != "1" ]]; then
-  yellow "  Caddyfile already present — keeping operator edits. Re-run with --force to regenerate."
+  ok "Caddyfile kept (operator edits preserved; --force to regenerate)"
 else
   cp "$CADDY_TEMPLATE" "$REPO_ROOT/Caddyfile"
-  green "  Caddyfile: $CADDY_TEMPLATE → $REPO_ROOT/Caddyfile"
+  ok "Caddyfile ← $CADDY_TEMPLATE"
 fi
 
-# ----- pull / build ------------------------------------------------------
-cyan "▸ Pulling / building images ($MNELA_IMAGES mode)"
 COMPOSE="docker compose -f infra/docker/docker-compose.yml -p mnela"
 
+step "[3/6] images ($MNELA_IMAGES mode)"
 if [[ "$MNELA_IMAGES" == "registry" ]]; then
   $COMPOSE --profile prod --profile migrate pull
 else
-  # Need both the api image (for migrate) and the rest. Build everything once.
   $COMPOSE --profile prod --profile migrate build
 fi
 
-# ----- migrations (one-shot before the app stack comes up) ---------------
-cyan "▸ Applying database migrations"
-# Postgres starts first via service_healthy dependency; the migrate
-# container exits when prisma is done. `--rm` removes the stopped
-# container, --service-ports off by default.
+step "[4/6] applying database migrations"
 $COMPOSE --profile migrate run --rm migrate \
-  || abort "prisma migrate deploy failed — fix the error above and re-run scripts/install.sh."
-green "  migrations applied"
+  || abort "prisma migrate deploy failed — fix the error above and re-run."
+ok "schema up to date"
 
-# ----- bring up the prod stack ------------------------------------------
-cyan "▸ Starting prod services"
+step "[5/6] starting prod services"
 $COMPOSE --profile prod up -d
+ok "stack up"
 
-# ----- issue the install-time AuthToken so tg-bot can authenticate ------
-# install.sh generated MNELA_INTERNAL_TOKEN in .env, but apps/api verifies
-# bearer tokens by sha256 lookup in the AuthToken table. Without a row,
-# every tg-bot → api call returns 401 and the tg-bot container crash-loops.
-# Wait for the api to be healthy first so prisma client can connect.
-cyan "▸ Provisioning AuthToken for tg-bot"
-for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+step "[6/6] provisioning bootstrap AuthToken for tg-bot"
+spin "waiting for api healthcheck"
+api_ready=0
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
   if $COMPOSE exec -T api node healthcheck.js >/dev/null 2>&1; then
-    break
+    api_ready=1; break
   fi
   sleep 2
 done
+__spin_stop
+if (( ! api_ready )); then
+  warn "api didn't pass healthcheck within 30s — token provisioning may fail"
+fi
 $COMPOSE exec -T -e MNELA_INTERNAL_TOKEN="$MNELA_INTERNAL_TOKEN" api \
   node scripts/issue-bootstrap-token.mjs \
-  || abort "could not issue install-time AuthToken — tg-bot will fail auth. See logs."
-green "  AuthToken issued"
+  || abort "could not issue install-time AuthToken — tg-bot will fail auth. See api logs."
+ok "AuthToken issued (sha256 stored in DB, plaintext stays in .env)"
 
-# ----- done --------------------------------------------------------------
-green "✓ Mnela is up"
-cat <<EOF
+# ============================================================================
+# 10 — Claude Max OAuth (inline)
+# ============================================================================
 
-  Web UI:    $MNELA_PUBLIC_ORIGIN
-  Setup:     $MNELA_PUBLIC_ORIGIN/setup
-  Health:    $MNELA_PUBLIC_ORIGIN/api/v1/system/health
+if [[ "${CLAUDE_MAX:-no}" == "yes" ]] && (( ! SKIP_CLAUDE_LOGIN )); then
+  section "Claude Max — sign in"
 
-Next steps:
-  1. Open $MNELA_PUBLIC_ORIGIN/setup in a browser. Step 1 creates the first
-     admin via POST /auth/bootstrap (password ≥ 12 chars).
+  spin "waiting for orchestrator's claude CLI"
+  cli_ready=0
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if $COMPOSE exec -T orchestrator claude --version >/dev/null 2>&1; then
+      cli_ready=1; break
+    fi
+    sleep 2
+  done
+  __spin_stop
 
-EOF
+  if (( ! cli_ready )); then
+    warn "orchestrator's claude CLI didn't respond within 30s"
+    info "finish the OAuth later with:"
+    info "    docker exec -it mnela-orchestrator claude login"
+  elif [[ "$HAVE_TTY" != "1" ]]; then
+    warn "no TTY available for the OAuth dance"
+    info "finish later with:"
+    info "    docker exec -it mnela-orchestrator claude login"
+  else
+    ok "claude CLI v$($COMPOSE exec -T orchestrator claude --version 2>/dev/null | head -n1 | awk '{print $NF}')"
+    printf '\n'
+    info "Claude will print a one-time URL. Open it in your browser, complete the"
+    info "OAuth flow, then paste the code Anthropic shows back into this terminal."
+    info "The token lands in the mnela-claude-creds volume and survives container"
+    info "restarts. Backups via scripts/backup.sh round-trip it too."
+    printf '\n'
 
-if [[ "$CLAUDE_MAX" == "yes" ]]; then
-  cat <<EOF
-  2. Bootstrap your Claude Max login (one-time, persisted in a volume):
-       docker exec -it mnela-orchestrator claude login
-     Anthropic will print a URL — open it on your workstation, finish the
-     OAuth flow, then come back to the wizard's "Modules" step.
-
-EOF
-else
-  cat <<EOF
-  2. In the wizard, skip the Claude Max step and continue to /admin/system →
-     AI Providers to add an Anthropic API key, OpenAI / DeepSeek / Grok /
-     Gemini / OpenRouter, or a local Ollama / LM Studio endpoint.
-
-EOF
+    if $COMPOSE exec orchestrator claude login </dev/tty; then
+      ok "Claude Max signed in"
+    else
+      warn "claude login exited non-zero — token may not be saved"
+      info "retry with: docker exec -it mnela-orchestrator claude login"
+    fi
+  fi
 fi
 
-cat <<EOF
-  3. Schedule daily backups:
-       (crontab -l 2>/dev/null; echo "0 4 * * * cd $REPO_ROOT && bash scripts/backup.sh >> /var/log/mnela-backup.log 2>&1") | crontab -
+# ============================================================================
+# 11 — done
+# ============================================================================
 
-  Logs:    docker compose -f infra/docker/docker-compose.yml -p mnela logs -f
-  Stop:    docker compose -f infra/docker/docker-compose.yml -p mnela --profile prod down
-  Backup:  bash scripts/backup.sh
-EOF
+section "Done"
+
+printf '\n    %s✓%s  Mnela is up at %s%s%s\n\n' \
+  "$CG" "$C0" "$CB" "$MNELA_PUBLIC_ORIGIN" "$C0"
+
+printf '  %sNext steps%s\n' "$CB" "$C0"
+printf '    1. Open %s%s/setup%s to create the first admin (12-char password).\n' \
+  "$CC" "$MNELA_PUBLIC_ORIGIN" "$C0"
+
+if [[ "${CLAUDE_MAX:-no}" == "yes" ]]; then
+  printf '    2. The wizard'\''s Modules step should show Claude Max as signed in.\n'
+else
+  printf '    2. In the wizard, expand %sAI Providers%s and paste your API key\n' "$CB" "$C0"
+  printf '       (Anthropic / OpenAI / DeepSeek / Grok / Gemini / OpenRouter / Ollama).\n'
+fi
+
+printf '    3. Schedule daily backups (recommended):\n'
+printf '       %s(crontab -l 2>/dev/null; echo "0 4 * * * cd %s && bash scripts/backup.sh >> /var/log/mnela-backup.log 2>&1") | crontab -%s\n\n' \
+  "$CK" "$REPO_ROOT" "$C0"
+
+printf '  %sOperator cheatsheet%s\n' "$CB" "$C0"
+printf '    %smnela status%s            container status\n' "$CK" "$C0"
+printf '    %smnela logs api -f%s       tail one service\n' "$CK" "$C0"
+printf '    %smnela logs%s              tail everything\n' "$CK" "$C0"
+printf '    %smnela backup%s            one-off backup\n' "$CK" "$C0"
+printf '    %smnela claude:test%s       verify Claude Max wiring\n' "$CK" "$C0"
+printf '    %smnela update%s            pull latest release\n\n' "$CK" "$C0"
