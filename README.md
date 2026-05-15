@@ -1,6 +1,9 @@
 <div align="center">
 
-<img src="./docs/assets/logo.svg" alt="Mnela" width="160" height="160" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/logo-dark.svg" />
+  <img src="./docs/assets/logo-light.svg" alt="Mnela" width="160" height="160" />
+</picture>
 
 # Mnela
 

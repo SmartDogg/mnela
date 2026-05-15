@@ -1,0 +1,5 @@
+# Mnela is single-tenant self-hosted personal knowledge. Public crawlers
+# have nothing to do here — every protected page redirects to /login
+# behind a session cookie regardless of this file.
+User-agent: *
+Disallow: /

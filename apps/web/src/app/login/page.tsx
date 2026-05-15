@@ -44,7 +44,17 @@ export default async function LoginPage({
             indexed, searchable, and ready for any AI tool that speaks the protocol.
           </p>
         </div>
-        <p className="text-xs text-muted-foreground">v0.0</p>
+        <p className="text-xs text-muted-foreground">
+          <a
+            href="https://github.com/SmartDogg/mnela"
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground transition-colors"
+          >
+            github.com/SmartDogg/mnela
+          </a>
+          {' · MIT'}
+        </p>
       </div>
       <div className="flex flex-col items-center justify-center bg-background p-6">
         <LoginForm next={params.next} />
