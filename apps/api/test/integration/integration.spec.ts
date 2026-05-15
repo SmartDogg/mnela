@@ -19,11 +19,10 @@ Mnela is a self-hosted second brain. The api is built with NestJS and Postgres.
 Search uses Postgres FTS plus pg_trgm for fuzzy matching.
 `;
 
-const REPO_ROOT = path.resolve(import.meta.dirname, '../../../..');
-const REAL_ZIP = path.join(
-  REPO_ROOT,
-  'data-a9014ee7-f1e2-46a5-8630-a879ee914eea-1777894787-beb688ca-batch-0000.zip',
-);
+// Path to a real Claude.ai export ZIP for the optional Phase-2 test below.
+// Leave unset on CI / public contributors — the test self-skips. Operators
+// who want to validate against their own export point this at any .zip.
+const REAL_ZIP = process.env['MNELA_REAL_EXPORT_ZIP'];
 
 let app: INestApplication;
 let worker: INestApplicationContext;
@@ -405,6 +404,12 @@ describe('Phase 4 — graph.* live events from ingestion', () => {
 
 describe('Phase 2 — real Claude.ai export', () => {
   it('imports the real ZIP, parses N documents, dedupes on re-upload', async () => {
+    if (!REAL_ZIP) {
+      console.warn(
+        '[ingestion] MNELA_REAL_EXPORT_ZIP not set; skipping real Claude.ai export test',
+      );
+      return;
+    }
     const fileExists = await fs.stat(REAL_ZIP).catch(() => null);
     if (!fileExists) {
       console.warn(`[ingestion] real Claude.ai ZIP missing at ${REAL_ZIP}; skipping`);
