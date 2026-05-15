@@ -90,7 +90,7 @@ ingestion sources there:
 ```
 
 Long-term: split attachments off to S3/B2 (post-Phase 11 work — see
-QUESTIONS.md).
+[`docs/dev/QUESTIONS.md`](./docs/dev/QUESTIONS.md)).
 
 ## `docker compose down -v` ate my data
 

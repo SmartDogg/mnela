@@ -36,7 +36,7 @@ export const GraphQuerySchema = z.object({
   maxNodes: z.coerce.number().int().positive().max(GRAPH_MAX_NODES).optional(),
   // Narrow to entities and edges directly connected to the Project entity
   // (Entity with type='project' and normalizedName === projectSlug). See
-  // QUESTIONS.md row 14: project linkage in /graph is via persisted
+  // docs/dev/QUESTIONS.md row 14: project linkage in /graph is via persisted
   // Entity(type=project) rows — Document-side linkage is out of scope for the
   // REST snapshot.
   projectSlug: z.string().min(1).optional(),

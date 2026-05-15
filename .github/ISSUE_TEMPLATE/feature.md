@@ -28,6 +28,6 @@ labels: enhancement
 
 ## Out of scope
 
-See `mnela-tz-prompt.md` §18 (amended by ADR-0053). v1 explicitly does NOT
+See [`docs/dev/ORIGINAL_TZ.md`](../../docs/dev/ORIGINAL_TZ.md) §18 (amended by ADR-0053). v1 explicitly does NOT
 ship: mobile app, multi-tenant, plugins API, marketplace, federated
 search, LLM proxy, TTS, image gen, Notion/Drive/GitHub sync.

@@ -157,8 +157,8 @@ Names match TZ §5 verbatim. See the spec for full input/output schemas.
 ## References
 
 - TZ §5 — canonical tool catalogue with input/output schemas.
-- `DECISIONS.md` ADR-0030 — Streamable HTTP transport on `POST /mcp`.
-- `DECISIONS.md` ADR-0031 — same-transaction audit for write/admin tools.
-- `DECISIONS.md` ADR-0032 — `mnela_trigger_enrichment` enqueue + Dumb Mode handling.
-- `DECISIONS.md` ADR-0033 — Bearer-only auth, per-call DB verify.
-- `DECISIONS.md` ADR-0034 — `mnela_<verb>_<target>` snake_case naming.
+- [`dev/DECISIONS.md`](./dev/DECISIONS.md) ADR-0030 — Streamable HTTP transport on `POST /mcp`.
+- [`dev/DECISIONS.md`](./dev/DECISIONS.md) ADR-0031 — same-transaction audit for write/admin tools.
+- [`dev/DECISIONS.md`](./dev/DECISIONS.md) ADR-0032 — `mnela_trigger_enrichment` enqueue + Dumb Mode handling.
+- [`dev/DECISIONS.md`](./dev/DECISIONS.md) ADR-0033 — Bearer-only auth, per-call DB verify.
+- [`dev/DECISIONS.md`](./dev/DECISIONS.md) ADR-0034 — `mnela_<verb>_<target>` snake_case naming.

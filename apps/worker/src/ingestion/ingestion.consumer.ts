@@ -515,7 +515,7 @@ export class IngestionConsumer implements OnModuleInit, OnModuleDestroy {
   /**
    * Phase 4 pseudo-graph events. The Document itself is emitted as a
    * **live-only synthetic node** (no Entity row — `Edge.fromId/toId` schema
-   * forbids it; QUESTIONS.md #14). For parsers that capture project linkage
+   * forbids it; docs/dev/QUESTIONS.md #14). For parsers that capture project linkage
    * (currently only `claude_export` via `metadata.projectName/projectUuid`),
    * the project is upserted as a real `Entity(type=project)` row and an
    * `id="syn-..."` edge ties the document to it. Phase 5 enrichment will

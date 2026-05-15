@@ -6,15 +6,16 @@ before opening a PR.
 
 ## Before you start
 
-1. **Check `PLAN.md`** for the phase plan. If your idea fits the current
-   phase or one of the explicit Phase 11 backlog items, you're aligned.
-   If not, please open an issue first to discuss scope.
-2. **Read `DECISIONS.md`** (ADR log) for architectural choices. If your
-   change touches an ADR's stated decision, propose an updated ADR in
-   the same PR.
-3. **Look at `mnela-tz-prompt.md`** for the original technical spec.
-   Amendments are pointed to ADRs; the spec itself is preserved as the
-   north star.
+1. **Check [`docs/dev/PLAN.md`](./docs/dev/PLAN.md)** for the phase plan.
+   If your idea fits the current phase or one of the explicit Phase 11
+   backlog items, you're aligned. If not, please open an issue first to
+   discuss scope.
+2. **Read [`docs/dev/DECISIONS.md`](./docs/dev/DECISIONS.md)** (ADR log)
+   for architectural choices. If your change touches an ADR's stated
+   decision, propose an updated ADR in the same PR.
+3. **Look at [`docs/dev/ORIGINAL_TZ.md`](./docs/dev/ORIGINAL_TZ.md)** for
+   the original technical spec. Amendments are pointed to ADRs; the spec
+   itself is preserved as the north star.
 
 ## Development setup
 
@@ -72,7 +73,7 @@ short version:
 
 If your change is more than ~50 LOC of structural code (new module,
 new endpoint that other consumers will call, new ADR-worthy decision):
-add a fresh `ADR-NNNN` entry to `DECISIONS.md` in the same PR. The
+add a fresh `ADR-NNNN` entry to `docs/dev/DECISIONS.md` in the same PR. The
 template at the bottom of that file shows the structure.
 
 ## What doesn't get merged

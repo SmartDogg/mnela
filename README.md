@@ -1,81 +1,116 @@
-# Mnela
+<div align="center">
 
-Self-hosted personal second brain that exposes itself as an MCP server.
+```
+███╗   ███╗ ███╗   ██╗ ███████╗ ██╗      █████╗
+████╗ ████║ ████╗  ██║ ██╔════╝ ██║     ██╔══██╗
+██╔████╔██║ ██╔██╗ ██║ █████╗   ██║     ███████║
+██║╚██╔╝██║ ██║╚██╗██║ ██╔══╝   ██║     ██╔══██║
+██║ ╚═╝ ██║ ██║ ╚████║ ███████╗ ███████╗██║  ██║
+╚═╝     ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝╚═╝  ╚═╝
+```
 
-- Source of truth: PostgreSQL. Markdown vault is generated as an export.
-- AI calls (Ask Brain, enrichment, vision, project-context) route through a pluggable provider layer (ADR-0049). The built-in **Claude Code (CLI) subprocess** works out of the box with a Claude Max subscription — no API key required. **Anthropic API** and any **OpenAI-compatible endpoint** (OpenAI, DeepSeek, Grok, Gemini-via-OpenRouter, Ollama, LM Studio) can be added in `/admin/system → AI Providers`.
-- Falls back to "Dumb Mode" (FTS-only) if no provider is reachable.
+**Your second brain becomes an MCP server, in one click.**
 
-See [`PLAN.md`](./PLAN.md) for phase-by-phase status.
+[![CI](https://github.com/SmartDogg/mnela/actions/workflows/ci.yml/badge.svg)](https://github.com/SmartDogg/mnela/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
+[![Node 22 LTS](https://img.shields.io/badge/node-22%20LTS-brightgreen.svg)](https://nodejs.org/)
+[![TypeScript strict](https://img.shields.io/badge/TypeScript-strict-3178c6.svg)](https://www.typescriptlang.org/)
+[![MCP](https://img.shields.io/badge/MCP-host-8a4fff.svg)](https://modelcontextprotocol.io/)
+
+[Install](#install-one-command-on-a-fresh-vps) · [Features](#features) · [Quick start](#quick-start-local-dev) · [Docs](#documentation)
+
+</div>
+
+---
+
+## What is Mnela?
+
+Self-hosted personal-knowledge OS. Drop in your ChatGPT / Claude.ai exports, Obsidian vaults, voice notes, PDFs — Mnela parses them, links them into a knowledge graph, and exposes everything as an **MCP server** so Claude Code, Cursor, Cline, ChatGPT and any other MCP client can read and write into your second brain.
+
+- **Postgres is the source of truth.** A markdown vault is generated as an export.
+- **AI calls route through a pluggable provider layer** ([ADR-0049](./docs/dev/DECISIONS.md#adr-0049--pluggable-llm-provider-abstraction)). The built-in **Claude Code (CLI) subprocess** works out of the box with a Claude Max subscription — no API key required. **Anthropic API** and any **OpenAI-compatible endpoint** (OpenAI, DeepSeek, Grok, Gemini-via-OpenRouter, Ollama, LM Studio) can be added in `/admin/system → AI Providers`.
+- **Falls back to Dumb Mode (FTS-only)** if no provider is reachable, so the UI never goes dark.
 
 ## Features
 
-- **Knowledge ingestion** — drag-and-drop ChatGPT / Claude.ai exports, Obsidian vaults, PDFs, Office docs, voice notes, images. Streaming ZIP parser handles multi-GB archives. Folder watcher picks up files from `${MNELA_DATA_DIR}/dropbox/`.
-- **Auto entity + edge extraction** — every imported document is enriched via your chosen LLM provider; entities, relationships, decisions, and confidence-scored link suggestions land in the graph. Low-confidence proposals queue in **Review** (`/inbox`) for human triage.
-- **Ask Brain** — chat over your vault with inline citations. SSE streams answer + tool-call timeline; pinning a Q&A turn promotes it to a Document and feeds it back into enrichment (ADR-0050).
-- **Auto-suggested projects** — post-ingest detector (ADR-0051) groups related documents into project candidates without auto-creating them; accept or dismiss in `/projects?status=suggested`.
-- **Telegram bot** — second canonical client (ADR-0053). Single-tenant, multi-modal turn bundling: voice + photo + text in one TG thread becomes one `/search/ask` call. Configure under `/admin/system → Telegram`.
-- **Voice transcription** — optional whisper.cpp container; toggle under `/admin/system → Transcription`. Audio attachments stream out via Range-aware endpoints.
-- **MCP server** (`apps/mcp`) — bearer-token-authenticated MCP host; connect from Claude Code, Cursor, Cline, ChatGPT, anything that speaks MCP.
-- **One settings sheet** — `/admin/system` is the only admin page. Everything tunable (provider routing, ingestion limits, suggestion gates, Telegram config, API tokens) lives there and hot-reloads via the **Restart Services** button — no process restart needed.
+- **Drag-and-drop ingestion** — ChatGPT/Claude.ai exports, Obsidian vaults, PDFs, Office docs, voice notes, images. Streaming ZIP parser handles multi-GB archives. Folder watcher picks up files dropped into `${MNELA_DATA_DIR}/dropbox/`.
+- **Auto knowledge graph** — every document is enriched by your chosen LLM; entities, relationships, decisions, and confidence-scored link suggestions land in the graph. Low-confidence proposals queue in **Review** for human triage.
+- **Ask Brain** — chat over your vault with inline citations. SSE-streamed answer + tool-call timeline. Pin any Q&A turn to promote it to a Document and feed it back into enrichment.
+- **Auto-suggested projects** — post-ingest detector groups related documents into project candidates; accept or dismiss in `/projects?status=suggested`.
+- **MCP server** — bearer-token-authenticated MCP host (`apps/mcp`); connect from Claude Code, Cursor, Cline, ChatGPT, anything that speaks MCP.
+- **Telegram bot** — second canonical client. Multi-modal turn bundling: voice + photo + text in one TG thread becomes one `/search/ask` call.
+- **One settings sheet** — `/admin/system` is the only admin page. Provider routing, ingestion limits, suggestion gates, Telegram config, API tokens — all hot-reloadable via **Restart Services** (no process restart).
 
-## Install on a fresh VPS
+## Install (one command on a fresh VPS)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh | sudo bash
 ```
 
-The script auto-installs Docker if missing, asks for your domain / IP /
-Cloudflare Tunnel choice, generates `/opt/mnela/.env` with random secrets,
-pulls images from GHCR, applies migrations, and prints the URL of the
-Setup Wizard. Full guide: [`DEPLOYMENT.md`](./DEPLOYMENT.md).
+The script auto-installs Docker if missing, asks for domain / IP / Cloudflare Tunnel choice, generates `/opt/mnela/.env` with random secrets, pulls images from GHCR, applies migrations, and prints the URL of the Setup Wizard.
 
-After install, open `/setup`, create the first admin, and either run
-`docker exec -it mnela-orchestrator claude login` (if you have Claude Max)
-or add an API provider under `/admin/system → AI Providers`.
+After install, open `/setup`, create the first admin, then either run `docker exec -it mnela-orchestrator claude login` (if you have Claude Max) or add an API provider under `/admin/system → AI Providers`.
 
-Backup / restore: `mnela backup` and `mnela restore <file>` round-trip
-everything including the encrypted provider keystore — see
-[`scripts/backup.sh`](./scripts/backup.sh).
+**Backup / restore:** `mnela backup` and `mnela restore <file>` round-trip everything including the encrypted provider keystore.
 
-## Quick start (development)
+Full guide → [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+## Quick start (local dev)
 
 ```bash
+git clone https://github.com/SmartDogg/mnela && cd mnela
 cp .env.example .env       # edit POSTGRES_PASSWORD, REDIS_PASSWORD, COOKIE_SECRET
 pnpm install
 docker compose -f infra/docker/docker-compose.yml up -d postgres redis
 pnpm --filter @mnela/db db:migrate
 pnpm --filter @mnela/db db:seed
-pnpm dev                   # api:3000 + web:3001 + worker + orchestrator
+pnpm dev                   # api :3000 · web :3001 · worker · orchestrator
 # open http://localhost:3001/setup
 ```
 
-Requires:
-
-- **Node 22 LTS** + **pnpm 10+**
-- **Docker** (for postgres + redis; optional whisper / production stack)
-- **Claude Code CLI** (`claude --version`) for the default built-in provider. Skip if you'll configure an API provider in the Setup Wizard instead.
+Requires **Node 22 LTS**, **pnpm 10+**, **Docker**. Optional: **Claude Code CLI** for the default built-in provider.
 
 ## Configuration model
 
-| Tier                  | Lives in                                                                              | Hot-reloadable                                    | Examples                                                                                      |
-| --------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Boot-critical secrets | `.env` only (this file is gitignored)                                                 | No                                                | `DATABASE_URL`, `REDIS_URL`, `COOKIE_SECRET`, `MNELA_PROVIDER_SECRET`, `MNELA_INTERNAL_TOKEN` |
-| User-tunable settings | SystemConfig registry (`packages/core/src/system-registry.ts`); UI at `/admin/system` | Yes (Restart Services button, per-subscriber ack) | `enrichment.parallelism`, `search.fts.weight`, `transcription.enabled`, `telegram.enabled`    |
+Two tiers, deliberately split:
 
-See [`.env.example`](./.env.example) for the full env list with comments. Provider API keys + the Telegram bot token are AES-256-GCM-encrypted in the database — never put them in `.env`.
+| Tier                  | Lives in                                      | Hot-reloadable           | Examples                                                                                      |
+| --------------------- | --------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------- |
+| Boot-critical secrets | `.env` (gitignored)                           | No                       | `DATABASE_URL`, `REDIS_URL`, `COOKIE_SECRET`, `MNELA_PROVIDER_SECRET`, `MNELA_INTERNAL_TOKEN` |
+| User-tunable settings | SystemConfig registry — UI at `/admin/system` | Yes (per-subscriber ack) | `enrichment.parallelism`, `search.fts.weight`, `transcription.enabled`, `telegram.enabled`    |
 
-## Documents
+Provider API keys and the Telegram bot token are AES-256-GCM-encrypted in the database — never put them in `.env`.
 
-- [`DEPLOYMENT.md`](./DEPLOYMENT.md) — fresh-VPS install, backup/restore, Cloudflare Tunnel.
-- [`TROUBLESHOOTING.md`](./TROUBLESHOOTING.md) — typical failures and fixes.
-- [`docs/EXPORT_GUIDES`](./docs/EXPORT_GUIDES/) — exporting from ChatGPT, Claude.ai, Obsidian.
-- [`PLAN.md`](./PLAN.md) — phase plan and acceptance criteria.
-- [`DECISIONS.md`](./DECISIONS.md) — architectural decisions log (ADRs).
-- [`CLAUDE.md`](./CLAUDE.md) — developer guide for Claude Code working inside this repo.
-- [`mnela-tz-prompt.md`](./mnela-tz-prompt.md) — full original technical spec (preserved as historical north star; amendments are pointed via ADRs).
-- [`QUESTIONS.md`](./QUESTIONS.md) — open + resolved questions log.
+## Architecture (one-line tour)
+
+| Service                  | Role                                                                              |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `apps/api`               | NestJS HTTP API, SSE `/search/ask`, `/admin/*`, `/projects`                       |
+| `apps/web`               | Next.js 15 UI (`/`, `/graph`, `/ask`, `/documents`, `/projects`, `/admin/system`) |
+| `apps/worker`            | BullMQ ingestion pipeline (parsers, attachment promotion)                         |
+| `apps/orchestrator`      | Claude Code subprocess manager + enrichment + project suggestions                 |
+| `apps/mcp`               | MCP server (Streamable HTTP transport)                                            |
+| `apps/tg-bot`            | Telegram frontend over `/search/ask` + `/documents/upload`                        |
+| `packages/llm-providers` | The only place AI calls flow through                                              |
+| `packages/mcp-tools`     | Shared tool registry for MCP host + in-process agent loop                         |
+
+## Documentation
+
+- **Operators**
+  - [DEPLOYMENT.md](./DEPLOYMENT.md) — fresh-VPS install, backup/restore, Cloudflare Tunnel
+  - [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) — typical failures and fixes
+  - [docs/EXPORT_GUIDES/](./docs/EXPORT_GUIDES/) — exporting from ChatGPT, Claude.ai, Obsidian
+  - [docs/MCP_INTEGRATION.md](./docs/MCP_INTEGRATION.md) — connecting MCP clients
+- **Contributors**
+  - [CONTRIBUTING.md](./CONTRIBUTING.md) — how to propose changes
+  - [CLAUDE.md](./CLAUDE.md) — developer guide for Claude Code working inside this repo
+  - [docs/dev/DECISIONS.md](./docs/dev/DECISIONS.md) — architectural decisions log (ADRs)
+  - [docs/dev/PLAN.md](./docs/dev/PLAN.md) — phase plan and acceptance criteria
+  - [docs/dev/QUESTIONS.md](./docs/dev/QUESTIONS.md) — open + resolved questions log
+  - [docs/dev/ORIGINAL_TZ.md](./docs/dev/ORIGINAL_TZ.md) — original technical spec, preserved as historical north star
+- **Security**
+  - [SECURITY.md](./SECURITY.md) — vulnerability disclosure policy
 
 ## License
 
-MIT — see [`LICENSE`](./LICENSE).
+[MIT](./LICENSE) — © 2026 SmartDogg

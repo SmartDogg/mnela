@@ -1,6 +1,6 @@
 # Mnela — Implementation Plan
 
-Source of truth for scope: [`mnela-tz-prompt.md`](./mnela-tz-prompt.md).
+Source of truth for scope: [`ORIGINAL_TZ.md`](./ORIGINAL_TZ.md).
 Architectural decisions log: [`DECISIONS.md`](./DECISIONS.md).
 Open questions: [`QUESTIONS.md`](./QUESTIONS.md).
 

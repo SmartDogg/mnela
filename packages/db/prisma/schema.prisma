@@ -1,4 +1,4 @@
-// Mnela database schema — see mnela-tz-prompt.md §4
+// Mnela database schema — see docs/dev/ORIGINAL_TZ.md §4
 // Source of truth for all persistent state.
 
 generator client {
