@@ -79,7 +79,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=release-${{ matrix.app }}
-          cache-to: type=gha,scope=release-${{ matrix.app }},mode=max
+          # ignore-error keeps the job green if GHA Cache returns a 502 at the
+          # tail of an export (image is already pushed to GHCR by this point;
+          # only the layer-cache write to GHA failed). Without this, transient
+          # GitHub infra blips fail the build *after* a successful push.
+          cache-to: type=gha,scope=release-${{ matrix.app }},mode=max,ignore-error=true
 
   github-release:
     name: Publish GitHub Release

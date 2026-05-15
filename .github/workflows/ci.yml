@@ -8,7 +8,10 @@ on:
 
 env:
   NODE_VERSION: 22
-  PNPM_VERSION: 10
+  # pnpm version is the single source of truth in package.json's
+  # "packageManager" field. pnpm/action-setup@v4 reads it automatically
+  # via Corepack; specifying a second `with: version:` here would race
+  # the two values (ERR_PNPM_BAD_PM_VERSION).
   POSTGRES_USER: mnela
   POSTGRES_PASSWORD: mnela_ci
   POSTGRES_DB: mnela_test
@@ -24,8 +27,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
@@ -80,8 +81,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
 
       - uses: actions/setup-node@v4
         with:
