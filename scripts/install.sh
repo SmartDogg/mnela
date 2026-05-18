@@ -616,8 +616,17 @@ if [[ "$MNELA_IMAGES" == "registry" ]]; then
   run_quiet "$LOG_DIR/images-pull.log" "pulling images" \
     $COMPOSE --profile prod --profile migrate pull
 else
-  run_quiet "$LOG_DIR/images-build.log" "building images" \
-    $COMPOSE --profile prod --profile migrate build
+  # Build services one at a time. Parallel `docker compose build` peaks at
+  # ~1GB per image during pnpm install + tsc — six images in parallel OOMs
+  # an 8GB host and bake gets SIGKILLed with "signal: killed". Sequential
+  # build trades wall-clock for headroom; layer cache makes a re-run after
+  # a partial failure skip finished images. `migrate` shares the api image
+  # tag, so it's not built separately.
+  BUILD_SVCS=(mcp api web worker orchestrator tg-bot)
+  for svc in "${BUILD_SVCS[@]}"; do
+    run_quiet "$LOG_DIR/build-$svc.log" "building $svc" \
+      $COMPOSE --profile prod --profile migrate build "$svc"
+  done
 fi
 
 step "[4/6] applying database migrations"
