@@ -47,6 +47,17 @@ RUN pnpm exec turbo run build --filter=@mnela/api...
 # workspace symlinks) into /out.
 RUN pnpm --filter @mnela/api deploy --prod /out
 
+# Regenerate the Prisma client inside the deployed tree. `pnpm deploy`
+# copies only files declared in each package's `files` array — the
+# generator's output (`.prisma/client/`) is a side-effect, not files
+# tracked by any package, so it gets dropped during deploy. Without
+# this every PrismaClient instance throws "Prisma Client did not
+# initialize yet" on first use. Schema reaches /out via @mnela/db's
+# files: ["dist","prisma"].
+RUN PRISMA_CLI=$(find /repo/node_modules/.pnpm -path '*/prisma/build/index.js' -type f -print -quit) \
+ && [ -n "$PRISMA_CLI" ] || { echo "prisma CLI not found in builder pnpm store"; exit 1; } \
+ && cd /out && node "$PRISMA_CLI" generate --schema=node_modules/@mnela/db/prisma/schema.prisma
+
 # ---------- runtime ----------
 FROM node:22-slim AS runtime
 

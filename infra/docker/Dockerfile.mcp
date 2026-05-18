@@ -35,6 +35,12 @@ RUN pnpm exec turbo run build --filter=@mnela/mcp...
 # Prune to production-only deps for the runtime stage.
 RUN pnpm --filter @mnela/mcp deploy --prod /out
 
+# Regenerate the Prisma client inside the deployed tree (see
+# Dockerfile.api for the reasoning).
+RUN PRISMA_CLI=$(find /repo/node_modules/.pnpm -path '*/prisma/build/index.js' -type f -print -quit) \
+ && [ -n "$PRISMA_CLI" ] || { echo "prisma CLI not found in builder pnpm store"; exit 1; } \
+ && cd /out && node "$PRISMA_CLI" generate --schema=node_modules/@mnela/db/prisma/schema.prisma
+
 # ---------- runtime ----------
 FROM node:22-alpine AS runtime
 
