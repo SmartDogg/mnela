@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Check, ChevronRight, Copy, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Badge } from '@/components/ui/badge';
@@ -34,10 +34,56 @@ interface ConfigInput {
 
 type ClaudeChoice = 'have_max' | 'later' | 'never';
 
+const STEP_STORAGE_KEY = 'mnela:setup:step';
+
 export function SetupWizard(): JSX.Element {
   const t = useTranslations('setup');
   const router = useRouter();
-  const [step, setStep] = useState<Step>('admin');
+  // Restore the step from localStorage on first render so F5 doesn't drop
+  // the operator back to the admin form (which would 403 — admin already
+  // exists). Only the step is persisted; sensitive fields like the
+  // password remain in volatile state by design.
+  const [step, setStepState] = useState<Step>(() => {
+    if (typeof window === 'undefined') return 'admin';
+    const saved = window.localStorage.getItem(STEP_STORAGE_KEY);
+    if (saved && (STEP_ORDER as string[]).includes(saved)) return saved as Step;
+    return 'admin';
+  });
+  const setStep = (next: Step): void => {
+    setStepState(next);
+    if (typeof window !== 'undefined') {
+      if (next === 'done') window.localStorage.removeItem(STEP_STORAGE_KEY);
+      else window.localStorage.setItem(STEP_STORAGE_KEY, next);
+    }
+  };
+
+  // If the operator hit refresh on the admin step *after* having already
+  // bootstrapped, jump them past it. POST /auth/bootstrap on an already-
+  // bootstrapped install returns 403 and the wizard would be stuck.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/_api/auth/setup-status')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { bootstrapped?: boolean } | null) => {
+        if (cancelled) return;
+        if (!data?.bootstrapped) return;
+        // Use the setter directly (stable from useState) so the effect's
+        // empty deps list stays honest.
+        setStepState((current) => {
+          if (current !== 'admin') return current;
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(STEP_STORAGE_KEY, 'config');
+          }
+          return 'config';
+        });
+      })
+      .catch(() => {
+        // Network blip — leave the operator on the admin form.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [admin, setAdmin] = useState<AdminInput>({ username: '', password: '' });
   const [config, setConfig] = useState<ConfigInput>({
     brainName: 'Mnela',
