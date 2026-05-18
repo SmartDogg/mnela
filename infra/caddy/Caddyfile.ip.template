@@ -27,6 +27,22 @@
 		}
 	}
 
+	# The web client calls `/_api/*` (e.g. /_api/auth/bootstrap). Those used
+	# to be rewritten by Next.js to apiOrigin, but apiOrigin is read from
+	# `process.env.MNELA_API_ORIGIN` at *build time* and the build doesn't
+	# receive the compose runtime env, so the bundle hardcodes
+	# http://127.0.0.1:3000 and SSR proxying fails with ECONNREFUSED. Side-
+	# step Next entirely: terminate /_api at Caddy and forward straight to
+	# the api container.
+	handle_path /_api/* {
+		rewrite * /api/v1{uri}
+		reverse_proxy api:3000
+	}
+	handle /_api-docs-json {
+		rewrite * /api/docs-json
+		reverse_proxy api:3000
+	}
+
 	handle /live* {
 		reverse_proxy api:3000
 	}

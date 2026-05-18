@@ -24,6 +24,17 @@
 		}
 	}
 
+	# See Caddyfile.ip.template for why /_api/* is terminated here instead
+	# of being proxied through Next.js rewrites.
+	handle_path /_api/* {
+		rewrite * /api/v1{uri}
+		reverse_proxy api:3000
+	}
+	handle /_api-docs-json {
+		rewrite * /api/docs-json
+		reverse_proxy api:3000
+	}
+
 	handle /live* {
 		reverse_proxy api:3000
 	}
