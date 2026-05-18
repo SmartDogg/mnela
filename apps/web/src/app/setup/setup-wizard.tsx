@@ -85,9 +85,9 @@ export function SetupWizard(): JSX.Element {
 
   const persistVoiceMutation = useMutation({
     mutationFn: () =>
-      api.patch<{ key: string; value: string }>('/system/config', {
-        key: 'transcription_enabled',
-        value: voiceEnabled ? 'enabled' : 'disabled',
+      api.patch<{ key: string; value: boolean }>('/system/config', {
+        key: 'transcription.enabled',
+        value: voiceEnabled,
       }),
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : 'Failed to save voice setting'),
