@@ -144,7 +144,12 @@ run_quiet() {
   local logfile="$1"; shift
   local label="$1"; shift
   spin "$label  (log: $logfile)"
-  if "$@" >"$logfile" 2>&1; then
+  # Detach stdin from the child. Critical for `docker compose run` which
+  # attaches stdin by default — if this script is being read by bash off
+  # the curl pipe, docker would slurp the remaining script text into the
+  # migrate container, bash would hit EOF on the next iteration, and the
+  # installer would exit silently right after [4/6] without doing [5/6].
+  if "$@" </dev/null >"$logfile" 2>&1; then
     spin_ok "$label"
     return 0
   fi
@@ -627,7 +632,7 @@ step "[6/6] provisioning bootstrap AuthToken for tg-bot"
 spin "waiting for api healthcheck"
 api_ready=0
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  if $COMPOSE exec -T api node healthcheck.js >/dev/null 2>&1; then
+  if $COMPOSE exec -T api node healthcheck.js </dev/null >/dev/null 2>&1; then
     api_ready=1; break
   fi
   sleep 2
@@ -637,7 +642,7 @@ if (( ! api_ready )); then
   warn "api didn't pass healthcheck within 30s — token provisioning may fail"
 fi
 $COMPOSE exec -T -e MNELA_INTERNAL_TOKEN="$MNELA_INTERNAL_TOKEN" api \
-  node scripts/issue-bootstrap-token.mjs \
+  node scripts/issue-bootstrap-token.mjs </dev/null \
   || abort "could not issue install-time AuthToken — tg-bot will fail auth. See api logs."
 ok "AuthToken issued (sha256 stored in DB, plaintext stays in .env)"
 
@@ -651,7 +656,7 @@ if [[ "${CLAUDE_MAX:-no}" == "yes" ]] && (( ! SKIP_CLAUDE_LOGIN )); then
   spin "waiting for orchestrator's claude CLI"
   cli_ready=0
   for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    if $COMPOSE exec -T orchestrator claude --version >/dev/null 2>&1; then
+    if $COMPOSE exec -T orchestrator claude --version </dev/null >/dev/null 2>&1; then
       cli_ready=1; break
     fi
     sleep 2
@@ -667,7 +672,7 @@ if [[ "${CLAUDE_MAX:-no}" == "yes" ]] && (( ! SKIP_CLAUDE_LOGIN )); then
     info "finish later with:"
     info "    docker exec -it mnela-orchestrator claude login"
   else
-    ok "claude CLI v$($COMPOSE exec -T orchestrator claude --version 2>/dev/null | head -n1 | awk '{print $NF}')"
+    ok "claude CLI v$($COMPOSE exec -T orchestrator claude --version </dev/null 2>/dev/null | head -n1 | awk '{print $NF}')"
     printf '\n'
     info "Claude will print a one-time URL. Open it in your browser, complete the"
     info "OAuth flow, then paste the code Anthropic shows back into this terminal."
