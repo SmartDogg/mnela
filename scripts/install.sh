@@ -633,6 +633,23 @@ step "[4/6] applying database migrations"
 run_quiet "$LOG_DIR/migrate.log" "prisma migrate deploy" \
   $COMPOSE --profile migrate run --rm migrate
 
+# IP-mode Caddy needs an explicit cert before it can serve TLS — see the
+# header of Caddyfile.ip.template for the reasoning. Generated as a one-
+# shot alpine+openssl container that writes /cert.pem + /key.pem into the
+# mnela-caddy-data volume, which the caddy service mounts at /data.
+if [[ "$MNELA_BIND_MODE" == "ip" ]]; then
+  run_quiet "$LOG_DIR/cert-gen.log" "generating self-signed TLS cert for $MNELA_HOST" \
+    docker run --rm -v mnela-caddy-data:/out alpine sh -c "
+      apk add --no-cache openssl >/dev/null
+      openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -keyout /out/key.pem -out /out/cert.pem \
+        -subj '/CN=mnela' \
+        -addext 'subjectAltName=IP:$MNELA_HOST,DNS:localhost' \
+        >/dev/null 2>&1
+      chmod 644 /out/cert.pem /out/key.pem
+    "
+fi
+
 step "[5/6] starting prod services"
 run_quiet "$LOG_DIR/up.log" "starting containers" \
   $COMPOSE --profile prod up -d
