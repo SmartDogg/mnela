@@ -76,8 +76,12 @@ COPY --chown=mnela:mnela infra/docker/healthcheck.js ./healthcheck.js
 
 # Data dir + keystore + dropbox + vault all materialise here. The compose
 # file bind-mounts a host volume; the directory exists so file watchers
-# don't fail before any volume mount.
-RUN mkdir -p /data && chown -R mnela:mnela /data
+# don't fail before any volume mount. /backups receives the same treatment
+# — compose mounts a named volume there and api needs to mkdir .incoming/
+# on first boot; without pre-existing /backups in the image, Docker
+# creates the mountpoint as root:root and the non-root mnela user can't
+# write into it.
+RUN mkdir -p /data /backups && chown -R mnela:mnela /data /backups
 
 ENV NODE_ENV=production \
     HTTP_HOST=0.0.0.0 \
