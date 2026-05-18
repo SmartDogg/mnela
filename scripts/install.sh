@@ -125,6 +125,29 @@ __spin_stop() {
 spin_ok()   { __spin_stop; [[ $# -gt 0 ]] && ok "$*"; }
 spin_fail() { __spin_stop; err "$*"; exit 1; }
 
+# Run a long, noisy command (docker compose build / up / migrate) behind a
+# spinner. stdout+stderr go to "$1" (a log file), the screen stays clean,
+# and on failure the last 60 lines of the log are dumped to stderr so the
+# operator sees what went wrong without scrolling. Caller passes the label
+# as $2 and the command starting from $3.
+#   run_quiet "$LOG_DIR/build.log" "building images" docker compose … build
+run_quiet() {
+  local logfile="$1"; shift
+  local label="$1"; shift
+  spin "$label  (log: $logfile)"
+  if "$@" >"$logfile" 2>&1; then
+    spin_ok "$label"
+    return 0
+  fi
+  __spin_stop
+  err "$label failed — tail of $logfile:"
+  printf '%s\n' "---" >&2
+  tail -n 60 "$logfile" >&2 2>/dev/null || true
+  printf '%s\n' "---" >&2
+  err "full log: $logfile"
+  exit 1
+}
+
 cleanup() {
   __spin_stop
   tput cnorm 2>/dev/null || true
@@ -549,22 +572,29 @@ else
 fi
 
 COMPOSE="docker compose -f infra/docker/docker-compose.yml -p mnela"
+LOG_DIR="$REPO_ROOT/.install-logs"
+mkdir -p "$LOG_DIR"
 
-step "[3/6] images ($MNELA_IMAGES mode)"
+# BuildKit's TTY progress bar trashes a log file with control codes —
+# plain mode is line-based and readable when tailed on failure.
+export BUILDKIT_PROGRESS=plain
+
+step "[3/6] images ($MNELA_IMAGES mode, may take 10–30 min)"
 if [[ "$MNELA_IMAGES" == "registry" ]]; then
-  $COMPOSE --profile prod --profile migrate pull
+  run_quiet "$LOG_DIR/images-pull.log" "pulling images" \
+    $COMPOSE --profile prod --profile migrate pull
 else
-  $COMPOSE --profile prod --profile migrate build
+  run_quiet "$LOG_DIR/images-build.log" "building images" \
+    $COMPOSE --profile prod --profile migrate build
 fi
 
 step "[4/6] applying database migrations"
-$COMPOSE --profile migrate run --rm migrate \
-  || abort "prisma migrate deploy failed — fix the error above and re-run."
-ok "schema up to date"
+run_quiet "$LOG_DIR/migrate.log" "prisma migrate deploy" \
+  $COMPOSE --profile migrate run --rm migrate
 
 step "[5/6] starting prod services"
-$COMPOSE --profile prod up -d
-ok "stack up"
+run_quiet "$LOG_DIR/up.log" "starting containers" \
+  $COMPOSE --profile prod up -d
 
 step "[6/6] provisioning bootstrap AuthToken for tg-bot"
 spin "waiting for api healthcheck"

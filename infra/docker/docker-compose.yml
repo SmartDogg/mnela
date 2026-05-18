@@ -183,12 +183,18 @@ services:
       postgres: { condition: service_healthy }
     environment:
       <<: *mnela-env
+    # `node_modules/.bin/prisma` only exists when prisma is a *direct* dep
+    # of the deploy target — `pnpm deploy --prod` doesn't create the .bin
+    # symlink for transitive deps. apps/api carries it directly now (so the
+    # symlink is back), but resolve it through Node anyway: that survives
+    # any future hoisting change and emits a readable error if the package
+    # is missing entirely.
+    entrypoint: ['/usr/bin/tini', '--', 'sh', '-c']
     command:
-      - node
-      - node_modules/.bin/prisma
-      - migrate
-      - deploy
-      - --schema=node_modules/@mnela/db/prisma/schema.prisma
+      - |
+        set -e
+        PRISMA_CLI=$$(node -e 'try{console.log(require.resolve("prisma/build/index.js"))}catch(e){console.error("prisma CLI not found in image — check apps/api/package.json dependencies");process.exit(1)}')
+        exec node "$$PRISMA_CLI" migrate deploy --schema=node_modules/@mnela/db/prisma/schema.prisma
 
   web:
     profiles: [prod]
