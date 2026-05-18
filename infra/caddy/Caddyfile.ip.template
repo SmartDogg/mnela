@@ -26,10 +26,18 @@ https://{$MNELA_HOST} {
 		}
 	}
 
-	handle /live* { reverse_proxy api:3000 }
-	handle /api/* { reverse_proxy api:3000 }
-	handle /mcp/* { reverse_proxy mcp:3010 }
-	handle { reverse_proxy web:3001 }
+	handle /live* {
+		reverse_proxy api:3000
+	}
+	handle /api/* {
+		reverse_proxy api:3000
+	}
+	handle /mcp/* {
+		reverse_proxy mcp:3010
+	}
+	handle {
+		reverse_proxy web:3001
+	}
 
 	encode zstd gzip
 }
