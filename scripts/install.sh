@@ -24,16 +24,20 @@ FORCE=${MNELA_FORCE:-0}
 ASSUME_YES=0
 SKIP_CLAUDE_LOGIN=0
 
-# `curl … | bash` pipes the script through stdin, so plain `read` hits EOF
-# instantly and every prompt would silently fall through to defaults. The
-# controlling terminal is still reachable via /dev/tty though, so we
-# re-bind fd 0 to it. After this, `read` and `docker exec` both work.
-if [[ ! -t 0 ]] && [[ -r /dev/tty ]] && [[ -w /dev/tty ]]; then
-  exec </dev/tty
-fi
-
+# `curl … | bash` pipes the script through stdin — bash itself is reading
+# the script source from fd 0. We CANNOT `exec </dev/tty` here: that would
+# make bash try to read the rest of the script from the user's keyboard,
+# which presents as "pure hang, no banner". Instead, open /dev/tty on fd 3
+# and have ask_* helpers read with `read -u "$TTY_FD"`.
 HAVE_TTY=0
-[[ -t 0 ]] && HAVE_TTY=1
+TTY_FD=0
+if [[ -t 0 ]]; then
+  HAVE_TTY=1
+elif [[ -r /dev/tty ]] && [[ -w /dev/tty ]]; then
+  exec 3</dev/tty
+  TTY_FD=3
+  HAVE_TTY=1
+fi
 
 USE_COLORS=1
 [[ -t 1 ]] || USE_COLORS=0
@@ -149,7 +153,7 @@ ask_text() {
     else
       printf '\n  %s?%s %s\n  %s›%s ' "$CC" "$C0" "$q" "$CC" "$C0"
     fi
-    IFS= read -r raw
+    IFS= read -r -u "$TTY_FD" raw
     raw="${raw:-$default}"
     if [[ -z "$raw" ]]; then
       warn "value required"
@@ -201,10 +205,10 @@ ask_menu() {
       fi
     done
 
-    IFS= read -rsn1 key
+    IFS= read -rsn1 -u "$TTY_FD" key
     case "$key" in
       $'\e')
-        IFS= read -rsn2 -t 0.05 esc 2>/dev/null || esc=""
+        IFS= read -rsn2 -t 0.05 -u "$TTY_FD" esc 2>/dev/null || esc=""
         case "$esc" in
           '[A'|'[D') sel=$(( (sel - 1 + n) % n )) ;;
           '[B'|'[C') sel=$(( (sel + 1) % n )) ;;
@@ -353,7 +357,7 @@ if [[ -z "$REPO_BRANCH" ]]; then
   fi
 fi
 
-SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)
+SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || true)
 if [[ -n "$SELF_DIR" && -f "$SELF_DIR/../infra/docker/docker-compose.yml" ]]; then
   REPO_ROOT=$(cd "$SELF_DIR/.." && pwd)
   ok "using local checkout at $REPO_ROOT"
