@@ -14,7 +14,13 @@ creates the first admin via `POST /auth/bootstrap`.
 ## Requirements
 
 - **OS:** Ubuntu 22.04 / 24.04, Debian 12, or anything with `apt` + Docker
-- **Hardware:** ≥ 1 GB RAM, ≥ 10 GB free disk, x86_64 or arm64
+- **Hardware (installer):** ≥ 4 GB RAM (8 GB recommended), ≥ 10 GB free disk,
+  x86_64 or arm64. The default `MNELA_IMAGES=local` flow builds all six
+  service images on the host — pnpm install + tsc each peak ~1 GB RSS. The
+  installer builds them sequentially so an 8 GB box is fine; on a 4 GB box
+  add a swap file (see VPS prep below).
+- **Hardware (running):** ≥ 1 GB RAM is enough once images are built and
+  containers are up.
 - **Network:** ports 80 + 443 reachable from the public internet (skip if you
   use Cloudflare Tunnel)
 - **Domain (recommended):** DNS A record pointing at the VPS IP
@@ -73,14 +79,20 @@ Flow:
    the host value, and Claude Max yes/no. Any value pre-filled via flag is
    skipped.
 4. **Review** — a summary of every answer; confirm or abort.
-5. **Provisioning** —
-   `.env` with `openssl rand -hex 32` secrets (`chmod 600`),
-   the matching `infra/caddy/Caddyfile.*.template` → `./Caddyfile`,
-   `docker compose pull|build`,
-   `--profile migrate run --rm migrate` to apply Prisma,
-   `--profile prod up -d`,
-   then `node scripts/issue-bootstrap-token.mjs` inside the api container so
-   tg-bot can authenticate.
+5. **Provisioning** — six sub-steps under `[1/6]`…`[6/6]` progress lines:
+   - `.env` with `openssl rand -hex 32` secrets (`chmod 600`)
+   - Matching `infra/caddy/Caddyfile.*.template` → `./Caddyfile`
+   - Image build — sequential per-service `docker compose … build $svc` to
+     avoid OOMing 8 GB hosts (BuildKit parallel can peak past memory).
+     Tail of each build lands in `${REPO_ROOT}/.install-logs/build-<svc>.log`.
+   - (IP mode only) self-signed TLS cert generated via a one-shot
+     `alpine + openssl` container and stashed in the `mnela-caddy-data`
+     volume — Caddy reads it as `/data/cert.pem` + `/data/key.pem`. We
+     skip `tls internal` because Caddy 2.11's handshake for raw-IP site
+     names is unreliable across container restarts.
+   - `--profile migrate run --rm migrate` to apply Prisma migrations
+   - `--profile prod up -d`, then `node scripts/issue-bootstrap-token.mjs`
+     inside the api container so tg-bot can authenticate.
 6. **Claude Max OAuth (inline)** — if you answered yes, the installer waits
    for the orchestrator's `claude` CLI to come up, then runs `claude login`
    attached to your terminal. Anthropic prints a one-time URL → open it on
@@ -240,9 +252,11 @@ VPS. Containers exceeding their limit are SIGKILL'd by the kernel; the
 ## What's NOT yet auto-managed
 
 - TLS renewal: handled by Caddy automatically for `domain` mode. For
-  `tunnel` mode Cloudflare handles TLS. For `ip` mode, browsers will warn
-  on the self-signed cert — import `/data/caddy/pki/authorities/local/root.crt`
-  from the `mnela-caddy-data` volume as a trusted root.
+  `tunnel` mode Cloudflare handles TLS. For `ip` mode, install.sh mints
+  a 10-year self-signed cert into the `mnela-caddy-data` volume; browsers
+  will warn until you import it as a trusted root. To extract:
+  `docker run --rm -v mnela-caddy-data:/d alpine cat /d/cert.pem > mnela.crt`,
+  then import `mnela.crt` per your OS's trust-store instructions.
 - Log rotation: docker daemon defaults apply. Add `log-opts` to
   `/etc/docker/daemon.json` if disk pressure becomes an issue.
 - Sentry: not wired (Phase 11). Stack traces live in `mnela logs`.

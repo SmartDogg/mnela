@@ -50,9 +50,9 @@ Self-hosted personal-knowledge OS. Drop in your ChatGPT / Claude.ai exports, Obs
 curl -fsSL https://raw.githubusercontent.com/SmartDogg/mnela/main/scripts/install.sh | sudo bash
 ```
 
-The script auto-installs Docker if missing, asks for domain / IP / Cloudflare Tunnel choice, generates `/opt/mnela/.env` with random secrets, pulls images from GHCR, applies migrations, and prints the URL of the Setup Wizard.
+The script auto-installs Docker if missing, asks for domain / IP / Cloudflare Tunnel choice, generates `/opt/mnela/.env` with random secrets, builds the six service images locally (sequentially, ~15–30 min on a 4-core VPS), applies Prisma migrations, brings the stack up, and offers an inline `claude login` for Claude Max users. For IP-mode installs it also mints a self-signed TLS cert into the Caddy volume before bringing Caddy up.
 
-After install, open `/setup`, create the first admin, then either run `docker exec -it mnela-orchestrator claude login` (if you have Claude Max) or add an API provider under `/admin/system → AI Providers`.
+After install, open `/setup`, create the first admin, then walk through the wizard (config / Claude / modules / token). If you skipped Claude Max during install you can sign in later via `docker exec -it mnela-orchestrator claude login`, or add an API provider under `/admin/system → AI Providers`.
 
 **Backup / restore:** `mnela backup` and `mnela restore <file>` round-trip everything including the encrypted provider keystore.
 

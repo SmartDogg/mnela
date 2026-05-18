@@ -68,10 +68,29 @@ REDIS_URL=redis://default:<password>@redis:6379
 
 ## Migration failed during install
 
+The default `[4/6]` migrate step runs the dedicated `migrate` compose
+service; if it crashed mid-way you can retry it directly. Caveats:
+
+- `node_modules/.bin/prisma` only exists when `prisma` is a _direct_ dep
+  of the deploy target. It is in `apps/api`'s deps as of v1.0.0, so the
+  symlink is present in the api image. If you're on an older build,
+  resolve the CLI through Node's resolver instead:
+
 ```bash
 docker compose -f infra/docker/docker-compose.yml -p mnela exec api \
-  node node_modules/@mnela/db/node_modules/.bin/prisma migrate deploy \
-  --schema=node_modules/@mnela/db/prisma/schema.prisma
+  node -e 'console.log(require.resolve("prisma/build/index.js"))'
+# /app/node_modules/.pnpm/prisma@…/node_modules/prisma/build/index.js
+
+docker compose -f infra/docker/docker-compose.yml -p mnela exec api \
+  node /app/node_modules/.pnpm/prisma@…/node_modules/prisma/build/index.js \
+  migrate deploy --schema=node_modules/@mnela/db/prisma/schema.prisma
+```
+
+For a clean re-run, prefer the migrate service:
+
+```bash
+docker compose -f infra/docker/docker-compose.yml -p mnela \
+  --profile migrate run --rm migrate
 ```
 
 If that fails with `permission denied for schema public`, your `POSTGRES_USER`
@@ -147,15 +166,18 @@ chmod +x /usr/local/bin/mnela
 ## Setup Wizard says "An admin already exists"
 
 `POST /auth/bootstrap` is single-shot — once any admin user exists, every
-subsequent call returns 403. Use `/login` instead. If you lost the
-password, drop the row manually:
+subsequent call returns 403. The wizard from v1.0.0 onward detects this
+on mount via `/auth/setup-status` and skips ahead, so you only hit the
+literal 403 if you race the redirect. Use `/login` instead.
+
+If you lost the admin password, drop the row manually:
 
 ```bash
 docker compose -f infra/docker/docker-compose.yml -p mnela exec postgres \
   psql -U mnela -d mnela -c 'DELETE FROM "AdminUser";'
 ```
 
-Now `/setup` works again — but every session is invalidated.
+Now `/setup` works again — but every existing session is invalidated.
 
 ## Telegram bot не отвечает на сообщения
 
@@ -275,6 +297,32 @@ mnela db:audit
 ```
 
 See [`docs/PERF.md`](./docs/PERF.md) for what to do with the output.
+
+## Symptoms specific to pre-v1.0.0 builds
+
+These all fall away on a fresh v1.0.0 install. If you're upgrading an
+older deployment and hit one, pull `main` and rebuild the affected
+service.
+
+- **`/setup` returns 500 with `ECONNREFUSED 127.0.0.1:3000`** — Next.js
+  rewrites used to bake `apiOrigin` at build time. Fixed by terminating
+  `/_api/*` at Caddy (see `infra/caddy/Caddyfile.*.template`). After
+  pulling, rebuild web _or_ just patch the Caddyfile and reload Caddy.
+- **`api` / `worker` / `orchestrator` in restart loop with `Prisma Client
+did not initialize yet`** — `pnpm deploy --prod` drops the generator's
+  `.prisma/client/` output. Fixed by re-running `prisma generate` inside
+  `/out` in each Dockerfile. Rebuild affected images.
+- **`api` crashes with `EACCES: mkdir '/backups/.incoming'`** — the api
+  image now `mkdir -p /backups && chown mnela:mnela /backups` so the
+  volume mount inherits writable perms. Rebuild api.
+- **Caddy `TLS alert internal error` on IP-mode** — `tls internal` for
+  raw IPs failed silently. install.sh now mints a self-signed cert via
+  openssl + alpine into the caddy-data volume. Re-run install.sh, or
+  generate the cert by hand if you don't want a full re-provision.
+- **Installer freezes silently right after `[4/6] prisma migrate deploy`**
+  — `docker compose run` was eating the rest of the script piped through
+  `curl|bash`. Fixed via `</dev/null` on all docker-compose run/exec
+  calls. Pull main and re-run.
 
 ## Container healthcheck reports "unhealthy"
 
