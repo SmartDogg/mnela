@@ -1,14 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type TelegramChatLinkRepository } from '@mnela/db';
+import { TelegramChatLinkRepository } from '@mnela/db';
 import type { Api } from 'grammy';
 
-import { type ApiClientService } from '../../api-client/api-client.service.js';
-import { type ConfigService } from '../../config/config.service.js';
+import { ApiClientService } from '../../api-client/api-client.service.js';
+import { ConfigService } from '../../config/config.service.js';
 import {
   REACTION_DONE,
   REACTION_ERROR,
   REACTION_THINKING,
-  type ReactionsService,
+  ReactionsService,
 } from './reactions.service.js';
 import type { ReadyTurn } from './turn-buffer.service.js';
 

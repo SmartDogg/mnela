@@ -1,20 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type TelegramChatLinkRepository } from '@mnela/db';
+import { TelegramChatLinkRepository } from '@mnela/db';
 import type { Bot } from 'grammy';
 
-import { type ConfigService, type ResolvedConfig } from '../../config/config.service.js';
-import { type AskRelayService } from './ask-relay.service.js';
-import { type CommandsService } from './commands.service.js';
+import { ConfigService, type ResolvedConfig } from '../../config/config.service.js';
+import { AskRelayService } from './ask-relay.service.js';
+import { CommandsService } from './commands.service.js';
 import type { BotHandlersFactory } from './handlers.factory.js';
-import { type MediaRouterService } from './media-router.service.js';
+import { MediaRouterService } from './media-router.service.js';
 import {
   REACTION_RECEIVED,
   REACTION_TRANSCRIBING,
   REACTION_VISION,
-  type ReactionsService,
+  ReactionsService,
 } from './reactions.service.js';
-import { type TurnBufferService, type ReadyTurn, type TurnItem } from './turn-buffer.service.js';
-import { type WhitelistMiddleware } from './whitelist.middleware.js';
+import { TurnBufferService, type ReadyTurn, type TurnItem } from './turn-buffer.service.js';
+import { WhitelistMiddleware } from './whitelist.middleware.js';
 
 /**
  * Wires the production handler graph onto the grammY Bot instance:

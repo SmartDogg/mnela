@@ -24,7 +24,7 @@ import {
 } from '@nestjs/common';
 import { Bot, GrammyError, HttpError } from 'grammy';
 
-import { type ConfigService, type ResolvedConfig } from '../config/config.service.js';
+import { ConfigService, type ResolvedConfig } from '../config/config.service.js';
 import type { BotHandlersFactory } from './handlers/handlers.factory.js';
 import { HANDLERS_FACTORY } from './handlers/handlers.token.js';
 

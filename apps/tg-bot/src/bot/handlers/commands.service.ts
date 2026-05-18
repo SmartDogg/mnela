@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type TelegramChatLinkRepository } from '@mnela/db';
+import { TelegramChatLinkRepository } from '@mnela/db';
 import type { Bot } from 'grammy';
 
-import { type ApiClientService } from '../../api-client/api-client.service.js';
-import { type ConfigService } from '../../config/config.service.js';
+import { ApiClientService } from '../../api-client/api-client.service.js';
+import { ConfigService } from '../../config/config.service.js';
 
 /**
  * Explicit command surface. Three commands, each opting into behaviour

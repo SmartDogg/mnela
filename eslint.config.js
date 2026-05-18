@@ -60,11 +60,16 @@ export default tseslint.config(
   {
     // NestJS apps rely on runtime class metadata for DI and decorators;
     // auto-fixing imports to `import type` breaks constructor injection.
+    // tg-bot was missing from this list — symptom was "Nest can't resolve
+    // dependencies of the ConfigService (?, Function)" at boot in prod
+    // (tsc erases type-only imports; @swc-node/register keeps them, so
+    // it worked in dev but crashed in the Docker image).
     files: [
       'apps/api/**/*.ts',
       'apps/mcp/**/*.ts',
       'apps/worker/**/*.ts',
       'apps/orchestrator/**/*.ts',
+      'apps/tg-bot/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'off',

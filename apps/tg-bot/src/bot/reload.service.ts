@@ -2,8 +2,8 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { type MnelaEvent, subscribeEvents } from '@mnela/queue';
 import type { Redis } from 'ioredis';
 
-import { type RedisService } from '../redis/redis.service.js';
-import { type BotService } from './bot.service.js';
+import { RedisService } from '../redis/redis.service.js';
+import { BotService } from './bot.service.js';
 
 /**
  * Subscribes to the shared `mnela:events` pubsub channel and triggers a

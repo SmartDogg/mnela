@@ -1,8 +1,4 @@
-import {
-  type TelegramAllowedUserRepository,
-  type TelegramBotRepository,
-  type TelegramBot,
-} from '@mnela/db';
+import { TelegramAllowedUserRepository, TelegramBotRepository, type TelegramBot } from '@mnela/db';
 import { createKeystore, type Keystore, resolveDataDir } from '@mnela/llm-providers';
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 
-import { type RedisService } from '../../redis/redis.service.js';
+import { RedisService } from '../../redis/redis.service.js';
 
 export type TurnItemKind = 'text' | 'voice' | 'photo' | 'document' | 'audio';
 

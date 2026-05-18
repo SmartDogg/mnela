@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Api } from 'grammy';
 
-import { type ApiClientService } from '../../api-client/api-client.service.js';
+import { ApiClientService } from '../../api-client/api-client.service.js';
 import { loadEnv } from '../../env.js';
 import type { TurnItem } from './turn-buffer.service.js';
 

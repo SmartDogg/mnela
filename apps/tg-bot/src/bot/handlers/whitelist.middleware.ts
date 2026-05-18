@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Context, NextFunction } from 'grammy';
 
-import { type ConfigService } from '../../config/config.service.js';
+import { ConfigService } from '../../config/config.service.js';
 
 /**
  * Bot-wide gate. Drops messages from non-whitelisted users with at most
