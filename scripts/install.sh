@@ -13,6 +13,15 @@
 
 set -Eeuo pipefail
 
+# A common foot-gun: operators run `rm -rf /opt/mnela` (the install target)
+# while their shell is sitting inside it, then re-launch the installer. The
+# bash that curl|sudo bash spawns inherits the orphaned cwd, and every child
+# git/getcwd call spams "job-working-directory: error retrieving current
+# directory" to stderr. Worse: `git ls-remote 2>/dev/null` returns empty in
+# that state, so the latest-tag probe silently falls back to `main`. Pin cwd
+# to a directory that definitely exists before anything else touches it.
+cd / 2>/dev/null || true
+
 # ============================================================================
 # 1 — config + terminal capabilities
 # ============================================================================
@@ -398,10 +407,26 @@ else
       || spin_fail "git checkout failed"
     spin_ok "updated to $REPO_BRANCH"
   else
+    # `git clone <url> <dir>` refuses if <dir> already exists and is non-
+    # empty (typical aftermath of a half-finished previous attempt — mkdir
+    # ran, clone died). Clear the leftover instead of failing silently.
+    if [[ -d "$INSTALL_PREFIX" ]] && [[ -n "$(ls -A "$INSTALL_PREFIX" 2>/dev/null)" ]]; then
+      if [[ "$FORCE" == "1" ]]; then
+        rm -rf "$INSTALL_PREFIX"
+      else
+        abort "$INSTALL_PREFIX exists and is non-empty but isn't a git checkout. Remove it (rm -rf $INSTALL_PREFIX) or re-run with --force."
+      fi
+    fi
     spin "cloning $REPO_URL @ $REPO_BRANCH into $INSTALL_PREFIX"
     mkdir -p "$INSTALL_PREFIX"
-    git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX" >/dev/null 2>&1 \
-      || spin_fail "git clone failed (check $REPO_URL & branch $REPO_BRANCH)"
+    if ! git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX" >"$INSTALL_PREFIX/.clone.log" 2>&1; then
+      __spin_stop
+      err "git clone failed (check $REPO_URL & branch $REPO_BRANCH) — output:"
+      printf '%s\n' "---" >&2
+      cat "$INSTALL_PREFIX/.clone.log" >&2 2>/dev/null || true
+      printf '%s\n' "---" >&2
+      exit 1
+    fi
     spin_ok "cloned"
   fi
   REPO_ROOT="$INSTALL_PREFIX"
