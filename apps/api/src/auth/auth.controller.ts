@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Param,
+  Patch,
   Post,
   Req,
   Res,
@@ -18,7 +19,7 @@ import { Audit } from '../audit/audit.decorator.js';
 import { loadEnv } from '../env.js';
 import { rateLimitHolder } from '../modules/system/rate-limit.holder.js';
 import { AuthService } from './auth.service.js';
-import { BootstrapDto, CreateTokenDto, LoginDto } from './dto.js';
+import { BootstrapDto, ChangePasswordDto, CreateTokenDto, LoginDto } from './dto.js';
 import { CurrentPrincipal } from './principal.decorator.js';
 import { Public } from './public.decorator.js';
 import { RequiredScope } from './scope.decorator.js';
@@ -128,6 +129,48 @@ export class AuthController {
   me(@CurrentPrincipal() principal: Principal | undefined): Principal {
     if (!principal) throw new UnauthorizedException();
     return principal;
+  }
+
+  @Patch('password')
+  @HttpCode(200)
+  @RequiredScope('admin')
+  @Audit({
+    action: 'auth.password.change',
+    targetType: 'AdminUser',
+    redact: ['currentPassword', 'newPassword'],
+  })
+  // Tight throttle — failed-attempt spam shouldn't help a thief with a
+  // stolen cookie brute the current password.
+  @Throttle({ default: { limit: () => rateLimitHolder.getLogin(), ttl: 60_000 } })
+  @ApiCookieAuth('mnela_session')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Rotate the current admin password. Requires the current password; invalidates other sessions on success.',
+  })
+  @ApiResponse({ status: 200, description: 'Password changed; other sessions revoked' })
+  @ApiResponse({ status: 401, description: 'Current password is incorrect or session is invalid' })
+  async changePassword(
+    @CurrentPrincipal() principal: Principal | undefined,
+    @Body() body: ChangePasswordDto,
+    @Req() req: Request,
+  ): Promise<{ ok: true; otherSessionsRevoked: number }> {
+    if (!principal || principal.kind !== 'admin') {
+      throw new UnauthorizedException();
+    }
+    const sessionId = req.signedCookies?.['mnela_session'];
+    if (typeof sessionId !== 'string' || sessionId.length === 0) {
+      // Token-only callers can't change a password — they don't have a
+      // session to keep alive in the first place.
+      throw new UnauthorizedException('Password change requires a session cookie');
+    }
+    const otherSessionsRevoked = await this.auth.changePassword(
+      principal.id,
+      body.currentPassword,
+      body.newPassword,
+      sessionId,
+    );
+    return { ok: true, otherSessionsRevoked };
   }
 
   @Get('tokens')

@@ -76,6 +76,29 @@ export class AuthService {
     return this.admins.findById(id);
   }
 
+  /**
+   * Rotates the calling admin's password. Verifies `currentPassword`
+   * first — never trust a session-cookie alone for credential changes
+   * (someone with a stolen cookie shouldn't be able to lock the real
+   * admin out). All *other* sessions for this user get invalidated so a
+   * compromised device can't keep its foothold; the caller's own session
+   * stays alive because the controller hands sessionStore a keepalive id.
+   */
+  async changePassword(
+    adminId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepSessionId: string,
+  ): Promise<number> {
+    const user = await this.admins.findById(adminId);
+    if (!user) throw new UnauthorizedException('Invalid session');
+    const ok = await argon2.verify(user.passwordHash, currentPassword);
+    if (!ok) throw new UnauthorizedException('Current password is incorrect');
+    const newHash = await argon2.hash(newPassword, { type: argon2.argon2id });
+    await this.admins.updatePassword(adminId, newHash);
+    return this.sessions.destroyAllForUserExcept(adminId, keepSessionId);
+  }
+
   async createToken(input: CreateTokenInput): Promise<CreatedToken> {
     const raw = crypto.randomBytes(32).toString('base64url');
     const plaintext = `${TOKEN_PREFIX}${raw}`;

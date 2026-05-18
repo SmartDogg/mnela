@@ -44,6 +44,7 @@ import { SettingsSearch, sectionMatchesQuery } from './_components/settings-sear
 import { TelegramSection } from './_components/telegram-section';
 import { BackupsSection } from './_components/backups-section';
 import { TokensSection } from './_components/tokens-section';
+import { PasswordSection } from './_components/password-section';
 
 const SECTION_ORDER: ConfigSection[] = [
   'providers',
@@ -298,6 +299,22 @@ export default function AdminSystemPage(): JSX.Element {
         {sectionMatchesQuery(filterQuery, [tSections('tokens.title'), 'tokens', 'auth', 'api']) && (
           <div id="section-tokens">
             <TokensSection />
+          </div>
+        )}
+
+        {/* Self-serve admin password rotation. The API endpoint
+            (PATCH /auth/password) verifies the current password before
+            anything happens, so a stolen cookie alone can't lock the real
+            admin out, and revokes every other session on success. */}
+        {sectionMatchesQuery(filterQuery, [
+          'Password',
+          'password',
+          'security',
+          'account',
+          'admin',
+        ]) && (
+          <div id="section-password">
+            <PasswordSection />
           </div>
         )}
 

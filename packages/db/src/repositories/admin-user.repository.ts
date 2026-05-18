@@ -36,4 +36,11 @@ export class AdminUserRepository {
       data: { lastLoginAt: new Date() },
     });
   }
+
+  updatePassword(id: string, passwordHash: string): Promise<AdminUser> {
+    return this.getPrisma().adminUser.update({
+      where: { id },
+      data: { passwordHash },
+    });
+  }
 }
