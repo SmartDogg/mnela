@@ -409,24 +409,26 @@ else
   else
     # `git clone <url> <dir>` refuses if <dir> already exists and is non-
     # empty (typical aftermath of a half-finished previous attempt — mkdir
-    # ran, clone died). Clear the leftover instead of failing silently.
+    # ran, clone died). Refuse to touch operator data: tell the user what
+    # to remove and exit. NEVER auto-rm $INSTALL_PREFIX — it's overridable
+    # via env, and a destructive default-on-flag is how installers eat
+    # someone's $HOME.
     if [[ -d "$INSTALL_PREFIX" ]] && [[ -n "$(ls -A "$INSTALL_PREFIX" 2>/dev/null)" ]]; then
-      if [[ "$FORCE" == "1" ]]; then
-        rm -rf "$INSTALL_PREFIX"
-      else
-        abort "$INSTALL_PREFIX exists and is non-empty but isn't a git checkout. Remove it (rm -rf $INSTALL_PREFIX) or re-run with --force."
-      fi
+      abort "$INSTALL_PREFIX exists and is non-empty but isn't a git checkout. Inspect it, then remove if safe: rm -rf $INSTALL_PREFIX"
     fi
     spin "cloning $REPO_URL @ $REPO_BRANCH into $INSTALL_PREFIX"
     mkdir -p "$INSTALL_PREFIX"
-    if ! git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX" >"$INSTALL_PREFIX/.clone.log" 2>&1; then
+    CLONE_LOG=$(mktemp -t mnela-clone.XXXXXX.log)
+    if ! git clone --depth=1 --branch "$REPO_BRANCH" "$REPO_URL" "$INSTALL_PREFIX" >"$CLONE_LOG" 2>&1; then
       __spin_stop
       err "git clone failed (check $REPO_URL & branch $REPO_BRANCH) — output:"
       printf '%s\n' "---" >&2
-      cat "$INSTALL_PREFIX/.clone.log" >&2 2>/dev/null || true
+      cat "$CLONE_LOG" >&2 2>/dev/null || true
       printf '%s\n' "---" >&2
+      err "full log: $CLONE_LOG"
       exit 1
     fi
+    rm -f "$CLONE_LOG"
     spin_ok "cloned"
   fi
   REPO_ROOT="$INSTALL_PREFIX"
