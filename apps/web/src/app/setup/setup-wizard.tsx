@@ -17,9 +17,12 @@ import { ApiError, api } from '@/lib/api/client';
 import type { CreatedAuthToken } from '@/lib/api/types';
 import { cn } from '@/lib/utils';
 
-type Step = 'admin' | 'config' | 'claude' | 'modules' | 'import' | 'token' | 'done';
+type Step = 'admin' | 'config' | 'claude' | 'modules' | 'token' | 'done';
 
-const STEP_ORDER: Step[] = ['admin', 'config', 'claude', 'modules', 'import', 'token', 'done'];
+// 'import' was a step that only ever showed a "skip" button — no actual
+// upload UI. Removed until a real drag-and-drop lands; meanwhile the new
+// admin can use /imports/new directly from the dashboard.
+const STEP_ORDER: Step[] = ['admin', 'config', 'claude', 'modules', 'token', 'done'];
 
 interface AdminInput {
   username: string;
@@ -67,6 +70,7 @@ export function SetupWizard(): JSX.Element {
       .then((data: { bootstrapped?: boolean } | null) => {
         if (cancelled) return;
         if (!data?.bootstrapped) return;
+        setAdminBootstrapped(true);
         // Use the setter directly (stable from useState) so the effect's
         // empty deps list stays honest.
         setStepState((current) => {
@@ -93,12 +97,19 @@ export function SetupWizard(): JSX.Element {
   const [claudeChoice, setClaudeChoice] = useState<ClaudeChoice>('have_max');
   const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [token, setToken] = useState<CreatedAuthToken | null>(null);
+  // True once /auth/bootstrap has run OR /auth/setup-status reports the
+  // install is already bootstrapped. The admin step renders read-only
+  // when this is set, and the Back button on later steps no longer
+  // walks back into a form that can't be submitted again (POST
+  // /auth/bootstrap returns 403 on a bootstrapped install).
+  const [adminBootstrapped, setAdminBootstrapped] = useState(false);
 
   // /auth/bootstrap creates the first admin AND sets a session cookie in
   // one round-trip. Subsequent attempts (admin already exists) return 403
   // — at that point the visitor wants /login, not /setup.
   const bootstrapMutation = useMutation({
     mutationFn: () => api.post<{ id: string; username: string }>('/auth/bootstrap', admin),
+    onSuccess: () => setAdminBootstrapped(true),
   });
 
   const tokenMutation = useMutation({
@@ -185,49 +196,64 @@ export function SetupWizard(): JSX.Element {
             <CardTitle>{t('admin.title')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('admin.description')}</p>
-            <div className="space-y-1.5">
-              <Label htmlFor="su-username">{t('admin.username')}</Label>
-              <Input
-                id="su-username"
-                value={admin.username}
-                onChange={(e) => setAdmin((s) => ({ ...s, username: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="su-password">{t('admin.password')}</Label>
-              <Input
-                id="su-password"
-                type="password"
-                value={admin.password}
-                onChange={(e) => setAdmin((s) => ({ ...s, password: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">{t('admin.passwordHint')}</p>
-            </div>
+            {adminBootstrapped ? (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+                <Check className="h-4 w-4" />
+                <span>Admin account already created — continue setup.</span>
+              </div>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">{t('admin.description')}</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="su-username">{t('admin.username')}</Label>
+                  <Input
+                    id="su-username"
+                    value={admin.username}
+                    onChange={(e) => setAdmin((s) => ({ ...s, username: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="su-password">{t('admin.password')}</Label>
+                  <Input
+                    id="su-password"
+                    type="password"
+                    value={admin.password}
+                    onChange={(e) => setAdmin((s) => ({ ...s, password: e.target.value }))}
+                  />
+                  <p className="text-xs text-muted-foreground">{t('admin.passwordHint')}</p>
+                </div>
+              </>
+            )}
           </CardContent>
           <Footer>
-            <Button
-              disabled={
-                !admin.username || admin.password.length < 12 || bootstrapMutation.isPending
-              }
-              onClick={() =>
-                bootstrapMutation.mutate(undefined, {
-                  onSuccess: () => next(),
-                  onError: (err) =>
-                    toast.error(
-                      err instanceof ApiError && err.status === 403
-                        ? 'An admin already exists for this install — use the regular /login page instead.'
-                        : err instanceof ApiError
-                          ? err.message
-                          : 'Failed to create admin user',
-                    ),
-                })
-              }
-            >
-              {bootstrapMutation.isPending && <Loader2 className="animate-spin" />}
-              Next
-              <ChevronRight />
-            </Button>
+            {adminBootstrapped ? (
+              <Button onClick={next}>
+                Next <ChevronRight />
+              </Button>
+            ) : (
+              <Button
+                disabled={
+                  !admin.username || admin.password.length < 12 || bootstrapMutation.isPending
+                }
+                onClick={() =>
+                  bootstrapMutation.mutate(undefined, {
+                    onSuccess: () => next(),
+                    onError: (err) =>
+                      toast.error(
+                        err instanceof ApiError && err.status === 403
+                          ? 'An admin already exists for this install — use the regular /login page instead.'
+                          : err instanceof ApiError
+                            ? err.message
+                            : 'Failed to create admin user',
+                      ),
+                  })
+                }
+              >
+                {bootstrapMutation.isPending && <Loader2 className="animate-spin" />}
+                Next
+                <ChevronRight />
+              </Button>
+            )}
           </Footer>
         </Card>
       )}
@@ -351,7 +377,7 @@ claude login`}
               </div>
             </label>
             {voiceEnabled && (
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+              <p className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
                 {t('modules.voiceWarning')}
               </p>
             )}
@@ -371,28 +397,6 @@ claude login`}
             >
               {persistVoiceMutation.isPending && <Loader2 className="animate-spin" />}
               Next <ChevronRight />
-            </Button>
-          </Footer>
-        </Card>
-      )}
-
-      {step === 'import' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>{t('import.title')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">{t('import.description')}</p>
-            <p className="text-xs text-muted-foreground">
-              You can also import later via /imports/new.
-            </p>
-          </CardContent>
-          <Footer>
-            <Button variant="outline" onClick={back}>
-              Back
-            </Button>
-            <Button onClick={next}>
-              {t('import.skip')} <ChevronRight />
             </Button>
           </Footer>
         </Card>
